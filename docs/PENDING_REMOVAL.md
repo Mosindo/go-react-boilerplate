@@ -21,7 +21,6 @@ The repository was pivoted from a generic SaaS boilerplate to a free dating app.
 | tables `organizations`, `subscriptions` (migrations 012, 013) | Tenant and billing model. `users.organization_id` was already dropped by migration 014, so nothing references them any more. |
 | tables `posts`, `comments`, `votes`, `files` (002, 003, 006, 010) | Legacy generic content. |
 | tables `conversations`, `conversation_participants`, `messages` (004, 008, 009, 011) | Legacy chat. Incompatible with the dating chat, which uses `match_conversations` and `match_messages`. Untouched. |
-| index `idx_notifications_data_match` | Keep. It is new (migration 014), listed only so nobody confuses it with legacy indexes. |
 | migrations 001..013 themselves | Must stay while any database may still need to replay them. Squashing them into a baseline is an owner decision. |
 
 Note: the `notifications` table is **reused** (not legacy): migration 014 drops `is_read` (read state is `read_at`) and constrains `type` to `match | message`.

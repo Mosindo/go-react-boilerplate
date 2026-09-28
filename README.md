@@ -1,6 +1,6 @@
 # go-react-saas
 
-`go-react-saas` is a reusable fullstack monorepo for building social networks, forums, SaaS products, marketplaces, and community apps with a shared Go API, PostgreSQL database, Docker-based infrastructure, and React / React Native clients.
+`go-react-saas` is a fullstack monorepo whose product is now a 100% free dating app: a Go API, PostgreSQL database, Docker-based infrastructure and a React Native (Expo) client. There are no payments, no paywall and no quotas on likes. The HTTP contract is documented in [docs/API.md](docs/API.md).
 
 ## Project Overview
 
@@ -9,7 +9,7 @@ This repository provides a production-minded starting point for fullstack produc
 - a modular Go API
 - explicit PostgreSQL persistence
 - session-based authentication with refresh-token rotation
-- multi-tenant SaaS foundations with organizations and subscriptions
+- dating features: profiles, photos, discovery, matches, chat (REST + WebSocket), notifications, blocks and reports
 - containerized local development
 - predictable smoke and QA scripts
 
@@ -83,7 +83,7 @@ The API uses a feature-first structure with a small shared platform layer.
 
 - `services/api/cmd/api/main.go` is the composition root
 - `services/api/internal/platform` contains cross-cutting concerns such as config, database setup, middleware, logging, and shared errors
-- `services/api/internal/features` contains domain modules such as `auth`, `users`, `chat`, `posts`, `comments`, `notifications`, `files`, and `billing`
+- `services/api/internal/features` contains domain modules such as `auth`, `profiles`, `photos`, `discovery`, `matches`, `chat`, `realtime`, `safety` and `notifications` (legacy `users`, `posts`, `comments`, `files`, `billing` are unwired, see docs/PENDING_REMOVAL.md)
 
 Each feature follows the same shape:
 - `handler.go`
@@ -138,7 +138,6 @@ PowerShell:
 
 ```powershell
 $env:JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-$env:APP_BASE_URL='http://localhost:18080'
 docker compose up --build -d
 ```
 
@@ -146,19 +145,12 @@ Bash:
 
 ```bash
 export JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-export APP_BASE_URL='http://localhost:18080'
 docker compose up --build -d
 ```
 
 The API is exposed on `http://localhost:18080`.
 
-Optional Stripe billing variables:
-
-```powershell
-$env:STRIPE_SECRET_KEY='sk_test_...'
-$env:STRIPE_WEBHOOK_SECRET='whsec_...'
-$env:STRIPE_PRICE_ID='price_...'
-```
+Optional runtime variables: `APP_ENV` (`development` default, `test`, `production`), `ALLOWED_ORIGINS` (CORS and WebSocket origins), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` (SMTP is mandatory when `APP_ENV=production`; otherwise password-reset emails are written to the API log). Demo data: see [docs/SEED.md](docs/SEED.md).
 
 Health check:
 
@@ -232,27 +224,9 @@ Repository-wide QA:
 powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
 ```
 
-## Stripe Billing And MCP
+## Payments
 
-Backend billing is already wired for:
-- `POST /billing/checkout`
-- `GET /billing/subscription`
-- `POST /billing/webhook`
-
-Required environment variables for a live Stripe flow:
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_ID`
-- `APP_BASE_URL`
-
-`APP_BASE_URL` should be the public URL that Stripe redirects back to after checkout. In local Docker runs, `http://localhost:18080` is fine for backend verification. For device testing or hosted environments, use a reachable public or LAN URL instead.
-
-Codex MCP Stripe reference config is stored in [config.toml](.codex/config.toml). The shared Codex config on this machine now also includes:
-
-```toml
-[mcp_servers.stripe]
-url = "https://mcp.stripe.com"
-```
+There are none. The former Stripe/billing module is unwired from the API and listed in [docs/PENDING_REMOVAL.md](docs/PENDING_REMOVAL.md) for the owner to validate its removal.
 
 ## How To Add New Features
 
@@ -266,11 +240,11 @@ Use the existing vertical-slice pattern and keep naming generic.
 5. Register the feature in `services/api/cmd/api/main.go`.
 6. Add tests before expanding the public API surface.
 
-Current SaaS-oriented backend foundations include:
-- organizations for tenant identity
-- sessions for refresh-token lifecycle
-- subscriptions for billing state
-- billing endpoints for Stripe checkout and webhook flows
+Current backend foundations include:
+- sessions for refresh-token lifecycle (revocable, checked on every request)
+- a `schema_migrations` table: migrations are append-only and applied once
+- `platform/httpx` for the shared error body `{error, code}` and pagination cursors
+- `platform/middleware` for auth, in-memory rate limits and body limits
 
 ### Frontend
 1. Add API client functions in `apps/mobile/src/api`.

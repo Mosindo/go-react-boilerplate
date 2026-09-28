@@ -2,34 +2,40 @@ package notifications
 
 import "time"
 
-type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
+
+// Data is the small structured payload clients use to deep-link.
+type Data struct {
+	MatchID        string `json:"matchId,omitempty"`
+	ConversationID string `json:"conversationId,omitempty"`
+	UserID         string `json:"userId,omitempty"`
 }
 
-type NotificationResponse struct {
+type Notification struct {
 	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
 	Type      string     `json:"type"`
 	Title     string     `json:"title"`
 	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
+	Data      Data       `json:"data"`
+	ReadAt    *time.Time `json:"readAt"`
 	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
 }
 
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
+type ListResponse struct {
+	Items       []Notification `json:"items"`
+	NextCursor  *string        `json:"nextCursor"`
+	UnreadCount int            `json:"unreadCount"`
 }
 
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+// NewNotification is the input of the transactional creators used by other
+// features (swipes, chat) inside their own transactions.
+type NewNotification struct {
+	UserID string
+	Type   string
+	Title  string
+	Body   string
+	Data   Data
 }

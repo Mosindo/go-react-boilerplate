@@ -7,24 +7,22 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is the backend and client of a 100% free dating app:
+- no payments, no paywall, no quotas on likes
+- the server never trusts the client (authorization on every resource, server-side 18+ enforcement, bucketed distances only, coordinates rounded to ~1 km)
+- the HTTP contract is `docs/API.md`; it is the single source of truth for API and mobile
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
-- chat
+- profiles (profile, preferences, interests, location)
+- photos
+- discovery (discover queue, swipes)
+- matches
+- chat (REST + WebSocket `realtime`)
 - notifications
-- files
+- safety (blocks, reports)
+
+Legacy generic-SaaS modules (`billing`, `posts`, `comments`, `files`, `users`, organizations/tenants) are unwired from the API and left on disk until the owner validates their removal (see `docs/PENDING_REMOVAL.md`). Do not re-wire them and do not add product features to them.
 
 ---
 
@@ -65,12 +63,15 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matches/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `realtime/`
   - `notifications/`
+  - `safety/`
+  - (legacy, unwired: `users/`, `files/`, `posts/`, `comments/`, `billing/`)
 
 Each feature should contain:
 - `handler.go`
@@ -85,7 +86,9 @@ Rules:
 - Thin handlers
 - Business logic outside handlers
 - No SQL in handlers
-- Shared concerns belong in `platform`
+- Shared concerns belong in `platform` (`httpx` error/pagination helpers, `middleware`, `jwtauth`, `imaging`, `mailer`, `events`, `geo`, `validate`)
+- Services publish realtime events through the `events.Publisher` interface, never through the hub directly
+- Migrations are append-only (`schema_migrations` tracks them); never edit an applied file
 - Domain concerns belong in `features`
 - Never break existing modules while extending the platform
 - Respect the Go backend structure: `handler -> service -> repository`
@@ -128,7 +131,7 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
+Required indexes (legacy tables keep theirs; the dating schema adds discover/chat equivalents in migration 014):
 - `users.email`
 - `posts (author_id, created_at)`
 - `comments (post_id, created_at)`
@@ -136,6 +139,8 @@ Required indexes:
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
 - `files (owner_user_id, created_at)`
+- `profiles (latitude, longitude)`, `swipes (from_user_id, to_user_id)`
+- `match_messages (conversation_id, created_at)`, `notifications (user_id, created_at)` (chat uses `match_conversations`/`match_messages`; the legacy `conversations`/`messages` tables are untouched)
 
 ---
 
@@ -150,13 +155,17 @@ Before any backend delivery:
 
 If tests fail: fix them before continuing.
 
+Integration tests need `DATABASE_URL` (they skip without it; each test gets its own scratch database).
+
 Integration tests to keep healthy:
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/register`, `/auth/login`, `/auth/refresh`, `/me`, password reset)
+- Profile, preferences, location, photos
+- Discovery filters, swipes, concurrent-like match creation (`/discover`, `/swipes`)
+- Matches and chat permissions (`/matches`, `/conversations/:id/messages`)
 - Notifications (`/notifications`)
+- Safety (`/blocks`, `/reports`) and account deletion cascade
+- WebSocket (`/ws`)
 
 ---
 
@@ -178,8 +187,9 @@ Mandatory rules to avoid recurring environment issues:
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - profile + location + photo
+  - discover load
+  - swipe / match
   - chat send/read
   - notifications read flow
 

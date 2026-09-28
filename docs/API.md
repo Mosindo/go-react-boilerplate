@@ -60,7 +60,7 @@ Single source of truth shared by `services/api` and `apps/mobile`. JSON only, ca
 | PUT | `/me/photos/order` | `{photoIds: string[]}` must be a permutation of own photos; first = main. 200 `{items: Photo[]}` |
 | DELETE | `/me/photos/:id` | own only; positions are compacted. 204 |
 | PUT | `/me/photos/:id` | multipart `file`: replaces the image in place, keeps position. 200 `Photo` |
-| GET | `/photos/:id/content` | Owner, or a viewer who is not blocked either way and the owner has a discoverable profile. Returns `image/jpeg`, `Cache-Control: private, max-age=86400`, `X-Content-Type-Options: nosniff`. 404 otherwise |
+| GET | `/photos/:id/content` | Owner, or a viewer who is not blocked either way and either the owner has a discoverable profile or the two users are matched (so a match keeps seeing photos after the other side hides their profile). Returns `image/jpeg`, `Cache-Control: private, max-age=86400`, `X-Content-Type-Options: nosniff`. 404 otherwise |
 
 ## Discovery & swipes
 
@@ -68,10 +68,10 @@ Single source of truth shared by `services/api` and `apps/mobile`. JSON only, ca
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/discover?limit=10` | Returns `{items: Candidate[]}`. Excludes: self, already swiped, blocked either way, non-discoverable, incomplete profiles, mismatching gender/age/distance preferences (reciprocal: they must also fit the viewer). 409 `profile_incomplete` if viewer's `profileComplete` is false. Pure queue: swiped profiles disappear, so no cursor. Ranking is behind a `Ranker` interface (default: shared interests, distance, recent activity) |
+| GET | `/discover?limit=10` | `limit` defaults to 10 (max 50). Returns `{items: Candidate[]}`. Excludes: self, already swiped, blocked either way, non-discoverable, incomplete profiles, mismatching gender/age/distance preferences (reciprocal: they must also fit the viewer). 409 `profile_incomplete` if viewer's `profileComplete` is false. Pure queue: swiped profiles disappear, so no cursor. Ranking is behind a `Ranker` interface (default: shared interests, distance, recent activity) |
 | GET | `/users/:id/profile` | Full `Candidate` of a user the viewer may see (discoverable or matched), 404 otherwise or if blocked |
 | POST | `/swipes` | `{targetUserId, action: "like" \| "pass"}` -> 200 `{matched: boolean, match?: MatchSummary}`. Idempotent per (viewer,target): a repeated swipe returns the stored result and never creates duplicates. Cannot swipe self / blocked / unknown users. Rate limited (120/min) but no artificial like quota |
-| DELETE | `/swipes/last` | Not implemented (no undo) |
+| DELETE | `/swipes/last` | Not implemented (no undo): always 501 |
 
 Mutual likes create exactly one `match` (+ conversation) in a single transaction, and one `match` notification for each user.
 
@@ -123,6 +123,20 @@ Client -> server: `{"type":"ping"}` -> `{"type":"pong"}`. The hub is in-process 
 ## Health
 
 `GET /health` **public** -> 200 `{status:"ok"}` when the DB answers.
+
+## Server behaviour notes (clarifications of the contract)
+
+These are decisions the server makes where the contract above is silent. Clients may rely on them.
+
+- **Auth**: `AuthResponse` has no other fields (no legacy `token`). Access tokens are HS256 with `uid`, `sid`, `iat`, `exp` only; every request re-checks that the session is not revoked and the user still exists. Passwords: 8..128 characters (any length is fully significant). `/auth/*` is rate limited per client IP (30 requests/minute). A wrong `currentPassword` (`/me/password`) or `password` (`DELETE /me`) is 403 `forbidden`, not 401, so clients do not treat it as an expired session.
+- **Password reset**: the emailed code is 8 characters from the alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `0`, `1`, `I`, `O`), valid 30 minutes, single use, max 5 attempts per code; requesting a new code invalidates the previous one. Input is case/space/dash tolerant.
+- **Status codes**: unknown route 404 `not_found`; oversize JSON body (> 1 MB) 413 `payload_too_large`; photo > 8 MB 413; non JPEG/PNG or undecodable image 415 `unsupported_media`; 7th photo 409 `conflict`; `PUT /me/location` before a profile exists 409 `profile_incomplete`.
+- **Conversations**: a user who is not a participant (or a blocked pair, for reading and marking read) gets 404 `not_found`, never 403, so conversation ids cannot be probed. Sending to a blocked pair is 403 `blocked`.
+- **Swipes**: self or malformed target is 400; unknown, hidden (non-discoverable) or blocked target is 404 `not_found` (blocks are never revealed). Swipes require `profileComplete` (409 `profile_incomplete`).
+- **Notifications**: message notifications are coalesced: while a user has an unread `message` notification for a conversation, new messages update it instead of adding rows. `POST /conversations/:id/read` also marks that conversation's message notifications read. Unmatching deletes the notifications that point at the match, and deleting an account removes notifications about that user.
+- **Distance**: `distanceKm` is the great-circle distance rounded *up* to the next 5 km step (minimum 5) and `null` when either side lacks a location or the candidate set `showDistance=false`.
+- **Rate limits** (per user unless noted): swipes 120/min, messages 30/min, reports 10/hour, `/auth/*` 30/min per IP. Limits are per API process.
+- **Realtime**: the auth frame must arrive within 5 s (close code `4401` otherwise or on a bad/revoked token); at most 5 concurrent connections per user (`4429`); frames are limited to 4 KiB; the server pings every 30 s; browser origins must be in `ALLOWED_ORIGINS` (native clients send no `Origin`). `match.new` and `match.removed` are sent to both users, `message.new` to both participants (the sender receives an echo for multi-device sync), `messages.read` to the other participant, `notification.new` to its owner.
 
 ## Repository rules for this migration
 

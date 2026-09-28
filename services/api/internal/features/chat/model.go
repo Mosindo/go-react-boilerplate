@@ -2,58 +2,31 @@ package chat
 
 import "time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+const (
+	DefaultLimit = 30
+	MaxLimit     = 50
+	MaxBodyLen   = 2000
+)
+
+type Message struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversationId"`
+	SenderID       string     `json:"senderId"`
+	Body           string     `json:"body"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ReadAt         *time.Time `json:"readAt"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type SendRequest struct {
+	Body string `json:"body"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
-}
-
-type UserResponse struct {
+type Cursor struct {
+	CreatedAt time.Time `json:"t"`
 	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
-}
-
-type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
-}
-
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
-}
-
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+type ReadEvent struct {
+	ConversationID string `json:"conversationId"`
+	ReaderID       string `json:"readerId"`
 }

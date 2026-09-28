@@ -2,8 +2,11 @@ package chat
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc) {
-	r.GET("/chats", requireUser, handler.Chats)
-	r.GET("/chats/:userId/messages", requireUser, handler.ChatMessages)
-	r.POST("/chats/:userId/messages", requireUser, handler.SendChatMessage)
+// RegisterRoutes wires the conversation endpoints. sendMW (per-user rate limit)
+// applies to sending only.
+func RegisterRoutes(r gin.IRouter, h *Handler, requireUser gin.HandlerFunc, sendMW ...gin.HandlerFunc) {
+	g := r.Group("/conversations", requireUser)
+	g.GET("/:id/messages", h.Messages)
+	g.POST("/:id/messages", append(append([]gin.HandlerFunc{}, sendMW...), h.Send)...)
+	g.POST("/:id/read", h.MarkRead)
 }

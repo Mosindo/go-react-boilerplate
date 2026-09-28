@@ -132,11 +132,12 @@ async function step(name, fn) {
   }
 }
 
-async function createUser(label, gender, interestedIn, interestIds) {
+async function createUser(label, gender, interestedIn, interestIdsFor) {
   const email = uniqueEmail(`e2e_${label}`);
   const session = await expectStatus(201, "POST", "/auth/register", { body: { email, password: PASSWORD } });
   assert(session.accessToken && session.refreshToken, "register must return accessToken and refreshToken");
   const token = session.accessToken;
+  const interestIds = await interestIdsFor(token);
 
   await expectStatus(200, "PUT", "/me/profile", {
     token,
@@ -203,20 +204,19 @@ async function main() {
       assert(data.status === "ok", "health status should be ok");
     });
 
-    const interests = await step("interests catalogue", async () => {
-      const data = await expectStatus(200, "GET", "/interests");
+    const sharedInterests = async (token) => {
+      const data = await expectStatus(200, "GET", "/interests", { token });
       assert(Array.isArray(data.items) && data.items.length >= 3, "expected at least 3 interests");
-      return data.items;
-    });
-    const shared = interests.slice(0, 3).map((item) => item.id);
+      return data.items.slice(0, 3).map((item) => item.id);
+    };
 
     const a = await step("register A, profile, location, preferences, photo", async () => {
-      const user = await createUser("A", "man", ["woman"], shared);
+      const user = await createUser("A", "man", ["woman"], sharedInterests);
       users.push(user);
       return user;
     });
     const b = await step("register B, profile, location, preferences, photo", async () => {
-      const user = await createUser("B", "woman", ["man"], shared);
+      const user = await createUser("B", "woman", ["man"], sharedInterests);
       users.push(user);
       return user;
     });

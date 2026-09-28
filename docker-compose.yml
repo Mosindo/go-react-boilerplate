@@ -23,10 +23,14 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}
+      APP_ENV: ${APP_ENV:-development}
+      PORT: "8080"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "18080:8080"
     depends_on:

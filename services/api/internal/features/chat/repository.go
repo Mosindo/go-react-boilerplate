@@ -2,229 +2,196 @@ package chat
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+	"time"
 
+	"example.com/api/internal/features/notifications"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var (
+	// ErrNotFound covers "no such conversation" and "not a participant" on purpose.
+	ErrNotFound = errors.New("chat: conversation not found")
+	ErrBlocked  = errors.New("chat: blocked")
+)
+
+// Access is what a participant is allowed to know about a conversation.
+type Access struct {
+	ConversationID string
+	MatchID        string
+	OtherUserID    string
+	Blocked        bool
+}
+
+type SendResult struct {
+	Message      Message
+	Recipient    string
+	Notification notifications.Notification
+}
+
 type Repository interface {
-	ListChats(ctx context.Context, organizationID, userID string) ([]ChatSummary, error)
-	ListChatsWithPagination(ctx context.Context, organizationID, userID string, limit, offset int) ([]ChatSummary, error)
-	ListMessages(ctx context.Context, userID, otherUserID string, limit int) ([]ChatMessage, error)
-	CreateMessage(ctx context.Context, userID, otherUserID, content string) (ChatMessage, error)
-	UserExists(ctx context.Context, organizationID, userID string) (bool, error)
+	Access(ctx context.Context, conversationID, userID string) (Access, error)
+	ListMessages(ctx context.Context, conversationID string, before *Cursor, limit int) ([]Message, error)
+	Send(ctx context.Context, conversationID, senderID, body string) (SendResult, error)
+	MarkRead(ctx context.Context, conversationID, readerID string) (int64, error)
 }
 
-type PGRepository struct {
-	dbPool *pgxpool.Pool
+type PGRepository struct{ pool *pgxpool.Pool }
+
+func NewPGRepository(pool *pgxpool.Pool) *PGRepository { return &PGRepository{pool: pool} }
+
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
-	return &PGRepository{dbPool: dbPool}
-}
-
-func (r *PGRepository) ListChats(ctx context.Context, organizationID, userID string) ([]ChatSummary, error) {
-	return r.ListChatsWithPagination(ctx, organizationID, userID, 100, 0)
-}
-
-func (r *PGRepository) ListChatsWithPagination(ctx context.Context, organizationID, userID string, limit, offset int) ([]ChatSummary, error) {
-	rows, err := r.dbPool.Query(ctx, `
-		SELECT
-			u.id,
-			u.email,
-			u.created_at,
-			lm.content,
-			lm.created_at
-		FROM conversations c
-		JOIN conversation_participants self_cp
-		  ON self_cp.conversation_id = c.id
-		 AND self_cp.user_id = $1
-		JOIN conversation_participants other_cp
-		  ON other_cp.conversation_id = c.id
-		 AND other_cp.user_id <> $1
-		JOIN users u
-		  ON u.id = other_cp.user_id
-		 AND u.organization_id = $2
-		LEFT JOIN LATERAL (
-			SELECT m.content, m.created_at
-			FROM messages m
-			WHERE m.conversation_id = c.id
-			ORDER BY m.created_at DESC, m.id DESC
-			LIMIT 1
-		) lm ON true
-		WHERE c.kind = 'direct'
-		ORDER BY COALESCE(lm.created_at, c.updated_at, c.created_at) DESC, u.id DESC
-		LIMIT $3 OFFSET $4
-	`, userID, organizationID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	chats := make([]ChatSummary, 0)
-	for rows.Next() {
-		var chat ChatSummary
-		var lastContent sql.NullString
-		var lastCreatedAt sql.NullTime
-		if err := rows.Scan(&chat.UserID, &chat.UserEmail, &chat.UserCreatedAt, &lastContent, &lastCreatedAt); err != nil {
-			return nil, err
-		}
-		if lastContent.Valid && lastCreatedAt.Valid {
-			chat.LastMessage = &ChatMessagePreview{
-				Content:   lastContent.String,
-				CreatedAt: lastCreatedAt.Time,
-			}
-		}
-		chats = append(chats, chat)
-	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return chats, nil
-}
-
-func (r *PGRepository) ListMessages(ctx context.Context, userID, otherUserID string, limit int) ([]ChatMessage, error) {
-	conversationID, err := r.findDirectConversationID(ctx, userID, otherUserID)
-	if err != nil {
-		return nil, err
-	}
-	if conversationID == "" {
-		return []ChatMessage{}, nil
-	}
-
-	rows, err := r.dbPool.Query(ctx, `
-		SELECT id, sender_user_id, recipient_user_id, content, created_at
-		FROM messages
-		WHERE conversation_id = $1
-		ORDER BY created_at ASC, id ASC
-		LIMIT $2
-	`, conversationID, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	messages := make([]ChatMessage, 0)
-	for rows.Next() {
-		var message ChatMessage
-		if err := rows.Scan(&message.ID, &message.SenderUserID, &message.RecipientUserID, &message.Content, &message.CreatedAt); err != nil {
-			return nil, err
-		}
-		messages = append(messages, message)
-	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return messages, nil
-}
-
-func (r *PGRepository) CreateMessage(ctx context.Context, userID, otherUserID, content string) (ChatMessage, error) {
-	tx, err := r.dbPool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return ChatMessage{}, err
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	conversationID, err := getOrCreateDirectConversation(ctx, tx, userID, otherUserID)
-	if err != nil {
-		return ChatMessage{}, err
-	}
-
-	var message ChatMessage
-	err = tx.QueryRow(ctx, `
-		INSERT INTO messages (conversation_id, sender_user_id, recipient_user_id, content)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, sender_user_id, recipient_user_id, content, created_at
-	`, conversationID, userID, otherUserID, content).Scan(
-		&message.ID,
-		&message.SenderUserID,
-		&message.RecipientUserID,
-		&message.Content,
-		&message.CreatedAt,
+const accessSQL = `
+	WITH acc AS (
+	  SELECT c.id AS conversation_id, m.id AS match_id,
+	         CASE WHEN m.user_a = $2 THEN m.user_b ELSE m.user_a END AS other_id
+	  FROM match_conversations c
+	  JOIN matches m ON m.id = c.match_id
+	  WHERE c.id = $1 AND (m.user_a = $2 OR m.user_b = $2)
 	)
-	if err != nil {
-		return ChatMessage{}, err
-	}
+	SELECT a.conversation_id, a.match_id, a.other_id,
+	       EXISTS (
+	         SELECT 1 FROM blocks b
+	         WHERE (b.blocker_id = $2 AND b.blocked_id = a.other_id)
+	            OR (b.blocker_id = a.other_id AND b.blocked_id = $2))
+	FROM acc a`
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE conversations
-		SET updated_at = NOW()
-		WHERE id = $1
-	`, conversationID); err != nil {
-		return ChatMessage{}, err
+func access(ctx context.Context, q queryRower, conversationID, userID string) (Access, error) {
+	var a Access
+	err := q.QueryRow(ctx, accessSQL, conversationID, userID).Scan(&a.ConversationID, &a.MatchID, &a.OtherUserID, &a.Blocked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Access{}, ErrNotFound
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return ChatMessage{}, err
-	}
-	return message, nil
+	return a, err
 }
 
-func (r *PGRepository) UserExists(ctx context.Context, organizationID, userID string) (bool, error) {
-	var exists bool
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM users
-			WHERE id = $1
-			  AND organization_id = $2
-		)
-	`, userID, organizationID).Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-	return exists, nil
+func (r *PGRepository) Access(ctx context.Context, conversationID, userID string) (Access, error) {
+	return access(ctx, r.pool, conversationID, userID)
 }
 
-func (r *PGRepository) findDirectConversationID(ctx context.Context, userID, otherUserID string) (string, error) {
-	var conversationID string
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT id
-		FROM conversations
-		WHERE direct_key = $1
-	`, directConversationKey(userID, otherUserID)).Scan(&conversationID)
+func scanMessage(row pgx.Row) (Message, error) {
+	var m Message
+	if err := row.Scan(&m.ID, &m.ConversationID, &m.SenderID, &m.Body, &m.CreatedAt, &m.ReadAt); err != nil {
+		return Message{}, err
+	}
+	m.CreatedAt = m.CreatedAt.UTC()
+	if m.ReadAt != nil {
+		t := m.ReadAt.UTC()
+		m.ReadAt = &t
+	}
+	return m, nil
+}
+
+func (r *PGRepository) ListMessages(ctx context.Context, conversationID string, before *Cursor, limit int) ([]Message, error) {
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	const cols = `id, conversation_id, sender_id, body, created_at, read_at`
+	if before == nil {
+		rows, err = r.pool.Query(ctx, `
+			SELECT `+cols+` FROM match_messages WHERE conversation_id = $1
+			ORDER BY created_at DESC, id DESC LIMIT $2`, conversationID, limit)
+	} else {
+		rows, err = r.pool.Query(ctx, `
+			SELECT `+cols+` FROM match_messages
+			WHERE conversation_id = $1 AND (created_at, id) < ($2, $3::uuid)
+			ORDER BY created_at DESC, id DESC LIMIT $4`, conversationID, before.CreatedAt, before.ID, limit)
+	}
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Message
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
 		}
-		return "", err
+		out = append(out, m)
 	}
-	return conversationID, nil
+	return out, rows.Err()
 }
 
-func getOrCreateDirectConversation(ctx context.Context, tx pgx.Tx, userID, otherUserID string) (string, error) {
-	var conversationID string
-	err := tx.QueryRow(ctx, `
-		INSERT INTO conversations (kind, direct_key, created_by_user_id)
-		VALUES ('direct', $1, $2)
-		ON CONFLICT (direct_key)
-		DO UPDATE SET updated_at = NOW()
-		RETURNING id
-	`, directConversationKey(userID, otherUserID), userID).Scan(&conversationID)
+// Send authorises, inserts the message, bumps the conversation and upserts the
+// recipient's message notification in one transaction. The authorisation and
+// block check run inside the transaction so they cannot go stale before the insert.
+func (r *PGRepository) Send(ctx context.Context, conversationID, senderID, body string) (SendResult, error) {
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return SendResult{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	acc, err := access(ctx, tx, conversationID, senderID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	if acc.Blocked {
+		return SendResult{}, ErrBlocked
 	}
 
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO conversation_participants (conversation_id, user_id)
-		VALUES ($1, $2), ($1, $3)
-		ON CONFLICT (conversation_id, user_id) DO NOTHING
-	`, conversationID, userID, otherUserID); err != nil {
-		return "", err
+	msg, err := scanMessage(tx.QueryRow(ctx, `
+		INSERT INTO match_messages (conversation_id, sender_id, body)
+		VALUES ($1, $2, $3)
+		RETURNING id, conversation_id, sender_id, body, created_at, read_at`, conversationID, senderID, body))
+	if err != nil {
+		return SendResult{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE match_conversations SET last_message_at = $2 WHERE id = $1`, conversationID, msg.CreatedAt); err != nil {
+		return SendResult{}, err
 	}
 
-	return conversationID, nil
+	var senderName string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT first_name FROM profiles WHERE user_id = $1), '')`, senderID).Scan(&senderName); err != nil {
+		return SendResult{}, err
+	}
+	title := senderName
+	if title == "" {
+		title = "New message"
+	}
+	n, err := notifications.UpsertMessage(ctx, tx, notifications.NewNotification{
+		UserID: acc.OtherUserID,
+		Type:   notifications.TypeMessage,
+		Title:  title,
+		Body:   preview(body),
+		Data:   notifications.Data{MatchID: acc.MatchID, ConversationID: conversationID, UserID: senderID},
+	})
+	if err != nil {
+		return SendResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SendResult{}, err
+	}
+	return SendResult{Message: msg, Recipient: acc.OtherUserID, Notification: n}, nil
 }
 
-func directConversationKey(userID, otherUserID string) string {
-	if userID < otherUserID {
-		return userID + ":" + otherUserID
+func preview(body string) string {
+	runes := []rune(body)
+	if len(runes) > 100 {
+		return string(runes[:99]) + "…"
 	}
-	return otherUserID + ":" + userID
+	return body
+}
+
+func (r *PGRepository) MarkRead(ctx context.Context, conversationID, readerID string) (int64, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
+		UPDATE match_messages SET read_at = $3
+		WHERE conversation_id = $1 AND sender_id <> $2 AND read_at IS NULL`, conversationID, readerID, time.Now())
+	if err != nil {
+		return 0, err
+	}
+	if err := notifications.MarkConversationRead(ctx, tx, readerID, conversationID); err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), tx.Commit(ctx)
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,33 +59,107 @@ func ConnectWithRetry(ctx context.Context, databaseURL string, maxWait, retryInt
 	}
 }
 
+// migrationLockID is the pg advisory lock key that serialises concurrent
+// migration runs (several API replicas or parallel test packages).
+const migrationLockID int64 = 727270001
+
+// RunMigrations applies every embedded *.sql file, in lexical order, that is not
+// yet recorded in schema_migrations. Each file runs in its own transaction
+// together with its bookkeeping row. Legacy files (001..013) are idempotent, so
+// the first tracked run against an already-migrated database is safe.
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
-	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	files, err := migrationFiles()
 	if err != nil {
-		return fmt.Errorf("read embedded migrations: %w", err)
+		return err
 	}
 
-	var files []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if len(name) > 4 && name[len(name)-4:] == ".sql" {
-			files = append(files, "migrations/"+name)
-		}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
 	}
-	sort.Strings(files)
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationLockID); err != nil {
+		return fmt.Errorf("take migration lock: %w", err)
+	}
+	defer func() {
+		// Use a fresh context: ctx may already be cancelled.
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = conn.Exec(unlockCtx, "SELECT pg_advisory_unlock($1)", migrationLockID)
+	}()
+
+	if _, err := conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			name TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	applied := map[string]struct{}{}
+	rows, err := conn.Query(ctx, "SELECT name FROM schema_migrations")
+	if err != nil {
+		return fmt.Errorf("list applied migrations: %w", err)
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan applied migration: %w", err)
+		}
+		applied[name] = struct{}{}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("list applied migrations: %w", err)
+	}
 
 	for _, file := range files {
-		sqlBytes, err := migrationsFS.ReadFile(file)
+		if _, done := applied[file]; done {
+			continue
+		}
+		sqlBytes, err := migrationsFS.ReadFile("migrations/" + file)
 		if err != nil {
 			return fmt.Errorf("read embedded migration %s: %w", file, err)
 		}
-		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
-			return fmt.Errorf("exec migration %s: %w", file, err)
+		if err := applyMigration(ctx, conn, file, string(sqlBytes)); err != nil {
+			return err
 		}
 	}
-
 	return nil
+}
+
+func applyMigration(ctx context.Context, conn *pgxpool.Conn, name, sql string) error {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin migration %s: %w", name, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("exec migration %s: %w", name, err)
+	}
+	if _, err := tx.Exec(ctx, "INSERT INTO schema_migrations (name) VALUES ($1)", name); err != nil {
+		return fmt.Errorf("record migration %s: %w", name, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit migration %s: %w", name, err)
+	}
+	return nil
+}
+
+func migrationFiles() ([]string, error) {
+	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("read embedded migrations: %w", err)
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+	sort.Strings(files)
+	return files, nil
 }

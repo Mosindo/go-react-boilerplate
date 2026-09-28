@@ -1,63 +1,51 @@
 package middleware
 
 import (
-	"errors"
-	"net/http"
+	"context"
 	"strings"
 
+	"example.com/api/internal/platform/httpx"
+	"example.com/api/internal/platform/jwtauth"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker verifies that a session is still usable: not revoked, not
+// expired, and its user still exists.
+type SessionChecker interface {
+	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+// RequireUser authenticates the request from a Bearer access token (HS256,
+// mandatory exp) and then confirms with the database that the session was not
+// revoked and the user has not been deleted. Sets userID and sessionID.
+func RequireUser(secret []byte, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			httpx.Abort(c, 401, httpx.CodeUnauthorized, "missing token")
 			return
 		}
-
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, errors.New("unexpected signing method")
-			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method type")
-			}
-			return secret, nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		claims, err := jwtauth.Parse(secret, tokenString)
+		if err != nil {
+			httpx.Abort(c, 401, httpx.CodeUnauthorized, "invalid token")
 			return
 		}
-
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		if !httpx.IsUUID(claims.UserID) || !httpx.IsUUID(claims.SessionID) {
+			httpx.Abort(c, 401, httpx.CodeUnauthorized, "invalid token")
 			return
 		}
-
-		userID, ok := stringClaim(claims, "uid")
+		userID := strings.ToLower(claims.UserID)
+		sessionID := strings.ToLower(claims.SessionID)
+		ok, err := sessions.SessionActive(c.Request.Context(), sessionID, userID)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			httpx.Abort(c, 401, httpx.CodeUnauthorized, "session is no longer valid")
 			return
 		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		sessionID, ok := stringClaim(claims, "sid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
 		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}
@@ -69,12 +57,4 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
-}
-
-func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
-	value, ok := claims[key].(string)
-	if !ok || strings.TrimSpace(value) == "" {
-		return "", false
-	}
-	return value, true
 }
