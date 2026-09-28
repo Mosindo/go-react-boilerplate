@@ -1,79 +1,27 @@
-import React, { useMemo } from "react";
-import { Image, StyleSheet, View, type ImageStyle, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import type { Photo } from "../../api/types";
+import { useTheme } from "../../theme";
+import { PhotoImage } from "./PhotoImage";
 import { Text } from "./Text";
-import { colors, controls } from "./tokens";
 
-export type AvatarProps = {
-  name?: string;
-  size?: number;
-  style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
-  uri?: string | null;
-};
-
-function getInitials(name?: string): string {
-  if (!name) {
-    return "?";
-  }
-
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (parts.length === 0) {
-    return "?";
-  }
-
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-
-  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
-}
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    overflow: "hidden"
-  },
-  image: {
-    width: "100%",
-    height: "100%"
-  }
-});
-
-export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri }: AvatarProps) {
-  const initials = useMemo(() => getInitials(name), [name]);
-
+export function Avatar({ name, photo, size = 48 }: { name: string; photo?: Photo | null; size?: number }) {
+  const theme = useTheme();
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
     <View
-      style={[
-        styles.container,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2
-        },
-        style
-      ]}
+      accessibilityIgnoresInvertColors
+      style={[styles.base, { width: size, height: size, borderRadius: size / 2, backgroundColor: theme.surfaceAlt }]}
     >
-      {uri ? (
-        <Image source={{ uri }} style={styles.image as StyleProp<ImageStyle>} />
+      {photo ? (
+        <PhotoImage accessibilityLabel={`${name}'s photo`} photo={photo} style={{ width: size, height: size }} />
       ) : (
-        <Text
-          style={textStyle}
-          tone="primary"
-          variant={size >= controls.avatar.lg ? "heading" : "label"}
-          weight="bold"
-        >
-          {initials}
+        <Text style={{ fontSize: size * 0.4 }} tone="muted" variant="heading">
+          {initial}
         </Text>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({ base: { overflow: "hidden", alignItems: "center", justifyContent: "center" } });

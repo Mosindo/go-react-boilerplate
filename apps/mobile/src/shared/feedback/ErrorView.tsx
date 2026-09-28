@@ -1,52 +1,25 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
+import { Button } from "../ui/Button";
+import { Text } from "../ui/Text";
 
-type ErrorViewProps = {
-  actionLabel?: string;
-  message: string;
-  onAction?: () => void;
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
-  title?: string;
-  compact?: boolean;
-};
+export type ErrorViewProps = { message: string; onRetry?: () => void; title?: string };
 
-export function ErrorView({
-  actionLabel = "Retry",
-  compact = false,
-  message,
-  onAction,
-  style,
-  testID,
-  title = "Something went wrong"
-}: ErrorViewProps) {
+export function ErrorView({ message, onRetry, title = "Something went wrong" }: ErrorViewProps) {
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
-      <View style={styles.copy}>
-        <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
-          {title}
-        </Text>
-        <Text tone="muted" variant={compact ? "caption" : "body"}>
-          {message}
-        </Text>
-      </View>
-      {onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="outline" /> : null}
-    </Card>
+    <View accessibilityRole="alert" style={styles.wrap}>
+      <Text center variant="heading">
+        {title}
+      </Text>
+      <Text center tone="muted">
+        {message}
+      </Text>
+      {onRetry ? <Button label="Try again" onPress={onRetry} variant="secondary" /> : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: spacing.md
-  },
-  cardCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  }
+  wrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl }
 });

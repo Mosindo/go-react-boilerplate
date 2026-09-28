@@ -1,58 +1,60 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, spacing } from "../ui";
+import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle, type RefreshControlProps } from "react-native";
+import type { Edge } from "react-native-safe-area-context";
+import { spacing } from "../../theme";
 import { SafeAreaLayout } from "./SafeAreaLayout";
 
-type ScreenContainerProps = {
+export type ScreenContainerProps = {
   children: ReactNode;
-  centered?: boolean;
-  contentMaxWidth?: number;
+  /** Wrap content in a keyboard friendly ScrollView. */
+  scroll?: boolean;
+  refreshControl?: React.ReactElement<RefreshControlProps>;
+  edges?: Edge[];
+  /** Screen sits below a native header: skip the top inset to avoid doubling it. */
+  underHeader?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
-  edges?: ("top" | "right" | "bottom" | "left")[];
-  style?: StyleProp<ViewStyle>;
   testID?: string;
 };
 
+const MAX_CONTENT_WIDTH = 560;
+const UNDER_HEADER_EDGES: Edge[] = ["bottom", "left", "right"];
+
 export function ScreenContainer({
-  centered = false,
   children,
-  contentMaxWidth = 960,
-  contentStyle,
+  scroll = false,
+  refreshControl,
   edges,
-  style,
+  underHeader = false,
+  contentStyle,
   testID
 }: ScreenContainerProps) {
   return (
-    <SafeAreaLayout edges={edges} style={style}>
-      <View style={[styles.outer, centered ? styles.centered : null]}>
-        <View
-          style={[styles.content, centered ? styles.contentCentered : null, { maxWidth: contentMaxWidth }, contentStyle]}
+    <SafeAreaLayout edges={edges ?? (underHeader ? UNDER_HEADER_EDGES : undefined)}>
+      {scroll ? (
+        <ScrollView
+          contentContainerStyle={[styles.content, contentStyle]}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={refreshControl}
           testID={testID}
         >
           {children}
+        </ScrollView>
+      ) : (
+        <View style={[styles.content, styles.fill, contentStyle]} testID={testID}>
+          {children}
         </View>
-      </View>
+      )}
     </SafeAreaLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  outer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
-  },
-  centered: {
-    justifyContent: "center"
-  },
+  fill: { flex: 1 },
   content: {
-    flex: 1,
     width: "100%",
-    alignSelf: "center"
-  },
-  contentCentered: {
-    flex: 0
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: "center",
+    padding: spacing.lg,
+    gap: spacing.lg
   }
 });

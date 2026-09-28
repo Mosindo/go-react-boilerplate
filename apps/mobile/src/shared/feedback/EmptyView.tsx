@@ -1,49 +1,30 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
+import { Button } from "../ui/Button";
+import { Text } from "../ui/Text";
 
-type EmptyViewProps = {
-  actionLabel?: string;
-  message?: string;
-  onAction?: () => void;
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
+export type EmptyViewProps = {
   title: string;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
 };
 
-export function EmptyView({ actionLabel, message, onAction, style, testID, title }: EmptyViewProps) {
+export function EmptyView({ title, message, actionLabel, onAction }: EmptyViewProps) {
   return (
-    <View style={[styles.wrap, style]} testID={testID}>
-      <Card padding="lg" style={styles.card} variant="muted">
-        <Text style={styles.title} variant="heading" weight="bold">
-          {title}
-        </Text>
-        {message ? (
-          <Text style={styles.message} tone="muted">
-            {message}
-          </Text>
-        ) : null}
-        {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="secondary" /> : null}
-      </Card>
+    <View style={styles.wrap}>
+      <Text center variant="heading">
+        {title}
+      </Text>
+      <Text center tone="muted">
+        {message}
+      </Text>
+      {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} variant="secondary" /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    width: "100%"
-  },
-  card: {
-    width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
-    alignItems: "center",
-    gap: spacing.sm
-  },
-  title: {
-    textAlign: "center"
-  },
-  message: {
-    textAlign: "center"
-  }
+  wrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl }
 });

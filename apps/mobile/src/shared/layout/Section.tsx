@@ -1,57 +1,34 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, spacing } from "../ui";
+import { StyleSheet, View } from "react-native";
+import { radius, spacing, useTheme } from "../../theme";
+import { Text } from "../ui/Text";
 
-export type SectionProps = {
-  action?: ReactNode;
-  children?: ReactNode;
-  eyebrow?: string;
-  style?: StyleProp<ViewStyle>;
-  subtitle?: string;
-  title: string;
-};
-
-export function Section({ action, children, eyebrow, style, subtitle, title }: SectionProps) {
+/** Titled group. `flush` removes inner padding so list rows can touch the edges. */
+export function Section({ title, children, flush = false }: { title?: string; children: ReactNode; flush?: boolean }) {
+  const theme = useTheme();
   return (
-    <View style={[styles.root, style]}>
-      <View style={styles.header}>
-        <View style={styles.copy}>
-          {eyebrow ? (
-            <Text style={styles.eyebrow} tone="secondary" variant="eyebrow" weight="bold">
-              {eyebrow}
-            </Text>
-          ) : null}
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
-        </View>
-        {action ? <View>{action}</View> : null}
+    <View style={styles.wrap}>
+      {title ? (
+        <Text tone="muted" variant="label">
+          {title}
+        </Text>
+      ) : null}
+      <View
+        style={[
+          styles.box,
+          { backgroundColor: theme.surface, borderColor: theme.border },
+          flush ? styles.flush : styles.padded
+        ]}
+      >
+        {children}
       </View>
-      {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    marginBottom: spacing.xxl
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    marginBottom: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  },
-  eyebrow: {
-    marginBottom: spacing.xs
-  },
-  title: {
-    marginBottom: spacing.xs
-  }
+  wrap: { gap: spacing.sm },
+  box: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
+  padded: { padding: spacing.lg, gap: spacing.md },
+  flush: { paddingVertical: spacing.xs }
 });

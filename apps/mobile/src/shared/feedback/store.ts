@@ -1,23 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-type FeedbackState = {
-  error: string | null;
-  errors: string[];
-  loadingCount: number;
-  loadingLabel: string | null;
-  loadingLabels: string[];
-};
+export type ToastKind = "info" | "success" | "error";
+export type Toast = { id: number; kind: ToastKind; message: string };
 
 type Listener = () => void;
 
-let state: FeedbackState = {
-  error: null,
-  errors: [],
-  loadingCount: 0,
-  loadingLabel: null,
-  loadingLabels: []
-};
-
+let toasts: Toast[] = [];
+let nextId = 1;
 const listeners = new Set<Listener>();
 
 function emit() {
@@ -31,60 +20,23 @@ function subscribe(listener: Listener) {
   };
 }
 
-function getSnapshot(): FeedbackState {
-  return state;
+function getSnapshot(): Toast[] {
+  return toasts;
 }
 
-export function beginGlobalLoading(label = "Working...") {
-  const nextLabels = [...state.loadingLabels, label];
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function endGlobalLoading() {
-  const nextLabels = state.loadingLabels.slice(0, -1);
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function showGlobalError(message: string) {
-  if (!message) {
+export function showToast(message: string, kind: ToastKind = "info"): void {
+  if (!message || toasts.some((toast) => toast.message === message)) {
     return;
   }
-
-  const nextErrors = state.errors.at(-1) === message ? state.errors : [...state.errors, message];
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
+  toasts = [...toasts.slice(-2), { id: nextId++, kind, message }];
   emit();
 }
 
-export function clearGlobalError() {
-  if (state.errors.length === 0) {
-    return;
-  }
-
-  const nextErrors = state.errors.slice(0, -1);
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
+export function dismissToast(id: number): void {
+  toasts = toasts.filter((toast) => toast.id !== id);
   emit();
 }
 
-export function useGlobalFeedback() {
+export function useToasts(): Toast[] {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

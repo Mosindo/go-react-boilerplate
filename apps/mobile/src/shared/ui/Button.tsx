@@ -1,170 +1,76 @@
-import React, { type ReactNode } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  View,
-  type PressableProps,
-  type StyleProp,
-  type TextStyle,
-  type ViewStyle
-} from "react-native";
+import React from "react";
+import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { hitSlop, radius, spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
-export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
-  children?: ReactNode;
-  label?: string;
-  loading?: boolean;
+export type ButtonProps = {
+  label: string;
+  onPress: () => void;
   variant?: ButtonVariant;
-  size?: ButtonSize;
-  fullWidth?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
+  accessibilityHint?: string;
+  /** Spoken label when the visible text is ambiguous (e.g. repeated row actions). */
+  a11yLabel?: string;
   style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
-};
-
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  }
-});
-
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
-};
-
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
-
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
-  primary: "inverse",
-  secondary: "primary",
-  destructive: "inverse",
-  success: "inverse",
-  outline: "default",
-  ghost: "secondary"
-};
-
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
+  testID?: string;
 };
 
 export function Button({
-  children,
-  disabled,
-  fullWidth = false,
   label,
-  loading = false,
-  size = "md",
-  style,
-  textStyle,
+  onPress,
   variant = "primary",
-  ...props
+  loading = false,
+  disabled = false,
+  accessibilityHint,
+  a11yLabel,
+  style,
+  testID
 }: ButtonProps) {
-  const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
-  const labelNode = typeof children === "string" ? children : label;
-
+  const theme = useTheme();
+  const inactive = disabled || loading;
+  const palette: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
+    primary: { bg: theme.primary, fg: theme.onPrimary, border: theme.primary },
+    secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
+    ghost: { bg: "transparent", fg: theme.primary, border: "transparent" },
+    danger: { bg: theme.danger, fg: theme.onDanger, border: theme.danger }
+  };
+  const colors = palette[variant];
   return (
     <Pressable
+      accessibilityHint={accessibilityHint}
+      accessibilityLabel={a11yLabel ?? label}
       accessibilityRole="button"
-      disabled={buttonDisabled}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
+      onPress={onPress}
       style={({ pressed }) => [
         styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
-        fullWidth ? styles.fullWidth : null,
-        buttonDisabled ? styles.disabled : null,
-        pressed ? styles.pressed : null,
+        { backgroundColor: colors.bg, borderColor: colors.border, opacity: inactive ? 0.55 : pressed ? 0.85 : 1 },
         style
       ]}
-      {...props}
+      testID={testID}
     >
-      <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
-        {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
-            {labelNode}
-          </Text>
-        ) : (
-          children
-        )}
+      <View style={styles.row}>
+        {loading ? <ActivityIndicator color={colors.fg} size="small" /> : null}
+        <Text style={{ color: colors.fg }} variant="label">
+          {label}
+        </Text>
       </View>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  base: {
+    minHeight: hitSlop + 4,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm }
+});

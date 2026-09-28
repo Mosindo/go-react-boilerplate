@@ -1,73 +1,53 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
-import { Card } from "./Card";
+import { Pressable, StyleSheet, View } from "react-native";
+import type { AppNotification } from "../../api/types";
+import { formatListTime } from "../../domain/chat";
+import { radius, spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
-
-export type NotificationItemProps = {
-  body: string;
-  createdAtLabel: string;
-  isRead: boolean;
-  onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
-  title: string;
-  type: string;
-};
 
 export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+  notification,
+  onPress
+}: {
+  notification: AppNotification;
+  onPress: (n: AppNotification) => void;
+}) {
+  const theme = useTheme();
+  const unread = notification.readAt === null;
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
-        </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
+    <Pressable
+      accessibilityLabel={`${unread ? "Unread. " : ""}${notification.title}. ${notification.body}`}
+      accessibilityRole="button"
+      onPress={() => onPress(notification)}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: pressed ? theme.surfaceAlt : unread ? theme.primarySoft : "transparent" }
+      ]}
+    >
+      <View style={[styles.dot, { backgroundColor: unread ? theme.primary : "transparent" }]} />
+      <View style={styles.body}>
+        <Text variant="label">{notification.title}</Text>
+        <Text numberOfLines={2} tone="muted">
+          {notification.body}
         </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
-        </Text>
-      </Card>
+      </View>
+      <Text tone="muted" variant="caption">
+        {formatListTime(notification.createdAt)}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
+  row: {
+    minHeight: 64,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     gap: spacing.md,
-    marginBottom: spacing.sm
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md
   },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  body: { flex: 1, gap: 2 }
 });

@@ -1,63 +1,27 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { radius, spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
 
-export type NoticeTone = "default" | "danger" | "success" | "warning";
+export type NoticeProps = { message: string; kind?: "info" | "error" | "success" };
 
-export type NoticeProps = {
-  description?: string;
-  style?: StyleProp<ViewStyle>;
-  title: string;
-  tone?: NoticeTone;
-};
-
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    padding: spacing.md,
-    gap: spacing.xs
-  },
-  default: {
-    backgroundColor: colors.surfaceSubtle,
-    borderColor: colors.border
-  },
-  danger: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.dangerBorder
-  },
-  success: {
-    backgroundColor: colors.successSoft,
-    borderColor: colors.successBorder
-  },
-  warning: {
-    backgroundColor: colors.warningSoft,
-    borderColor: colors.warningBorder
-  }
-});
-
-const toneStyles: Record<NoticeTone, ViewStyle> = {
-  default: styles.default,
-  danger: styles.danger,
-  success: styles.success,
-  warning: styles.warning
-};
-
-const titleToneByNotice: Record<NoticeTone, "danger" | "default" | "secondary" | "success"> = {
-  default: "default",
-  danger: "danger",
-  success: "success",
-  warning: "secondary"
-};
-
-export function Notice({ description, style, title, tone = "default" }: NoticeProps) {
+/** Inline banner for form-level information or errors. */
+export function Notice({ message, kind = "info" }: NoticeProps) {
+  const theme = useTheme();
+  const accent = kind === "error" ? theme.danger : kind === "success" ? theme.success : theme.accent;
   return (
-    <View style={[styles.base, toneStyles[tone], style]}>
-      <Text tone={titleToneByNotice[tone]} variant="label" weight="bold">
-        {title}
+    <View
+      accessibilityLiveRegion="polite"
+      accessibilityRole={kind === "error" ? "alert" : undefined}
+      style={[styles.box, { borderColor: accent, backgroundColor: theme.surface }]}
+    >
+      <Text style={{ color: theme.text }} variant="label">
+        {message}
       </Text>
-      {description ? <Text tone="secondary">{description}</Text> : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  box: { borderWidth: 1, borderLeftWidth: 4, borderRadius: radius.md, padding: spacing.md }
+});

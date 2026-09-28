@@ -1,68 +1,18 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Card, Loader, Text, colors, spacing } from "../ui";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
+import { Loader } from "../ui/Loader";
+import { Text } from "../ui/Text";
 
-type LoadingViewProps = {
-  fullScreen?: boolean;
-  label?: string;
-  message?: string;
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
-  tone?: "default" | "muted";
-};
-
-export function LoadingView({
-  fullScreen = false,
-  label = "Loading...",
-  message,
-  style,
-  testID,
-  tone = "muted"
-}: LoadingViewProps) {
-  const content = (
-    <Card padding="lg" style={styles.card} variant="muted">
-      <Loader label={label} />
-      {message ? (
-        <Text style={styles.message} tone={tone}>
-          {message}
-        </Text>
-      ) : null}
-    </Card>
-  );
-
-  if (fullScreen) {
-    return (
-      <View style={[styles.fullScreen, style]} testID={testID}>
-        {content}
-      </View>
-    );
-  }
-
+export function LoadingView({ label = "Loading" }: { label?: string }) {
   return (
-    <View style={[styles.inline, style]} testID={testID}>
-      {content}
+    <View accessibilityLabel={label} accessibilityLiveRegion="polite" style={styles.wrap}>
+      <Loader size="large" />
+      <Text tone="muted">{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fullScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  inline: {
-    width: "100%"
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    alignSelf: "center",
-    alignItems: "center",
-    gap: spacing.sm,
-    borderColor: colors.border
-  },
-  message: {
-    textAlign: "center"
-  }
+  wrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl }
 });
