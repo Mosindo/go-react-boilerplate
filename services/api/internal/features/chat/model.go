@@ -1,59 +1,88 @@
 package chat
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+const (
+	MaxBodyRunes        = 2000
+	DefaultLimit        = 30
+	MaxLimit            = 100
+	notificationBodyMax = 80
+)
+
+var (
+	ErrNotFound     = errors.New("conversation not found")
+	ErrBlocked      = errors.New("you cannot message this user")
+	ErrInvalidBody  = errors.New("message body must be 1-2000 characters")
+	ErrInvalidInput = errors.New("invalid input")
+)
+
+// Message is the wire shape of a chat message.
+type Message struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversationId"`
+	SenderID       string     `json:"senderId"`
+	Body           string     `json:"body"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ReadAt         *time.Time `json:"readAt"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type Photo struct {
+	ID       string `json:"id"`
+	URL      string `json:"url"`
+	Position int    `json:"position"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
+type ConversationUser struct {
+	UserID    string `json:"userId"`
+	FirstName string `json:"firstName"`
+	Age       *int   `json:"age"`
+	Photo     *Photo `json:"photo"`
 }
 
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
+type ConversationSummary struct {
+	ID          string           `json:"id"`
+	MatchID     string           `json:"matchId"`
+	MatchedAt   time.Time        `json:"matchedAt"`
+	User        ConversationUser `json:"user"`
+	LastMessage *Message         `json:"lastMessage"`
+	UnreadCount int              `json:"unreadCount"`
+	UpdatedAt   time.Time        `json:"updatedAt"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
+type ListConversationsResponse struct {
+	Conversations []ConversationSummary `json:"conversations"`
 }
 
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type ListMessagesResponse struct {
+	Messages   []Message `json:"messages"`
+	NextCursor *string   `json:"nextCursor"`
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Body string `json:"body"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+// convoRow is the raw repository row for the conversation list (photo id, not yet signed).
+type convoRow struct {
+	ID            string
+	MatchID       string
+	MatchedAt     time.Time
+	UpdatedAt     time.Time
+	OtherID       string
+	FirstName     string
+	Age           *int
+	PhotoID       *string
+	PhotoPosition int
+	UnreadCount   int
+	LastMessage   *Message
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+// sendContext is what the repository proves inside the send transaction.
+type sendResult struct {
+	Message         Message
+	RecipientID     string
+	SenderFirstName string
 }

@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JWT_SECRET: ci-jwt-secret-32-chars-minimum-value
+      APP_BASE_URL: http://localhost:18080
 
     steps:
       - name: Checkout
@@ -19,20 +20,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20.19.4"
-          cache: "npm"
-          cache-dependency-path: apps/mobile/package-lock.json
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: services/api/go.mod
-          cache: true
-          cache-dependency-path: services/api/go.sum
-
-      - name: Install mobile deps
-        working-directory: apps/mobile
-        run: npm ci
+          node-version: "22"
 
       - name: Start Docker stack
         shell: bash
@@ -51,19 +39,11 @@ jobs:
           docker compose logs api || true
           exit 1
 
-      - name: Run QA lite
-        shell: pwsh
-        run: ./scripts/qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-
-      - name: Upload QA reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-lite-reports
-          path: |
-            .smoke/qa-lite-report.txt
-            .smoke/report.txt
-          if-no-files-found: warn
+      - name: API smoke journey (register -> profile -> match -> chat)
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18080
+        run: node ./scripts/e2e-smoke.js
 
       - name: API logs on failure
         if: failure()
@@ -74,4 +54,3 @@ jobs:
         if: always()
         shell: bash
         run: docker compose down -v
-

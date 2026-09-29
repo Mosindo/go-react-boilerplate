@@ -8,7 +8,6 @@ import (
 
 	"example.com/api/internal/platform/notify"
 	"example.com/api/internal/platform/realtime"
-	"github.com/google/uuid"
 )
 
 var (
@@ -60,7 +59,7 @@ func (s *Service) List(ctx context.Context, userID, rawLimit, rawBefore, beforeI
 		}
 		before = &t
 		if beforeID != "" {
-			if _, err := uuid.Parse(beforeID); err != nil {
+			if !isUUID(beforeID) {
 				return ListResult{}, ErrBadRequest
 			}
 		}
@@ -75,7 +74,7 @@ func (s *Service) List(ctx context.Context, userID, rawLimit, rawBefore, beforeI
 }
 
 func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
-	if _, err := uuid.Parse(id); err != nil {
+	if !isUUID(id) {
 		return ErrNotFound
 	}
 	ok, err := s.repo.MarkRead(ctx, userID, id)
@@ -111,4 +110,23 @@ func parseLimit(raw string) (int, error) {
 		return 0, ErrBadRequest
 	}
 	return n, nil
+}
+
+// isUUID reports whether s is a canonical 8-4-4-4-12 hex UUID.
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, ch := range s {
+		switch {
+		case i == 8 || i == 13 || i == 18 || i == 23:
+			if ch != '-' {
+				return false
+			}
+		case (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F'):
+		default:
+			return false
+		}
+	}
+	return true
 }
