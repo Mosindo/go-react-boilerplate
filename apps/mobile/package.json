@@ -1,22 +1,26 @@
 {
-  "name": "mobile",
+  "name": "alba-mobile",
   "version": "1.0.0",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
     "start:phone": "node ./scripts/start-phone.js",
-    "e2e:smoke": "node ./scripts/e2e-smoke.js",
-    "e2e:ui:setup": "node ./scripts/e2e-ui-setup.js",
-    "e2e:ui:run": "powershell -ExecutionPolicy Bypass -File ./scripts/run-maestro.ps1",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "e2e:smoke": "node ./scripts/e2e-smoke.js",
+    "e2e:ui:setup": "node ./scripts/e2e-ui-setup.js",
+    "e2e:ui:run": "powershell -ExecutionPolicy Bypass -File ./scripts/run-maestro.ps1"
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
-    "@tamagui/babel-plugin": "^2.0.0-rc.25",
     "@tanstack/react-query": "^5.90.5",
     "expo": "~54.0.33",
     "expo-image-picker": "~17.0.8",
@@ -26,8 +30,7 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "~5.6.0",
-    "react-native-screens": "~4.16.0",
-    "tamagui": "^2.0.0-rc.25"
+    "react-native-screens": "~4.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -40,6 +43,7 @@
     "prettier": "^3.9.9",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.71.0",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "vite": "^7.0.0"
   }
 }

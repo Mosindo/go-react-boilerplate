@@ -139,10 +139,14 @@ export function stepAgeMax(values: PreferencesValues, delta: number): Preference
   return { ...values, ageMax, ageMin: Math.min(values.ageMin, ageMax) };
 }
 
-/** Distance steps: 5 km granularity above 10 km, 1 km below; always inside the allowed range. */
+/** Distance steps: 1 km below 10 km, multiples of 5 km above; always inside the allowed range. */
 export function stepDistance(current: number, direction: 1 | -1): number {
-  const step = current >= 10 && !(current === 10 && direction === -1) ? 5 : 1;
-  const raw = direction === 1 ? current + step : current - step;
+  let raw: number;
+  if (direction === 1) {
+    raw = current < 10 ? current + 1 : Math.floor(current / 5) * 5 + 5;
+  } else {
+    raw = current <= 10 ? current - 1 : Math.ceil(current / 5) * 5 - 5;
+  }
   return clamp(raw, LIMITS.distanceMin, LIMITS.distanceMax);
 }
 

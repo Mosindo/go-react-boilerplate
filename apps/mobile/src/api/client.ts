@@ -1,10 +1,25 @@
 import { Platform } from "react-native";
-import { getAccessToken } from "../store/tokenStore";
-import { showGlobalError } from "../shared/feedback";
+import { parseRetryAfter } from "../lib/errors";
+import { strings } from "../lib/strings";
+import { showGlobalError } from "../shared/feedback/store";
+import { clearTokens, getTokens, saveTokens, type AuthTokens } from "../store/tokenStore";
 
 export type ApiErrorPayload = {
   error?: string;
 };
+
+export type ApiRequestOptions = RequestInit & {
+  /** Abort the request after this many milliseconds. Default 15 s (60 s for multipart bodies). */
+  timeoutMs?: number;
+  /**
+   * Set to false for public endpoints (login, register, forgot, reset, refresh): no bearer token is sent and a 401
+   * is a plain error instead of a session-expiry signal.
+   */
+  authenticated?: boolean;
+};
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, "");
@@ -29,51 +44,52 @@ function resolveApiBaseUrl(): string {
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
+/** Photo URLs from the API are relative and signed; this makes them renderable. */
+export function resolvePhotoUrl(relativeUrl: string): string {
+  if (/^https?:\/\//i.test(relativeUrl)) {
+    return relativeUrl;
+  }
+  return `${API_BASE_URL}${relativeUrl.startsWith("/") ? "" : "/"}${relativeUrl}`;
+}
+
 export class ApiError extends Error {
   public status: number;
   public data: unknown;
+  public retryAfterSeconds?: number;
 
-  constructor(status: number, data: unknown, message?: string) {
+  constructor(status: number, data: unknown, message?: string, retryAfterSeconds?: number) {
     super(message ?? `API request failed (${status})`);
     this.name = "ApiError";
     this.status = status;
     this.data = data;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
-async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
+/* ------------------------------------------------------------------ session hooks (used by useAuth) */
 
-function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, string>): Headers {
-  const headers = new Headers();
+type AuthHandlers = {
+  onTokensRefreshed?: (tokens: AuthTokens) => void;
+  onSessionExpired?: () => void;
+};
 
-  headers.set("Accept", "application/json");
+let authHandlers: AuthHandlers = {};
 
-  if (base) {
-    new Headers(base).forEach((value, key) => {
-      headers.set(key, value);
-    });
-  }
-
-  if (injected) {
-    for (const [k, v] of Object.entries(injected)) {
-      if (!headers.has(k)) {
-        headers.set(k, v);
-      }
+/** The auth provider registers callbacks here; returns an unregister function. */
+export function registerAuthHandlers(handlers: AuthHandlers): () => void {
+  authHandlers = handlers;
+  return () => {
+    if (authHandlers === handlers) {
+      authHandlers = {};
     }
-  }
-
-  return headers;
+  };
 }
 
-function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
-  return body !== undefined && body !== null && !(body instanceof FormData);
-}
+/* ------------------------------------------------------------------ helpers */
 
 function formatNetworkHint(): string {
   if (process.env.EXPO_PUBLIC_API_URL) {
-    return "Network error. Check your connection and API availability, then try again.";
+    return strings.errors.network;
   }
 
   if (!__DEV__) {
@@ -88,7 +104,7 @@ function formatNetworkHint(): string {
     return "Network error. iOS simulators can use localhost, but physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
   }
 
-  return "Network error. Check your connection and try again.";
+  return strings.errors.network;
 }
 
 function requireApiBaseUrl(): string {
@@ -101,50 +117,192 @@ function requireApiBaseUrl(): string {
   throw new Error(message);
 }
 
-export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+function timeoutError(): Error {
+  const error = new Error(strings.errors.timeout);
+  error.name = "TimeoutError";
+  return error;
+}
 
-  const token = await getToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
+function isMultipart(body: BodyInit | null | undefined): boolean {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
+type Attempt = { response: Response };
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  callerSignal: AbortSignal | null | undefined
+): Promise<Attempt> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const onCallerAbort = () => controller.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      controller.abort();
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return { response };
+  } catch (error) {
+    if (timedOut) {
+      throw timeoutError();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  }
+}
+
+async function readErrorBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  try {
+    return contentType.includes("application/json") ? await response.json() : await response.text();
+  } catch {
+    return null;
+  }
+}
+
+function buildApiError(response: Response, data: unknown): ApiError {
+  const payload = typeof data === "object" && data !== null ? (data as ApiErrorPayload) : null;
+  const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
+  let message = payload?.error ?? `API request failed (${response.status})`;
+  if (response.status === 429) {
+    message =
+      retryAfter && retryAfter > 0
+        ? `Too many attempts. Please wait ${retryAfter} second${retryAfter === 1 ? "" : "s"} and try again.`
+        : strings.errors.rateLimited;
+  }
+  return new ApiError(response.status, data, message, retryAfter ?? undefined);
+}
+
+/* ------------------------------------------------------------------ single-flight refresh */
+
+type RefreshOutcome =
+  | { kind: "ok"; accessToken: string }
+  | { kind: "rejected" }
+  | { kind: "unavailable"; error: unknown };
+
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
+
+type RefreshPayload = { accessToken?: string; token?: string; refreshToken?: string };
+
+async function performRefresh(): Promise<RefreshOutcome> {
+  const stored = await getTokens();
+  if (!stored?.refreshToken) {
+    return { kind: "rejected" };
+  }
+  try {
+    const { response } = await fetchWithTimeout(
+      `${requireApiBaseUrl()}/auth/refresh`,
+      {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: stored.refreshToken })
+      },
+      DEFAULT_TIMEOUT_MS,
+      null
+    );
+    if (response.ok) {
+      const payload = (await response.json()) as RefreshPayload;
+      const accessToken = payload.accessToken ?? payload.token;
+      if (!accessToken || !payload.refreshToken) {
+        return { kind: "rejected" };
+      }
+      const tokens: AuthTokens = { accessToken, refreshToken: payload.refreshToken };
+      await saveTokens(tokens);
+      authHandlers.onTokensRefreshed?.(tokens);
+      return { kind: "ok", accessToken };
+    }
+    if (response.status >= 500 || response.status === 429) {
+      return { kind: "unavailable", error: buildApiError(response, await readErrorBody(response)) };
+    }
+    return { kind: "rejected" };
+  } catch (error) {
+    return { kind: "unavailable", error };
+  }
+}
+
+async function refreshAccessToken(failedAccessToken: string | null): Promise<RefreshOutcome> {
+  // Another request may already have rotated the tokens while this one was in flight.
+  const current = await getTokens();
+  if (current && failedAccessToken && current.accessToken !== failedAccessToken) {
+    return { kind: "ok", accessToken: current.accessToken };
+  }
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/* ------------------------------------------------------------------ public API */
+
+function buildHeaders(base: HeadersInit | undefined, body: BodyInit | null | undefined, token: string | null): Headers {
+  const headers = new Headers(base);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (body !== undefined && body !== null && !isMultipart(body) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return headers;
+}
+
+export async function apiRequest<T = unknown>(path: string, options?: ApiRequestOptions): Promise<T> {
+  const { authenticated = true, timeoutMs, headers: baseHeaders, signal, ...init } = options ?? {};
+  const effectiveTimeout = timeoutMs ?? (isMultipart(init.body) ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+  const url = `${requireApiBaseUrl()}${path}`;
+
+  const send = (token: string | null) =>
+    fetchWithTimeout(
+      url,
+      { ...init, headers: buildHeaders(baseHeaders, init.body, token) },
+      effectiveTimeout,
+      signal
+    );
 
   try {
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        controller.abort();
+    let token = authenticated ? ((await getTokens())?.accessToken ?? null) : null;
+    let { response } = await send(token);
+
+    if (response.status === 401 && authenticated && token) {
+      const outcome = await refreshAccessToken(token);
+      if (outcome.kind === "ok") {
+        token = outcome.accessToken;
+        ({ response } = await send(token));
+      } else if (outcome.kind === "rejected") {
+        await clearTokens();
+        authHandlers.onSessionExpired?.();
+        throw new ApiError(401, null, strings.errors.unauthorized);
       } else {
-        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+        throw outcome.error;
       }
     }
-
-    const headers = mergeHeaders(options?.headers, authHeader);
-    if (!headers.has("Content-Type") && shouldSetJsonContentType(options?.body)) {
-      headers.set("Content-Type", "application/json");
-    }
-    const response = await fetch(`${requireApiBaseUrl()}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal
-    });
 
     if (!response.ok) {
-      const contentType = response.headers.get("content-type") ?? "";
-      let data: unknown = null;
-      try {
-        data = contentType.includes("application/json") ? await response.json() : await response.text();
-      } catch {
-        data = null;
+      const error = buildApiError(response, await readErrorBody(response));
+      if (response.status >= 500) {
+        showGlobalError(strings.errors.server);
       }
-
-      const apiPayload = data as ApiErrorPayload | null;
-      let message = apiPayload?.error ?? `API request failed (${response.status})`;
-      if (response.status === 401) {
-        message = apiPayload?.error ?? "Your session is no longer valid. Please sign in again.";
+      if (response.status === 401 && authenticated) {
+        await clearTokens();
+        authHandlers.onSessionExpired?.();
       }
-      if (response.status >= 500 || response.status === 401) {
-        showGlobalError(message);
-      }
-      throw new ApiError(response.status, data, message);
+      throw error;
     }
 
     const text = await response.text();
@@ -152,18 +310,16 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
       return undefined as T;
     }
     return JSON.parse(text) as T;
-  } catch (err) {
-    const name = (err as { name?: string }).name;
-    if (name === "AbortError") {
-      showGlobalError("The request timed out. Please try again.");
-      throw new Error("API request timeout (10s)");
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
     }
-
-    if (err instanceof TypeError) {
+    const name = (error as { name?: string }).name;
+    if (name === "TimeoutError") {
+      showGlobalError(strings.errors.timeout);
+    } else if (error instanceof TypeError) {
       showGlobalError(formatNetworkHint());
     }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
+    throw error;
   }
 }

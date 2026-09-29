@@ -1,30 +1,32 @@
+/** Every backend path in one place (see docs/API.md). */
 export const endpoints = {
   auth: {
     register: "/auth/register",
     login: "/auth/login",
-    me: "/me"
+    refresh: "/auth/refresh",
+    logout: "/auth/logout",
+    forgot: "/auth/forgot",
+    reset: "/auth/reset"
   },
-  users: {
-    list: "/users",
-    detail: (userId: string) => `/users/${userId}`
+  account: {
+    me: "/me",
+    password: "/me/password"
   },
-  posts: {
-    list: "/posts",
-    create: "/posts",
-    detail: (postId: string) => `/posts/${postId}`
+  profile: {
+    interests: "/interests",
+    mine: "/me/profile",
+    location: "/me/location",
+    preferences: "/me/preferences",
+    detail: (userId: string) => `/profiles/${encodeURIComponent(userId)}`
   },
-  chat: {
-    chats: "/chats",
-    messages: (userId: string) => `/chats/${userId}/messages`
+  photos: {
+    upload: "/me/photos",
+    order: "/me/photos/order",
+    remove: (photoId: string) => `/me/photos/${encodeURIComponent(photoId)}`
   },
-  notifications: {
-    list: "/notifications",
-    create: "/notifications",
-    markRead: (notificationId: string) => `/notifications/${notificationId}/read`
-  },
-  billing: {
-    subscription: "/billing/subscription",
-    checkout: "/billing/checkout",
-    webhook: "/billing/webhook"
+  safety: {
+    blocks: "/blocks",
+    unblock: (userId: string) => `/blocks/${encodeURIComponent(userId)}`,
+    reports: "/reports"
   }
 } as const;
