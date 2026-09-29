@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject
+} from "react";
 import { Animated, Image, PanResponder, StyleSheet, View, useWindowDimensions } from "react-native";
 import type { PublicProfile } from "../api/models";
 import { STAMP_FULL_RATIO, decideSwipe, flyOffTarget, type SwipeAction } from "../lib/dating/swipe";
@@ -29,7 +36,7 @@ function TopCard({ profile, onSwipe, onOpenInfo, handleRef }: TopCardProps) {
   const { colors, radii, spacing } = useTheme();
   const { width } = useWindowDimensions();
   const reduced = useReducedMotion();
-  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [pan] = useState(() => new Animated.ValueXY({ x: 0, y: 0 }));
   const finished = useRef(false);
 
   const complete = useCallback(
@@ -56,8 +63,10 @@ function TopCard({ profile, onSwipe, onOpenInfo, handleRef }: TopCardProps) {
     };
   }, [complete, handleRef]);
 
+  // The handlers only read `finished` when a gesture happens, never during render.
   const responder = useMemo(
     () =>
+      // eslint-disable-next-line react-hooks/refs
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_e, g) =>
           !finished.current && Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.2,

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import React, { useEffect, useState, type ReactNode } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -268,7 +268,7 @@ export function Chip({ label, onPhoto = false }: { label: string; onPhoto?: bool
 export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   const { colors } = useTheme();
   const reduced = useReducedMotion();
-  const pulse = useRef(new Animated.Value(0.55)).current;
+  const [pulse] = useState(() => new Animated.Value(0.55));
   useEffect(() => {
     if (reduced) {
       pulse.setValue(0.7);

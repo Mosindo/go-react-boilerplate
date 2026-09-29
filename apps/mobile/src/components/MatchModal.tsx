@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, Image, Modal, StyleSheet, View } from "react-native";
 import type { ConversationSummary, Photo } from "../api/models";
 import { useTheme } from "../shared/ui/theme";
@@ -55,8 +55,8 @@ function Portrait({
 export function MatchModal({ visible, conversation, myPhoto, onSayHello, onKeepSwiping }: Props) {
   const { colors, spacing } = useTheme();
   const reduced = useReducedMotion();
-  const scale = useRef(new Animated.Value(reduced ? 1 : 0.8)).current;
-  const fade = useRef(new Animated.Value(reduced ? 1 : 0)).current;
+  const [scale] = useState(() => new Animated.Value(0.8));
+  const [fade] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (!visible) return;

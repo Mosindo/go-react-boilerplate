@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import type { ReportReason } from "../api/models";
 import { reportUser } from "../api/safety";
@@ -29,6 +29,38 @@ type Props = {
 };
 
 export function ReportSheet({ visible, userId, firstName, onClose, onReported }: Props) {
+  const sentRef = useRef<{ blocked: boolean } | null>(null);
+  const handleSent = useCallback((result: { blocked: boolean }) => {
+    sentRef.current = result;
+  }, []);
+  // Report side effects (e.g. leaving a blocked chat) wait until the confirmation is dismissed.
+  const close = useCallback(() => {
+    const result = sentRef.current;
+    sentRef.current = null;
+    onClose();
+    if (result) onReported?.(result);
+  }, [onClose, onReported]);
+  return (
+    <BottomSheet
+      visible={visible}
+      onClose={close}
+      testID="report-sheet"
+      accessibilityLabel={`Report ${firstName}`}
+    >
+      {/* Mounted only while visible, so the form state resets every time the sheet opens. */}
+      <ReportForm userId={userId} firstName={firstName} onClose={close} onSent={handleSent} />
+    </BottomSheet>
+  );
+}
+
+function ReportForm({
+  userId,
+  firstName,
+  onClose,
+  onSent
+}: Pick<Props, "userId" | "firstName" | "onClose"> & {
+  onSent: (result: { blocked: boolean }) => void;
+}) {
   const { colors, radii, spacing } = useTheme();
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [details, setDetails] = useState("");
@@ -36,17 +68,6 @@ export function ReportSheet({ visible, userId, firstName, onClose, onReported }:
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ blocked: boolean } | null>(null);
-
-  useEffect(() => {
-    if (visible) {
-      setReason(null);
-      setDetails("");
-      setBlock(false);
-      setSubmitting(false);
-      setError(null);
-      setSent(null);
-    }
-  }, [visible, userId]);
 
   const submit = useCallback(async () => {
     if (!reason || submitting) return;
@@ -61,7 +82,7 @@ export function ReportSheet({ visible, userId, firstName, onClose, onReported }:
         ...(block ? { block: true } : {})
       });
       setSent({ blocked: block });
-      onReported?.({ blocked: block });
+      onSent({ blocked: block });
     } catch (e) {
       setError(
         errorMessage(e, "We couldn't send your report. Check your connection and try again.")
@@ -69,15 +90,10 @@ export function ReportSheet({ visible, userId, firstName, onClose, onReported }:
     } finally {
       setSubmitting(false);
     }
-  }, [block, details, onReported, reason, submitting, userId]);
+  }, [block, details, onSent, reason, submitting, userId]);
 
   return (
-    <BottomSheet
-      visible={visible}
-      onClose={onClose}
-      testID="report-sheet"
-      accessibilityLabel={`Report ${firstName}`}
-    >
+    <>
       {sent ? (
         <View
           style={[styles.padded, { padding: spacing.xl, gap: spacing.md }]}
@@ -207,7 +223,7 @@ export function ReportSheet({ visible, userId, firstName, onClose, onReported }:
           <AppButton label="Cancel" onPress={onClose} variant="ghost" fullWidth />
         </ScrollView>
       )}
-    </BottomSheet>
+    </>
   );
 }
 

@@ -104,7 +104,9 @@ export default function ConversationsScreen({ openConversationId, onOpenedConver
   const [refreshing, setRefreshing] = useState(false);
 
   const openedRef = useRef(onOpenedConversation);
-  openedRef.current = onOpenedConversation;
+  useEffect(() => {
+    openedRef.current = onOpenedConversation;
+  }, [onOpenedConversation]);
 
   const pages = query.data?.pages;
   const all = useMemo(() => (pages ? flattenConversations(pages) : []), [pages]);

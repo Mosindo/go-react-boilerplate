@@ -62,7 +62,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const activeRef = useRef<string | null>(null);
   const listenersRef = useRef(new Set<RealtimeListener>());
   const userIdRef = useRef<string | null>(userId);
-  userIdRef.current = userId;
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
   const setActiveConversation = useCallback((conversationId: string | null) => {
     activeRef.current = conversationId;
@@ -87,10 +89,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    if (!accessToken || !userId) {
-      setStatus("idle");
-      return;
-    }
+    if (!accessToken || !userId) return undefined;
 
     let disposed = false;
     let socket: WebSocket | null = null;
@@ -222,7 +221,6 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       subscription.remove();
       clearTimer();
       closeSocket();
-      setStatus("idle");
     };
   }, [accessToken, userId, queryClient]);
 
@@ -236,8 +234,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   }, [authenticated, queryClient]);
 
   const contextValue = useMemo<RealtimeContextValue>(
-    () => ({ status, setActiveConversation, subscribe }),
-    [status, setActiveConversation, subscribe]
+    () => ({ status: authenticated ? status : "idle", setActiveConversation, subscribe }),
+    [authenticated, status, setActiveConversation, subscribe]
   );
 
   const conversationPages = conversations.data?.pages;
@@ -268,6 +266,8 @@ export function useRealtime(): RealtimeContextValue {
 export function useRealtimeEvents(listener: RealtimeListener): void {
   const { subscribe } = useRealtime();
   const ref = useRef(listener);
-  ref.current = listener;
+  useEffect(() => {
+    ref.current = listener;
+  }, [listener]);
   useEffect(() => subscribe((event) => ref.current(event)), [subscribe]);
 }
