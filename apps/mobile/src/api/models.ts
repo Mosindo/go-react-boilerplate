@@ -51,13 +51,7 @@ export type AppNotification = {
 };
 
 export type ReportReason =
-  | "spam"
-  | "fake_profile"
-  | "harassment"
-  | "inappropriate_content"
-  | "underage"
-  | "scam"
-  | "other";
+  "spam" | "fake_profile" | "harassment" | "inappropriate_content" | "underage" | "scam" | "other";
 
 /** Events pushed over the WebSocket (see docs/API.md, "Realtime"). */
 export type RealtimeEvent =

@@ -33,14 +33,30 @@ const makeStyles = (t: Theme) => ({
     paddingHorizontal: t.spacing.lg,
     paddingVertical: t.spacing.sm
   },
-  multiline: { minHeight: controls.input.multiline, textAlignVertical: "top" as const, paddingTop: t.spacing.md },
+  multiline: {
+    minHeight: controls.input.multiline,
+    textAlignVertical: "top" as const,
+    paddingTop: t.spacing.md
+  },
   focused: { borderColor: t.colors.primary, borderWidth: 2 },
   error: { borderColor: t.colors.danger },
   disabled: { backgroundColor: t.colors.surfaceMuted, color: t.colors.textMuted }
 });
 
 export const Input = forwardRef<RNTextInput, InputProps>(function Input(
-  { containerStyle, error, helperText, hint, label, multiline, style, onBlur, onFocus, accessibilityLabel, ...props },
+  {
+    containerStyle,
+    error,
+    helperText,
+    hint,
+    label,
+    multiline,
+    style,
+    onBlur,
+    onFocus,
+    accessibilityLabel,
+    ...props
+  },
   ref
 ) {
   const theme = useTheme();
@@ -49,7 +65,13 @@ export const Input = forwardRef<RNTextInput, InputProps>(function Input(
   const disabled = props.editable === false;
 
   return (
-    <FormField containerStyle={containerStyle} error={error} helperText={helperText} hint={hint} label={label}>
+    <FormField
+      containerStyle={containerStyle}
+      error={error}
+      helperText={helperText}
+      hint={hint}
+      label={label}
+    >
       <RNTextInput
         accessibilityLabel={accessibilityLabel ?? label}
         maxFontSizeMultiplier={1.6}

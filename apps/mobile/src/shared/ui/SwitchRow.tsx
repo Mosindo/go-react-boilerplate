@@ -25,7 +25,14 @@ const makeStyles = (t: Theme) => ({
   copy: { flex: 1, gap: t.spacing.xxs }
 });
 
-export function SwitchRow({ description, disabled, onValueChange, testID, title, value }: SwitchRowProps) {
+export function SwitchRow({
+  description,
+  disabled,
+  onValueChange,
+  testID,
+  title,
+  value
+}: SwitchRowProps) {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (

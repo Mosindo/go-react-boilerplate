@@ -51,7 +51,9 @@ export function ErrorView({
           {message}
         </Text>
       </View>
-      {onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="outline" /> : null}
+      {onAction ? (
+        <Button label={actionLabel} onPress={onAction} size="sm" variant="outline" />
+      ) : null}
     </Card>
   );
 }

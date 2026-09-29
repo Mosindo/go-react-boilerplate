@@ -89,7 +89,13 @@ export function AuthResetScreen({ onBack, onDone }: Props) {
         value={password}
       />
       {serverError ? <Notice title={serverError} tone="danger" /> : null}
-      <Button label="Update password" loading={loading} onPress={() => void submit()} size="lg" testID="reset-submit-button" />
+      <Button
+        label="Update password"
+        loading={loading}
+        onPress={() => void submit()}
+        size="lg"
+        testID="reset-submit-button"
+      />
     </AuthFormLayout>
   );
 }

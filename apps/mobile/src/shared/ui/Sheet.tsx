@@ -16,7 +16,10 @@ export type SheetProps = {
 
 const makeStyles = (t: Theme) => ({
   root: { flex: 1, justifyContent: "flex-end" as const },
-  backdrop: { ...({ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 } as const), backgroundColor: t.colors.overlay },
+  backdrop: {
+    ...({ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 } as const),
+    backgroundColor: t.colors.overlay
+  },
   sheet: {
     maxHeight: "88%" as const,
     backgroundColor: t.colors.backgroundElevated,
@@ -41,9 +44,21 @@ export function Sheet({ children, onClose, testID, title, visible }: SheetProps)
   const insets = useSafeAreaInsets();
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.root}>
-        <Pressable accessibilityLabel="Close" accessibilityRole="button" onPress={onClose} style={styles.backdrop} />
-        <View accessibilityViewIsModal style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]} testID={testID}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.root}
+      >
+        <Pressable
+          accessibilityLabel="Close"
+          accessibilityRole="button"
+          onPress={onClose}
+          style={styles.backdrop}
+        />
+        <View
+          accessibilityViewIsModal
+          style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}
+          testID={testID}
+        >
           <View style={styles.header}>
             <Text accessibilityRole="header" style={styles.title} variant="heading" weight="bold">
               {title ?? ""}

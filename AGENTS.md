@@ -1,6 +1,6 @@
 # AGENTS.md - go-react-saas
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
+This repository is `go-react-saas`, a reusable fullstack boilerplate, currently specialised into **Alba**, a free dating app (see README and docs/API.md).
 The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
 
 ---
@@ -146,17 +146,18 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
 - Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Profiles and photos (`/me/profile`, `/me/photos`)
+- Discovery and swipes (`/discover`, `/swipes`)
+- Chat (`/conversations`, `/conversations/:id/messages`)
 - Notifications (`/notifications`)
+- Full journey: `cmd/api/main_integration_test.go`
 
 ---
 

@@ -46,7 +46,10 @@ export function SettingsBlockedScreen({ onBack }: { onBack: () => void }) {
         >
           {error ? <Notice title={error} tone="danger" /> : null}
           {blocks.length === 0 ? (
-            <EmptyView message="Nobody is blocked. You can block someone from their profile or a chat." title="No blocked people" />
+            <EmptyView
+              message="Nobody is blocked. You can block someone from their profile or a chat."
+              title="No blocked people"
+            />
           ) : (
             <View style={styles.list}>
               {blocks.map((block) => (

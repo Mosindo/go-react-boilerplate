@@ -2,7 +2,12 @@ import React, { useState } from "react";
 import { DEFAULT_PREFERENCES, type Preferences } from "../api/profile";
 import { useMyProfile, usePreferences, useSavePreferences } from "../hooks/useProfileData";
 import { messageFromError } from "../lib/errors";
-import { hasErrors, validatePreferences, type PreferencesErrors, type PreferencesValues } from "../lib/validation";
+import {
+  hasErrors,
+  validatePreferences,
+  type PreferencesErrors,
+  type PreferencesValues
+} from "../lib/validation";
 import { showToast } from "../shared/feedback/toast";
 import { LocationCard } from "../shared/forms/LocationCard";
 import { PreferencesFields } from "../shared/forms/PreferencesFields";
@@ -16,7 +21,9 @@ export function ProfilePreferencesScreen({ onBack }: { onBack: () => void }) {
   const query = usePreferences();
   return (
     <ProfileQueryGate onBack={onBack} query={query} title="Discovery">
-      {(preferences) => <PreferencesForm initial={preferences ?? DEFAULT_PREFERENCES} onBack={onBack} />}
+      {(preferences) => (
+        <PreferencesForm initial={preferences ?? DEFAULT_PREFERENCES} onBack={onBack} />
+      )}
     </ProfileQueryGate>
   );
 }

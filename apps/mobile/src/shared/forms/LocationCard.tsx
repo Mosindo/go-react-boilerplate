@@ -74,9 +74,15 @@ export function LocationCard({ hasLocation, onSaved, primaryLabel }: Props) {
         />
       ) : null}
       {device.status === "unavailable" ? (
-        <Notice description={strings.onboarding.locationUnavailable} title="Location unavailable" tone="warning" />
+        <Notice
+          description={strings.onboarding.locationUnavailable}
+          title="Location unavailable"
+          tone="warning"
+        />
       ) : null}
-      {saveError ? <Notice description={saveError} title="Could not save your location" tone="danger" /> : null}
+      {saveError ? (
+        <Notice description={saveError} title="Could not save your location" tone="danger" />
+      ) : null}
 
       <View style={styles.actions}>
         <Button
@@ -93,7 +99,11 @@ export function LocationCard({ hasLocation, onSaved, primaryLabel }: Props) {
           testID="location-share-button"
         />
         {device.status === "denied" && !device.canAskAgain ? (
-          <Button label="Open settings" onPress={() => void device.openSettings()} variant="outline" />
+          <Button
+            label="Open settings"
+            onPress={() => void device.openSettings()}
+            variant="outline"
+          />
         ) : null}
       </View>
     </Card>

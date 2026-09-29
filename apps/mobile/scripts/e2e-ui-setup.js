@@ -3,7 +3,15 @@
 //  - "contact": a nearby, compatible user who already liked the primary user, so liking back yields a match.
 const fs = require("fs");
 const path = require("path");
-const { API_BASE_URL, PASSWORD, assert, completeProfile, registerUser, request, uniqueEmail } = require("./lib/fixtures");
+const {
+  API_BASE_URL,
+  PASSWORD,
+  assert,
+  completeProfile,
+  registerUser,
+  request,
+  uniqueEmail
+} = require("./lib/fixtures");
 
 const CONTACT_NAME = "Marco";
 
@@ -16,14 +24,21 @@ async function main() {
   const primary = await registerUser(primaryEmail);
   const contact = await registerUser(contactEmail);
   await completeProfile(primary, { firstName: "Ana", gender: "woman", interestedIn: ["man"] });
-  await completeProfile(contact, { firstName: CONTACT_NAME, gender: "man", interestedIn: ["woman"] });
+  await completeProfile(contact, {
+    firstName: CONTACT_NAME,
+    gender: "man",
+    interestedIn: ["woman"]
+  });
 
   const like = await request("/swipes", {
     method: "POST",
     token: contact.accessToken,
     body: { userId: primary.user.id, action: "like" }
   });
-  assert(like.status === 200, `contact like failed: ${like.status} ${JSON.stringify(like.payload)}`);
+  assert(
+    like.status === 200,
+    `contact like failed: ${like.status} ${JSON.stringify(like.payload)}`
+  );
 
   const outDir = path.join(process.cwd(), ".e2e");
   fs.mkdirSync(outDir, { recursive: true });

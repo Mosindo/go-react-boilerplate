@@ -85,7 +85,13 @@ export function SettingsPasswordScreen({ onBack }: { onBack: () => void }) {
         value={next}
       />
       {serverError ? <Notice title={serverError} tone="danger" /> : null}
-      <Button label="Update password" loading={loading} onPress={() => void submit()} size="lg" testID="password-submit-button" />
+      <Button
+        label="Update password"
+        loading={loading}
+        onPress={() => void submit()}
+        size="lg"
+        testID="password-submit-button"
+      />
     </ProfileSubScreen>
   );
 }

@@ -26,7 +26,15 @@ const makeStyles = (t: Theme) => ({
   copyCentered: { alignItems: "center" as const }
 });
 
-export function Header({ action, centered = false, eyebrow, leading, subtitle, style, title }: HeaderProps) {
+export function Header({
+  action,
+  centered = false,
+  eyebrow,
+  leading,
+  subtitle,
+  style,
+  title
+}: HeaderProps) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.root, centered ? styles.rootCentered : null, style]}>

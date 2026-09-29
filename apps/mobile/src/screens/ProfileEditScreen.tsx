@@ -2,8 +2,18 @@ import React, { useState } from "react";
 import type { MyProfile } from "../api/profile";
 import { useMyProfile, useSaveProfile } from "../hooks/useProfileData";
 import { messageFromError } from "../lib/errors";
-import { isProfileDirty, profileToFormValues, profileToPrivacy, toProfileInput } from "../lib/profileForm";
-import { hasErrors, validateProfileForm, type ProfileFormErrors, type ProfileFormValues } from "../lib/validation";
+import {
+  isProfileDirty,
+  profileToFormValues,
+  profileToPrivacy,
+  toProfileInput
+} from "../lib/profileForm";
+import {
+  hasErrors,
+  validateProfileForm,
+  type ProfileFormErrors,
+  type ProfileFormValues
+} from "../lib/validation";
 import { showToast } from "../shared/feedback/toast";
 import { AboutFields, BasicsFields } from "../shared/forms/ProfileFields";
 import { Button } from "../shared/ui/Button";

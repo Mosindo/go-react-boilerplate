@@ -73,7 +73,12 @@ export function AuthForgotScreen({ onBack, onHaveToken }: Props) {
         testID="forgot-submit-button"
         variant={sent ? "outline" : "primary"}
       />
-      <Button label="I already have a token" onPress={onHaveToken} testID="forgot-have-token" variant={sent ? "primary" : "ghost"} />
+      <Button
+        label="I already have a token"
+        onPress={onHaveToken}
+        testID="forgot-have-token"
+        variant={sent ? "primary" : "ghost"}
+      />
     </AuthFormLayout>
   );
 }

@@ -48,6 +48,12 @@ export default function AuthScreen() {
         />
       );
     default:
-      return <AuthWelcomeScreen notice={authNotice} onLogin={() => go("login")} onRegister={() => go("register")} />;
+      return (
+        <AuthWelcomeScreen
+          notice={authNotice}
+          onLogin={() => go("login")}
+          onRegister={() => go("register")}
+        />
+      );
   }
 }

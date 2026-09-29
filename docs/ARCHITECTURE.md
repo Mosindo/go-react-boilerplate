@@ -2,6 +2,8 @@
 
 This document explains how `go-react-saas` is organized so new developers and AI agents can quickly navigate the repository, understand responsibilities, and extend the system without breaking its boundaries.
 
+> **Current product: Alba (dating app).** Active feature modules are `auth`, `account`, `profiles`, `photos`, `discovery`, `matching`, `chat`, `notifications`, `safety`; shared seams live in `internal/platform` (`deps`, `storage`, `urlsign`, `ratelimit`, `realtime`, `notify`, `mailer`). See README.md and docs/API.md. Sections below describe the generic boilerplate layout; legacy modules (billing, posts, comments, files, users) are unwired.
+
 ## 1. Monorepo Structure
 
 The repository is organized into a small number of top-level directories:

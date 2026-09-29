@@ -1,12 +1,42 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Alba",
+    "slug": "alba",
+    "scheme": "alba",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.alba.mobile",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Alba uses your approximate location to show you people nearby. We only store a coarse position and never share your exact whereabouts.",
+        "NSPhotoLibraryUsageDescription": "Alba needs access to your photos so you can add pictures to your profile."
+      }
+    },
+    "android": {
+      "package": "app.alba.mobile",
+      "permissions": ["android.permission.ACCESS_COARSE_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Alba uses your approximate location to show you people nearby. We only store a coarse position and never share your exact whereabouts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Alba needs access to your photos so you can add pictures to your profile.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

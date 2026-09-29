@@ -16,7 +16,12 @@ export type ListItemProps = Omit<PressableProps, "children" | "style"> & {
 };
 
 const makeStyles = (t: Theme) => ({
-  card: { flexDirection: "row" as const, alignItems: "center" as const, gap: t.spacing.md, minHeight: 44 },
+  card: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: t.spacing.md,
+    minHeight: 44
+  },
   disabled: { opacity: 0.6 },
   leading: { alignItems: "center" as const, justifyContent: "center" as const },
   copy: { flex: 1, gap: t.spacing.xxs },
@@ -37,7 +42,11 @@ export function ListItem({
 }: ListItemProps) {
   const styles = useThemedStyles(makeStyles);
   const content = (
-    <Card padding="md" style={[styles.card, disabled ? styles.disabled : null, style]} variant={variant}>
+    <Card
+      padding="md"
+      style={[styles.card, disabled ? styles.disabled : null, style]}
+      variant={variant}
+    >
       {leading ? <View style={styles.leading}>{leading}</View> : null}
       <View style={styles.copy}>
         <Text variant="label" weight="bold">

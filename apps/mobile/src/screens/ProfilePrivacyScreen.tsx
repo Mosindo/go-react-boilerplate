@@ -2,7 +2,12 @@ import React, { useState } from "react";
 import type { MyProfile } from "../api/profile";
 import { useMyProfile, useSaveProfile } from "../hooks/useProfileData";
 import { messageFromError } from "../lib/errors";
-import { profileToFormValues, profileToPrivacy, toProfileInput, type PrivacyValues } from "../lib/profileForm";
+import {
+  profileToFormValues,
+  profileToPrivacy,
+  toProfileInput,
+  type PrivacyValues
+} from "../lib/profileForm";
 import { showToast } from "../shared/feedback/toast";
 import { Card } from "../shared/ui/Card";
 import { Notice } from "../shared/ui/Notice";
@@ -50,7 +55,10 @@ function PrivacyForm({ onBack, profile }: { onBack: () => void; profile: MyProfi
           description="Turn this off to pause your profile. You will not appear in Discover, but your matches and chats stay."
           disabled={save.isPending}
           onValueChange={(value) =>
-            void update({ discoverable: value }, value ? "You are visible again" : "Your profile is paused")
+            void update(
+              { discoverable: value },
+              value ? "You are visible again" : "Your profile is paused"
+            )
           }
           testID="privacy-discoverable"
           title="Show me in Discover"

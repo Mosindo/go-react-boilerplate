@@ -1,10 +1,17 @@
+# Alba critical flow (best effort, run with `npm run e2e:ui:run` on Windows or `maestro test` elsewhere).
+# Fixtures come from `npm run e2e:ui:setup`: a fully onboarded user ($TEST_EMAIL) and a nearby user
+# ($CONTACT_NAME) who already liked them, so liking back creates a match.
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Alba Critical Flow
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: Login
+# Welcome -> sign in
+- assertVisible:
+    id: welcome-screen
+- tapOn:
+    id: welcome-login-button
 - tapOn:
     id: auth-email-input
 - inputText: ${TEST_EMAIL}
@@ -14,35 +21,44 @@ name: go-react-saas Critical Flow
 - tapOn:
     id: auth-submit-button
 
+# Discover: like the person who already liked us -> match
 - assertVisible:
-    id: home-screen
-
+    id: tab-discover
+- extendedWaitUntil:
+    visible:
+      id: discover-like-button
+    timeout: 20000
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
-
-- tapOn: Chat
+    id: discover-like-button
 - assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
+    id: match-modal
 - tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
-- tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
+    id: match-say-hello
 
-- tapOn: Notifications
+# Chat: send and see a message
+- tapOn:
+    id: message-input
+- inputText: maestro says hello
+- tapOn:
+    id: send-button
+- assertVisible: maestro says hello
+- tapOn:
+    id: chat-back
+
+# Notifications
+- tapOn:
+    id: tab-notifications
 - assertVisible:
-    id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
+    id: notifications-list
 
-- tapOn: Profile
+# Profile and sign out
+- tapOn:
+    id: tab-profile
 - assertVisible:
     id: profile-screen
+- assertVisible:
+    id: profile-preview
+- tapOn:
+    id: profile-signout
+- assertVisible:
+    id: welcome-screen

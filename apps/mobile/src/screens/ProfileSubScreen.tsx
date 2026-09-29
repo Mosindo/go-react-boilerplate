@@ -24,7 +24,14 @@ export function ProfileSubScreen({ children, onBack, subtitle, testID, title }: 
   const styles = useThemedStyles(makeStyles);
   return (
     <KeyboardScreen edges={["top", "left", "right"]} testID={testID}>
-      <Button label="Back" onPress={onBack} size="sm" style={styles.back} testID="profile-back" variant="ghost" />
+      <Button
+        label="Back"
+        onPress={onBack}
+        size="sm"
+        style={styles.back}
+        testID="profile-back"
+        variant="ghost"
+      />
       <View style={styles.head}>
         <Text accessibilityRole="header" variant="title" weight="bold">
           {title}

@@ -1,10 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  deletePhoto,
-  reorderPhotos,
-  uploadPhoto,
-  type UploadableFile
-} from "../api/photos";
+import { deletePhoto, reorderPhotos, uploadPhoto, type UploadableFile } from "../api/photos";
 import {
   getMyProfile,
   getPreferences,

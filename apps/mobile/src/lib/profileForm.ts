@@ -4,7 +4,11 @@ import type { ProfileFormValues } from "./validation";
 
 export type PrivacyValues = { showDistance: boolean; showAge: boolean; discoverable: boolean };
 
-export const DEFAULT_PRIVACY_VALUES: PrivacyValues = { showDistance: true, showAge: true, discoverable: true };
+export const DEFAULT_PRIVACY_VALUES: PrivacyValues = {
+  showDistance: true,
+  showAge: true,
+  discoverable: true
+};
 
 export const EMPTY_PROFILE_FORM: ProfileFormValues = {
   firstName: "",
@@ -29,7 +33,11 @@ export function profileToFormValues(profile: MyProfile | null | undefined): Prof
 
 export function profileToPrivacy(profile: MyProfile | null | undefined): PrivacyValues {
   return profile
-    ? { showDistance: profile.showDistance, showAge: profile.showAge, discoverable: profile.discoverable }
+    ? {
+        showDistance: profile.showDistance,
+        showAge: profile.showAge,
+        discoverable: profile.discoverable
+      }
     : { ...DEFAULT_PRIVACY_VALUES };
 }
 

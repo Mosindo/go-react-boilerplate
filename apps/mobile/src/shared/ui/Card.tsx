@@ -25,7 +25,11 @@ const makeStyles = (t: Theme) => ({
   muted: { backgroundColor: t.colors.surfaceMuted },
   accent: { backgroundColor: t.colors.primarySoft, borderColor: t.colors.primary },
   interactive: { borderColor: t.colors.borderStrong },
-  selected: { backgroundColor: t.colors.primarySoft, borderColor: t.colors.primary, borderWidth: 2 },
+  selected: {
+    backgroundColor: t.colors.primarySoft,
+    borderColor: t.colors.primary,
+    borderWidth: 2
+  },
   sm: { padding: t.spacing.md },
   md: { padding: t.spacing.lg },
   lg: { padding: t.spacing.xl },

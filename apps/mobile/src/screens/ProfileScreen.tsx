@@ -99,13 +99,46 @@ function ProfileHome({ onNavigate }: { onNavigate: (route: ProfileRoute) => void
       ) : null}
 
       <View style={styles.menu}>
-        <ListItem onPress={() => onNavigate("edit")} subtitle="Name, bio, city, interests" testID="menu-edit" title="Edit profile" />
-        <ListItem onPress={() => onNavigate("photos")} subtitle="Add, remove, reorder" testID="menu-photos" title="Photos" />
-        <ListItem onPress={() => onNavigate("preferences")} subtitle="Who you see, age, distance, location" testID="menu-preferences" title="Discovery preferences" />
-        <ListItem onPress={() => onNavigate("privacy")} subtitle="Pause your profile, hide age or distance" testID="menu-privacy" title="Privacy" />
-        <ListItem onPress={() => onNavigate("blocked")} testID="menu-blocked" title="Blocked people" />
-        <ListItem onPress={() => onNavigate("password")} testID="menu-password" title="Change password" />
-        <ListItem onPress={() => onNavigate("about")} subtitle="Safety tips and app info" testID="menu-about" title="About and safety" />
+        <ListItem
+          onPress={() => onNavigate("edit")}
+          subtitle="Name, bio, city, interests"
+          testID="menu-edit"
+          title="Edit profile"
+        />
+        <ListItem
+          onPress={() => onNavigate("photos")}
+          subtitle="Add, remove, reorder"
+          testID="menu-photos"
+          title="Photos"
+        />
+        <ListItem
+          onPress={() => onNavigate("preferences")}
+          subtitle="Who you see, age, distance, location"
+          testID="menu-preferences"
+          title="Discovery preferences"
+        />
+        <ListItem
+          onPress={() => onNavigate("privacy")}
+          subtitle="Pause your profile, hide age or distance"
+          testID="menu-privacy"
+          title="Privacy"
+        />
+        <ListItem
+          onPress={() => onNavigate("blocked")}
+          testID="menu-blocked"
+          title="Blocked people"
+        />
+        <ListItem
+          onPress={() => onNavigate("password")}
+          testID="menu-password"
+          title="Change password"
+        />
+        <ListItem
+          onPress={() => onNavigate("about")}
+          subtitle="Safety tips and app info"
+          testID="menu-about"
+          title="About and safety"
+        />
       </View>
 
       <View style={styles.footer}>

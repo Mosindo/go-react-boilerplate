@@ -33,7 +33,11 @@ export function InterestPicker({ error, onChange, value }: Props) {
     >
       {query.isPending ? <Loader label="Loading interests" size="small" /> : null}
       {query.isError ? (
-        <ErrorView compact message={messageFromError(query.error)} onAction={() => void query.refetch()} />
+        <ErrorView
+          compact
+          message={messageFromError(query.error)}
+          onAction={() => void query.refetch()}
+        />
       ) : null}
       {query.data ? (
         <View style={styles.row}>

@@ -87,9 +87,25 @@ export function AuthLoginScreen({ notice, onBack, onForgot, onRegister }: Props)
         value={password}
       />
       {serverError ? <Notice testID="auth-error" title={serverError} tone="danger" /> : null}
-      <Button label={strings.auth.signIn} loading={loading} onPress={() => void submit()} size="lg" testID="auth-submit-button" />
-      <Button label="Forgot your password?" onPress={onForgot} testID="auth-forgot-button" variant="ghost" />
-      <Button label="New here? Create an account" onPress={onRegister} testID="auth-switch-register" variant="ghost" />
+      <Button
+        label={strings.auth.signIn}
+        loading={loading}
+        onPress={() => void submit()}
+        size="lg"
+        testID="auth-submit-button"
+      />
+      <Button
+        label="Forgot your password?"
+        onPress={onForgot}
+        testID="auth-forgot-button"
+        variant="ghost"
+      />
+      <Button
+        label="New here? Create an account"
+        onPress={onRegister}
+        testID="auth-switch-register"
+        variant="ghost"
+      />
     </AuthFormLayout>
   );
 }

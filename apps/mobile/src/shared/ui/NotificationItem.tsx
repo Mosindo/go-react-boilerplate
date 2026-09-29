@@ -27,10 +27,22 @@ const makeStyles = (t: Theme) => ({
   title: { flex: 1 }
 });
 
-export function NotificationItem({ body, createdAtLabel, isRead, onPress, style, title, type }: NotificationItemProps) {
+export function NotificationItem({
+  body,
+  createdAtLabel,
+  isRead,
+  onPress,
+  style,
+  title,
+  type
+}: NotificationItemProps) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <Pressable accessibilityRole={onPress ? "button" : undefined} disabled={!onPress} onPress={onPress}>
+    <Pressable
+      accessibilityRole={onPress ? "button" : undefined}
+      disabled={!onPress}
+      onPress={onPress}
+    >
       <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
         <View style={styles.header}>
           <Text style={styles.title} variant="label" weight="bold">

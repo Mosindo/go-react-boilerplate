@@ -55,7 +55,10 @@ export function TabBar<K extends string>({ active, items, onChange }: TabBarProp
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   return (
-    <View accessibilityRole="tablist" style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+    <View
+      accessibilityRole="tablist"
+      style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 6) }]}
+    >
       {items.map((item) => {
         const selected = item.key === active;
         const badge = formatCount(item.badge ?? 0);
@@ -70,18 +73,32 @@ export function TabBar<K extends string>({ active, items, onChange }: TabBarProp
             testID={item.testID ?? `tab-${item.key}`}
           >
             <View style={styles.glyphWrap}>
-              <Text importantForAccessibility="no" tone={selected ? "primary" : "muted"} variant="heading" weight="bold">
+              <Text
+                importantForAccessibility="no"
+                tone={selected ? "primary" : "muted"}
+                variant="heading"
+                weight="bold"
+              >
                 {item.glyph}
               </Text>
               {badge ? (
                 <View style={styles.badge}>
-                  <Text importantForAccessibility="no" tone="inverse" variant="caption" weight="bold">
+                  <Text
+                    importantForAccessibility="no"
+                    tone="inverse"
+                    variant="caption"
+                    weight="bold"
+                  >
                     {badge}
                   </Text>
                 </View>
               ) : null}
             </View>
-            <Text tone={selected ? "primary" : "muted"} variant="caption" weight={selected ? "bold" : "medium"}>
+            <Text
+              tone={selected ? "primary" : "muted"}
+              variant="caption"
+              weight={selected ? "bold" : "medium"}
+            >
               {item.label}
             </Text>
           </Pressable>

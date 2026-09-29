@@ -49,7 +49,12 @@ export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri 
       {uri ? (
         <Image accessibilityIgnoresInvertColors source={{ uri }} style={styles.image} />
       ) : (
-        <Text style={textStyle} tone="primary" variant={size >= controls.avatar.lg ? "heading" : "label"} weight="bold">
+        <Text
+          style={textStyle}
+          tone="primary"
+          variant={size >= controls.avatar.lg ? "heading" : "label"}
+          weight="bold"
+        >
           {initials}
         </Text>
       )}

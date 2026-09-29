@@ -41,7 +41,12 @@ export function ScreenContainer({
     <SafeAreaLayout edges={edges} style={style}>
       <View style={[styles.outer, centered ? styles.centered : null]}>
         <View
-          style={[styles.content, centered ? styles.contentCentered : null, { maxWidth: contentMaxWidth }, contentStyle]}
+          style={[
+            styles.content,
+            centered ? styles.contentCentered : null,
+            { maxWidth: contentMaxWidth },
+            contentStyle
+          ]}
           testID={testID}
         >
           {children}

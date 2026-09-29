@@ -34,7 +34,11 @@ describe("profile form helpers", () => {
       city: "Lyon",
       interests: ["hiking", "jazz"]
     });
-    expect(profileToPrivacy(profile)).toEqual({ showDistance: false, showAge: true, discoverable: false });
+    expect(profileToPrivacy(profile)).toEqual({
+      showDistance: false,
+      showAge: true,
+      discoverable: false
+    });
     expect(profileToPrivacy(null)).toEqual(DEFAULT_PRIVACY_VALUES);
     expect(profileToFormValues(null).interests).toEqual([]);
   });
@@ -58,7 +62,10 @@ describe("profile form helpers", () => {
 
   it("refuses to build a body without a gender", () => {
     expect(() =>
-      toProfileInput({ firstName: "A", gender: null, bio: "", city: "", interests: [] }, DEFAULT_PRIVACY_VALUES)
+      toProfileInput(
+        { firstName: "A", gender: null, bio: "", city: "", interests: [] },
+        DEFAULT_PRIVACY_VALUES
+      )
     ).toThrow();
   });
 

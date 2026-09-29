@@ -25,5 +25,7 @@ export function firstMissingStep(snapshot: OnboardingSnapshot): number {
 }
 
 export function progressFraction(stepIndex: number): number {
-  return (Math.min(Math.max(stepIndex, 0), ONBOARDING_STEPS.length - 1) + 1) / ONBOARDING_STEPS.length;
+  return (
+    (Math.min(Math.max(stepIndex, 0), ONBOARDING_STEPS.length - 1) + 1) / ONBOARDING_STEPS.length
+  );
 }

@@ -55,7 +55,13 @@ export function FormField({
       ) : null}
       {children}
       {error ? (
-        <Text accessibilityLiveRegion="polite" accessibilityRole="alert" tone="danger" variant="caption" weight="medium">
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          tone="danger"
+          variant="caption"
+          weight="medium"
+        >
           {error}
         </Text>
       ) : helperText ? (

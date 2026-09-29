@@ -22,12 +22,23 @@ const makeStyles = (t: Theme) => ({
     alignItems: "center" as const,
     justifyContent: "center" as const
   },
-  selected: { backgroundColor: t.colors.primarySoft, borderColor: t.colors.primary, borderWidth: 2 },
+  selected: {
+    backgroundColor: t.colors.primarySoft,
+    borderColor: t.colors.primary,
+    borderWidth: 2
+  },
   disabled: { opacity: 0.5 }
 });
 
 /** Toggle chip (multi-select or single-select option). */
-export function Chip({ accessibilityLabel, disabled, label, selected = false, style, ...props }: ChipProps) {
+export function Chip({
+  accessibilityLabel,
+  disabled,
+  label,
+  selected = false,
+  style,
+  ...props
+}: ChipProps) {
   const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
@@ -35,10 +46,19 @@ export function Chip({ accessibilityLabel, disabled, label, selected = false, st
       accessibilityRole="checkbox"
       accessibilityState={{ checked: selected, disabled: Boolean(disabled) }}
       disabled={disabled}
-      style={[styles.base, selected ? styles.selected : null, disabled ? styles.disabled : null, style]}
+      style={[
+        styles.base,
+        selected ? styles.selected : null,
+        disabled ? styles.disabled : null,
+        style
+      ]}
       {...props}
     >
-      <Text tone={selected ? "primary" : "default"} variant="label" weight={selected ? "bold" : "medium"}>
+      <Text
+        tone={selected ? "primary" : "default"}
+        variant="label"
+        weight={selected ? "bold" : "medium"}
+      >
         {label}
       </Text>
     </Pressable>

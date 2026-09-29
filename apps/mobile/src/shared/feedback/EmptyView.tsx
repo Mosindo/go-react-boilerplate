@@ -27,7 +27,14 @@ const makeStyles = (t: Theme) => ({
   center: { textAlign: "center" as const }
 });
 
-export function EmptyView({ actionLabel, message, onAction, style, testID, title }: EmptyViewProps) {
+export function EmptyView({
+  actionLabel,
+  message,
+  onAction,
+  style,
+  testID,
+  title
+}: EmptyViewProps) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.wrap, style]} testID={testID}>
@@ -40,7 +47,9 @@ export function EmptyView({ actionLabel, message, onAction, style, testID, title
             {message}
           </Text>
         ) : null}
-        {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="secondary" /> : null}
+        {actionLabel && onAction ? (
+          <Button label={actionLabel} onPress={onAction} size="sm" variant="secondary" />
+        ) : null}
       </Card>
     </View>
   );

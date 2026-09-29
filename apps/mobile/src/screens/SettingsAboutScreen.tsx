@@ -30,8 +30,8 @@ export function SettingsAboutScreen({ onBack }: { onBack: () => void }) {
       </Section>
       <Section title="Report and block">
         <Text tone="muted">
-          You can block or report anyone from their profile or from a chat. Blocked people can no longer see you or
-          message you. Reports are reviewed by a person.
+          You can block or report anyone from their profile or from a chat. Blocked people can no
+          longer see you or message you. Reports are reviewed by a person.
         </Text>
       </Section>
       <Text tone="muted" variant="caption">

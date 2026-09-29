@@ -24,7 +24,9 @@ export function AuthRegisterScreen({ onBack, onLogin }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [birthDate, setBirthDate] = useState("");
-  const [errors, setErrors] = useState<{ email?: string; password?: string; birthDate?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string; password?: string; birthDate?: string }>(
+    {}
+  );
   const [serverError, setServerError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -45,7 +47,10 @@ export function AuthRegisterScreen({ onBack, onLogin }: Props) {
       await register(normalizeEmail(email), password, birth.iso);
     } catch (error) {
       const status = errorStatus(error);
-      const message = messageFromError(error, "We could not create your account. Please try again.");
+      const message = messageFromError(
+        error,
+        "We could not create your account. Please try again."
+      );
       if (status === 409) {
         setErrors({ email: "An account with this email already exists. Try signing in instead." });
       } else if (status === 422) {
@@ -129,7 +134,12 @@ export function AuthRegisterScreen({ onBack, onLogin }: Props) {
       <Text tone="muted" variant="caption">
         By creating an account you confirm that you are at least 18 years old.
       </Text>
-      <Button label="Already have an account? Sign in" onPress={onLogin} testID="register-switch-login" variant="ghost" />
+      <Button
+        label="Already have an account? Sign in"
+        onPress={onLogin}
+        testID="register-switch-login"
+        variant="ghost"
+      />
     </AuthFormLayout>
   );
 }

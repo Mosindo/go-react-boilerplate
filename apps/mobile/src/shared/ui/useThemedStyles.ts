@@ -9,7 +9,9 @@ import { useTheme, type Theme } from "./theme";
  *   const makeStyles = (t: Theme) => ({ box: { backgroundColor: t.colors.surface } });
  *   const styles = useThemedStyles(makeStyles);
  */
-export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(factory: (theme: Theme) => T): T {
+export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
+  factory: (theme: Theme) => T
+): T {
   const theme = useTheme();
   return useMemo(() => StyleSheet.create(factory(theme)), [factory, theme]);
 }

@@ -29,7 +29,16 @@ export function Skeleton({ height = 16, radius = 8, style, width = "100%" }: Ske
     <Animated.View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[{ width, height, borderRadius: radius, backgroundColor: theme.colors.surfaceMuted, opacity }, style]}
+      style={[
+        {
+          width,
+          height,
+          borderRadius: radius,
+          backgroundColor: theme.colors.surfaceMuted,
+          opacity
+        },
+        style
+      ]}
     />
   );
 }

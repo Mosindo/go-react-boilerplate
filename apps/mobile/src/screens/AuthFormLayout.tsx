@@ -26,7 +26,16 @@ export function AuthFormLayout({ children, onBack, subtitle, testID, title }: Pr
   const styles = useThemedStyles(makeStyles);
   return (
     <KeyboardScreen testID={testID}>
-      {onBack ? <Button label="Back" onPress={onBack} size="sm" style={styles.back} testID="auth-back-button" variant="ghost" /> : null}
+      {onBack ? (
+        <Button
+          label="Back"
+          onPress={onBack}
+          size="sm"
+          style={styles.back}
+          testID="auth-back-button"
+          variant="ghost"
+        />
+      ) : null}
       <View style={styles.header}>
         <Text style={styles.brand} variant="eyebrow" weight="bold">
           {strings.appName}

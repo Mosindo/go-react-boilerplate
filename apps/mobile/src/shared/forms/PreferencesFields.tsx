@@ -62,8 +62,12 @@ export function PreferencesFields({ errors, onChange, values }: Props) {
         canDecrement={values.maxDistanceKm > LIMITS.distanceMin}
         canIncrement={values.maxDistanceKm < LIMITS.distanceMax}
         label="Max distance"
-        onDecrement={() => onChange({ ...values, maxDistanceKm: stepDistance(values.maxDistanceKm, -1) })}
-        onIncrement={() => onChange({ ...values, maxDistanceKm: stepDistance(values.maxDistanceKm, 1) })}
+        onDecrement={() =>
+          onChange({ ...values, maxDistanceKm: stepDistance(values.maxDistanceKm, -1) })
+        }
+        onIncrement={() =>
+          onChange({ ...values, maxDistanceKm: stepDistance(values.maxDistanceKm, 1) })
+        }
         testID="pref-distance"
         valueLabel={formatKm(values.maxDistanceKm)}
       />

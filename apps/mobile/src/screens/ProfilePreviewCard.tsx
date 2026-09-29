@@ -48,7 +48,11 @@ export function ProfilePreviewCard({ profile }: { profile: MyProfile }) {
         </View>
       )}
       {photos.length > 1 ? (
-        <ScrollView contentContainerStyle={styles.strip} horizontal showsHorizontalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.strip}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+        >
           {photos.slice(1).map((photo) => (
             <Image
               accessibilityIgnoresInvertColors
@@ -66,7 +70,11 @@ export function ProfilePreviewCard({ profile }: { profile: MyProfile }) {
         <Text tone="muted">
           {[GENDER_LABELS[profile.gender], profile.city].filter(Boolean).join(" · ")}
         </Text>
-        {profile.bio ? <Text>{profile.bio}</Text> : <Text tone="subtle">You have not written a bio yet.</Text>}
+        {profile.bio ? (
+          <Text>{profile.bio}</Text>
+        ) : (
+          <Text tone="subtle">You have not written a bio yet.</Text>
+        )}
         {profile.interests.length > 0 ? (
           <View style={styles.chips}>
             {profile.interests.map((slug) => (
@@ -74,7 +82,9 @@ export function ProfilePreviewCard({ profile }: { profile: MyProfile }) {
             ))}
           </View>
         ) : null}
-        {!profile.discoverable ? <Badge label="Profile paused" size="sm" variant="warning" /> : null}
+        {!profile.discoverable ? (
+          <Badge label="Profile paused" size="sm" variant="warning" />
+        ) : null}
       </View>
     </Card>
   );

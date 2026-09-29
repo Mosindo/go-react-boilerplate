@@ -28,7 +28,8 @@ export const strings = {
       "Alba uses your approximate location to show people nearby. We only store a coarse position (rounded to about 1 km) and never share your exact whereabouts.",
     locationDenied:
       "Location permission is off. You can enable it in your device settings, then come back and try again.",
-    locationUnavailable: "We could not read your position. Check that location services are on and retry.",
+    locationUnavailable:
+      "We could not read your position. Check that location services are on and retry.",
     photosHint: "Add up to 6 photos. The first one is your main photo."
   },
   profile: {

@@ -53,3 +53,4 @@ docker-data/
 # Mobile e2e runtime artifacts
 apps/mobile/.e2e/
 
+data/

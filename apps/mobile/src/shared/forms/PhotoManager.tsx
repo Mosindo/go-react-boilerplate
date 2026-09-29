@@ -5,7 +5,14 @@ import type { Photo } from "../../api/models";
 import { useDeletePhoto, useReorderPhotos, useUploadPhoto } from "../../hooks/useProfileData";
 import { usePhotoPicker } from "../../hooks/usePhotoPicker";
 import { messageFromError } from "../../lib/errors";
-import { canAddPhoto, makeMain, MAX_PHOTOS, movePhoto, photoIds, sortPhotos } from "../../lib/photos";
+import {
+  canAddPhoto,
+  makeMain,
+  MAX_PHOTOS,
+  movePhoto,
+  photoIds,
+  sortPhotos
+} from "../../lib/photos";
 import { showToast } from "../feedback/toast";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -143,7 +150,9 @@ export function PhotoManager({ minPhotos = 1, photos }: Props) {
                   source={{ uri: resolvePhotoUrl(photo.url) }}
                   style={styles.image}
                 />
-                {index === 0 ? <Badge label="Main" size="sm" style={styles.mainBadge} variant="primary" /> : null}
+                {index === 0 ? (
+                  <Badge label="Main" size="sm" style={styles.mainBadge} variant="primary" />
+                ) : null}
               </Pressable>
             );
           }
@@ -158,7 +167,11 @@ export function PhotoManager({ minPhotos = 1, photos }: Props) {
               >
                 <View style={styles.uploadingScrim}>
                   <ActivityIndicator color={theme.colors.primaryForeground} />
-                  <Text style={{ color: theme.colors.primaryForeground }} variant="caption" weight="bold">
+                  <Text
+                    style={{ color: theme.colors.primaryForeground }}
+                    variant="caption"
+                    weight="bold"
+                  >
                     Uploading...
                   </Text>
                 </View>
@@ -185,30 +198,40 @@ export function PhotoManager({ minPhotos = 1, photos }: Props) {
       </View>
 
       <Text tone="muted" variant="caption">
-        {sorted.length} of {MAX_PHOTOS} photos. Tap a photo to make it your main photo, move it, or remove it. JPEG,
-        PNG or WebP up to 5 MB.
+        {sorted.length} of {MAX_PHOTOS} photos. Tap a photo to make it your main photo, move it, or
+        remove it. JPEG, PNG or WebP up to 5 MB.
       </Text>
 
       {error ? <Notice description={error} title="Photo problem" tone="danger" /> : null}
 
-      <Sheet onClose={() => setSelectedId(null)} title="Photo options" visible={selectedId !== null && !confirmRemove}>
+      <Sheet
+        onClose={() => setSelectedId(null)}
+        title="Photo options"
+        visible={selectedId !== null && !confirmRemove}
+      >
         <View style={styles.actions}>
           <Button
             disabled={selectedIndex <= 0 || busy}
             label="Make main photo"
-            onPress={() => selectedId && void applyOrder(makeMain(ids, selectedId), "Main photo updated")}
+            onPress={() =>
+              selectedId && void applyOrder(makeMain(ids, selectedId), "Main photo updated")
+            }
             testID="photo-make-main"
           />
           <Button
             disabled={selectedIndex <= 0 || busy}
             label="Move earlier"
-            onPress={() => void applyOrder(movePhoto(ids, selectedIndex, selectedIndex - 1), "Photo moved")}
+            onPress={() =>
+              void applyOrder(movePhoto(ids, selectedIndex, selectedIndex - 1), "Photo moved")
+            }
             variant="outline"
           />
           <Button
             disabled={selectedIndex < 0 || selectedIndex >= ids.length - 1 || busy}
             label="Move later"
-            onPress={() => void applyOrder(movePhoto(ids, selectedIndex, selectedIndex + 1), "Photo moved")}
+            onPress={() =>
+              void applyOrder(movePhoto(ids, selectedIndex, selectedIndex + 1), "Photo moved")
+            }
             variant="outline"
           />
           <Button

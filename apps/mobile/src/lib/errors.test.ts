@@ -7,7 +7,9 @@ function apiError(status: number, message: string, extra: Record<string, unknown
 
 describe("messageFromError", () => {
   it("uses the server message for 4xx", () => {
-    expect(messageFromError(apiError(409, "email already registered"))).toBe("email already registered");
+    expect(messageFromError(apiError(409, "email already registered"))).toBe(
+      "email already registered"
+    );
     expect(messageFromError(apiError(422, "you must be 18"))).toBe("you must be 18");
   });
   it("hides 5xx internals", () => {
@@ -17,7 +19,9 @@ describe("messageFromError", () => {
     expect(messageFromError(apiError(429, "x", { retryAfterSeconds: 12 }))).toBe(
       "Too many attempts. Please wait 12 seconds and try again."
     );
-    expect(messageFromError(apiError(429, "x", { retryAfterSeconds: 1 }))).toContain("1 second and");
+    expect(messageFromError(apiError(429, "x", { retryAfterSeconds: 1 }))).toContain(
+      "1 second and"
+    );
     expect(messageFromError(apiError(429, "x"))).toMatch(/Too many/);
   });
   it("handles size, generic statuses and fallbacks", () => {

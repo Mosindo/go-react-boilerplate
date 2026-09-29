@@ -20,7 +20,13 @@ type SingleProps = {
   testIDPrefix?: string;
 };
 
-export function GenderPicker({ error, label, onChange, testIDPrefix = "gender", value }: SingleProps) {
+export function GenderPicker({
+  error,
+  label,
+  onChange,
+  testIDPrefix = "gender",
+  value
+}: SingleProps) {
   const styles = useThemedStyles(makeStyles);
   return (
     <FormField error={error} label={label}>
@@ -48,7 +54,13 @@ type MultiProps = {
   testIDPrefix?: string;
 };
 
-export function InterestedInPicker({ error, label, onChange, testIDPrefix = "interested", value }: MultiProps) {
+export function InterestedInPicker({
+  error,
+  label,
+  onChange,
+  testIDPrefix = "interested",
+  value
+}: MultiProps) {
   const styles = useThemedStyles(makeStyles);
   return (
     <FormField error={error} label={label}>

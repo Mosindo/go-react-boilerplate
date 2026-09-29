@@ -36,7 +36,7 @@ async function request(path, { method = "GET", token, body, form } = {}) {
   }
   const response = await fetch(`${API_BASE_URL}${path}`, { method, headers, body: payloadBody });
   const raw = await response.text();
-  let payload = null;
+  let payload;
   try {
     payload = raw ? JSON.parse(raw) : null;
   } catch {
@@ -94,8 +94,14 @@ async function uploadPhoto(token, color) {
 }
 
 async function registerUser(email, { password = PASSWORD, birthDate = BIRTH_DATE } = {}) {
-  const res = await request("/auth/register", { method: "POST", body: { email, password, birthDate } });
-  assert(res.status === 201, `register failed for ${email}: ${res.status} ${JSON.stringify(res.payload)}`);
+  const res = await request("/auth/register", {
+    method: "POST",
+    body: { email, password, birthDate }
+  });
+  assert(
+    res.status === 201,
+    `register failed for ${email}: ${res.status} ${JSON.stringify(res.payload)}`
+  );
   const accessToken = res.payload.accessToken || res.payload.token;
   assert(accessToken && res.payload.refreshToken, "register must return access and refresh tokens");
   return { ...res.payload, accessToken, token: accessToken };
@@ -118,7 +124,10 @@ async function completeProfile(auth, { firstName, gender, interestedIn, city = "
       discoverable: true
     }
   });
-  assert(profile.status === 200, `PUT /me/profile failed: ${profile.status} ${JSON.stringify(profile.payload)}`);
+  assert(
+    profile.status === 200,
+    `PUT /me/profile failed: ${profile.status} ${JSON.stringify(profile.payload)}`
+  );
   const prefs = await request("/me/preferences", {
     method: "PUT",
     token,
@@ -128,7 +137,10 @@ async function completeProfile(auth, { firstName, gender, interestedIn, city = "
   const location = await request("/me/location", { method: "PUT", token, body: LOCATION });
   assert(location.status === 204, `PUT /me/location failed: ${location.status}`);
   const photo = await uploadPhoto(token);
-  assert(photo.status === 201, `POST /me/photos failed: ${photo.status} ${JSON.stringify(photo.payload)}`);
+  assert(
+    photo.status === 201,
+    `POST /me/photos failed: ${photo.status} ${JSON.stringify(photo.payload)}`
+  );
   return { profile: profile.payload, photo: photo.payload };
 }
 

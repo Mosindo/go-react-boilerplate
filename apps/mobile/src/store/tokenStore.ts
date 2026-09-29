@@ -5,7 +5,7 @@ export type AuthTokens = {
   refreshToken: string;
 };
 
-const TOKENS_KEY = "boilerplate.auth.tokens";
+const TOKENS_KEY = "alba.auth.tokens";
 let memoryTokens: AuthTokens | null = null;
 
 export async function saveTokens(tokens: AuthTokens): Promise<void> {

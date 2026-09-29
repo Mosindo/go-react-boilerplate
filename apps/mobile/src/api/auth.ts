@@ -28,8 +28,14 @@ function post<T>(path: string, body: unknown): Promise<T> {
   return apiRequest<T>(path, { method: "POST", body: JSON.stringify(body), authenticated: false });
 }
 
-export async function register(email: string, password: string, birthDate: string): Promise<AuthSession> {
-  return normalizeSession(await post<AuthResponse>(endpoints.auth.register, { email, password, birthDate }));
+export async function register(
+  email: string,
+  password: string,
+  birthDate: string
+): Promise<AuthSession> {
+  return normalizeSession(
+    await post<AuthResponse>(endpoints.auth.register, { email, password, birthDate })
+  );
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {

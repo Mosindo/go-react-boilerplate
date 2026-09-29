@@ -1,9 +1,15 @@
 import React from "react";
-import { Text as RNText, type StyleProp, type TextProps as RNTextProps, type TextStyle } from "react-native";
+import {
+  Text as RNText,
+  type StyleProp,
+  type TextProps as RNTextProps,
+  type TextStyle
+} from "react-native";
 import { useTheme } from "./theme";
 
 export type TextVariant = "body" | "label" | "title" | "heading" | "caption" | "eyebrow" | "button";
-export type TextTone = "default" | "muted" | "subtle" | "primary" | "secondary" | "danger" | "success" | "inverse";
+export type TextTone =
+  "default" | "muted" | "subtle" | "primary" | "secondary" | "danger" | "success" | "inverse";
 export type TextWeight = "regular" | "medium" | "semibold" | "bold";
 
 export type TextProps = RNTextProps & {

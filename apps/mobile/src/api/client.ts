@@ -248,7 +248,11 @@ async function refreshAccessToken(failedAccessToken: string | null): Promise<Ref
 
 /* ------------------------------------------------------------------ public API */
 
-function buildHeaders(base: HeadersInit | undefined, body: BodyInit | null | undefined, token: string | null): Headers {
+function buildHeaders(
+  base: HeadersInit | undefined,
+  body: BodyInit | null | undefined,
+  token: string | null
+): Headers {
   const headers = new Headers(base);
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
@@ -262,9 +266,13 @@ function buildHeaders(base: HeadersInit | undefined, body: BodyInit | null | und
   return headers;
 }
 
-export async function apiRequest<T = unknown>(path: string, options?: ApiRequestOptions): Promise<T> {
+export async function apiRequest<T = unknown>(
+  path: string,
+  options?: ApiRequestOptions
+): Promise<T> {
   const { authenticated = true, timeoutMs, headers: baseHeaders, signal, ...init } = options ?? {};
-  const effectiveTimeout = timeoutMs ?? (isMultipart(init.body) ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+  const effectiveTimeout =
+    timeoutMs ?? (isMultipart(init.body) ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
   const url = `${requireApiBaseUrl()}${path}`;
 
   const send = (token: string | null) =>

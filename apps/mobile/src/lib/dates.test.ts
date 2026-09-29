@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeAge, isValidCalendarDate, maskBirthDateInput, toIsoDate, validateBirthDate } from "./dates";
+import {
+  computeAge,
+  isValidCalendarDate,
+  maskBirthDateInput,
+  toIsoDate,
+  validateBirthDate
+} from "./dates";
 
 const today = new Date(2026, 5, 15); // 15 June 2026
 
@@ -41,7 +47,11 @@ describe("toIsoDate", () => {
 
 describe("validateBirthDate", () => {
   it("accepts an adult and returns ISO + age", () => {
-    expect(validateBirthDate("15/06/1990", today)).toEqual({ ok: true, iso: "1990-06-15", age: 36 });
+    expect(validateBirthDate("15/06/1990", today)).toEqual({
+      ok: true,
+      iso: "1990-06-15",
+      age: 36
+    });
   });
   it("accepts exactly 18 today", () => {
     expect(validateBirthDate("15/06/2008", today)).toMatchObject({ ok: true, age: 18 });

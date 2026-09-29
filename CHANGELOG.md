@@ -8,7 +8,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Alba dating app: registration with 18+ gate, profiles, preferences, interests, private signed photos, discovery, likes/passes, atomic matching, real-time chat (WebSocket), notifications, blocks, reports, account deletion, password reset.
+- Tracked migrations (`schema_migrations`), per-IP/per-user rate limiting, demo seeder (`cmd/seed`), Expo client rebuilt with dark mode, onboarding and vitest/eslint/prettier tooling.
+
+### Removed
+- Stripe billing and posts/comments/organizations are no longer wired into the API (source cleanup pending approval).
 
 ## [0.1.0] - 2026-03-17
 

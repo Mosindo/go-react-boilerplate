@@ -1,38 +1,3 @@
-/**
- * @deprecated Legacy static palette kept only so old imports compile. Read colours from `useTheme()` instead
- * so dark mode works.
- */
-export const colors = {
-  primary: "#4c6fff",
-  primarySoft: "#e8edff",
-  primaryBorder: "#cad5ff",
-  primaryForeground: "#ffffff",
-  secondary: "#475467",
-  secondarySoft: "#eef2f6",
-  background: "#f6f8fc",
-  backgroundElevated: "#ffffff",
-  surface: "#ffffff",
-  surfaceMuted: "#f8fafc",
-  surfaceSubtle: "#eef2f6",
-  surfaceAccent: "#eef3ff",
-  border: "#e3e8f2",
-  borderStrong: "#c9d3e1",
-  text: "#101828",
-  textMuted: "#667085",
-  textSubtle: "#98a2b3",
-  success: "#027a48",
-  successSoft: "#ecfdf3",
-  successBorder: "#abefc6",
-  warning: "#b54708",
-  warningSoft: "#fff6e0",
-  warningBorder: "#fedf89",
-  danger: "#d92d20",
-  dangerSoft: "#fef3f2",
-  dangerBorder: "#fecdca",
-  inverse: "#ffffff",
-  overlay: "rgba(15, 23, 42, 0.38)"
-} as const;
-
 export const spacing = {
   xxs: 4,
   xs: 6,
@@ -153,16 +118,4 @@ export const shadows = {
   }
 } as const;
 
-export const ui = {
-  colors,
-  spacing,
-  radii,
-  fontSizes,
-  fontWeights,
-  typography,
-  controls,
-  shadows
-} as const;
-
-export type ColorToken = keyof typeof colors;
 export type TypographyToken = keyof typeof typography;

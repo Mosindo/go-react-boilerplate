@@ -2,7 +2,12 @@ import React, { useState } from "react";
 import { View } from "react-native";
 import { DEFAULT_PREFERENCES, type Preferences } from "../api/profile";
 import { useAuth } from "../hooks/useAuth";
-import { useMyProfile, usePreferences, useSavePreferences, useSaveProfile } from "../hooks/useProfileData";
+import {
+  useMyProfile,
+  usePreferences,
+  useSavePreferences,
+  useSaveProfile
+} from "../hooks/useProfileData";
 import { messageFromError } from "../lib/errors";
 import { formatCounter } from "../lib/format";
 import { firstMissingStep, ONBOARDING_STEPS, progressFraction } from "../lib/onboarding";
@@ -37,7 +42,11 @@ const makeStyles = (t: Theme) => ({
   brand: { color: t.colors.primary, letterSpacing: 4 },
   nav: { flexDirection: "row" as const, gap: t.spacing.sm },
   navGrow: { flex: 1 },
-  top: { flexDirection: "row" as const, justifyContent: "space-between" as const, alignItems: "center" as const }
+  top: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    alignItems: "center" as const
+  }
 });
 
 /** Shown while `profileComplete` is false. Loads server state first, then resumes at the first missing step. */
@@ -157,7 +166,9 @@ function Wizard({ initialPreferences, initialStep }: WizardProps) {
     try {
       const me = await refreshProfileState();
       if (me && !me.profileComplete) {
-        setError("Almost there. Make sure you have shared your location and added at least one photo.");
+        setError(
+          "Almost there. Make sure you have shared your location and added at least one photo."
+        );
       }
     } catch (err) {
       setError(messageFromError(err));
@@ -174,7 +185,13 @@ function Wizard({ initialPreferences, initialStep }: WizardProps) {
         <Text style={styles.brand} variant="eyebrow" weight="bold">
           {strings.appName}
         </Text>
-        <Button label="Sign out" onPress={() => void signOut()} size="sm" testID="onboarding-signout" variant="ghost" />
+        <Button
+          label="Sign out"
+          onPress={() => void signOut()}
+          size="sm"
+          testID="onboarding-signout"
+          variant="ghost"
+        />
       </View>
       <View style={styles.head}>
         <ProgressBar label="Profile setup progress" value={progressFraction(step)} />
@@ -186,7 +203,9 @@ function Wizard({ initialPreferences, initialStep }: WizardProps) {
         </Text>
       </View>
 
-      {stepKey === "basics" ? <BasicsFields errors={formErrors} onChange={setForm} values={form} /> : null}
+      {stepKey === "basics" ? (
+        <BasicsFields errors={formErrors} onChange={setForm} values={form} />
+      ) : null}
       {stepKey === "preferences" ? (
         <PreferencesFields errors={prefErrors} onChange={setPrefs} values={prefs} />
       ) : null}
@@ -194,7 +213,8 @@ function Wizard({ initialPreferences, initialStep }: WizardProps) {
         <>
           <AboutFields errors={formErrors} onChange={setForm} values={form} />
           <Text tone="muted" variant="caption">
-            Bio {formatCounter(form.bio.length, 500)}. You can skip this now and finish later from your profile.
+            Bio {formatCounter(form.bio.length, 500)}. You can skip this now and finish later from
+            your profile.
           </Text>
         </>
       ) : null}
@@ -212,7 +232,13 @@ function Wizard({ initialPreferences, initialStep }: WizardProps) {
 
       <View style={styles.nav}>
         {step > 0 ? (
-          <Button disabled={saving || finishing} label="Back" onPress={() => goTo(step - 1)} testID="onboarding-back" variant="outline" />
+          <Button
+            disabled={saving || finishing}
+            label="Back"
+            onPress={() => goTo(step - 1)}
+            testID="onboarding-back"
+            variant="outline"
+          />
         ) : null}
         <View style={styles.navGrow}>
           {stepKey === "photos" ? (
@@ -237,7 +263,12 @@ function Wizard({ initialPreferences, initialStep }: WizardProps) {
         </View>
       </View>
       {stepKey === "about" ? (
-        <Button label="Skip for now" onPress={() => goTo(step + 1)} testID="onboarding-skip" variant="ghost" />
+        <Button
+          label="Skip for now"
+          onPress={() => goTo(step + 1)}
+          testID="onboarding-skip"
+          variant="ghost"
+        />
       ) : null}
     </KeyboardScreen>
   );

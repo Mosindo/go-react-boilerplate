@@ -13,7 +13,8 @@ import { useTheme, type Theme } from "./theme";
 import { useThemedStyles } from "./useThemedStyles";
 import { controls } from "./tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
+export type ButtonVariant =
+  "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
@@ -34,14 +35,34 @@ const makeStyles = (t: Theme) => ({
     justifyContent: "center" as const
   },
   fullWidth: { width: "100%" as const },
-  sm: { minHeight: controls.button.sm, paddingHorizontal: t.spacing.lg, paddingVertical: t.spacing.xs },
-  md: { minHeight: controls.button.md, paddingHorizontal: t.spacing.xl, paddingVertical: t.spacing.sm },
-  lg: { minHeight: controls.button.lg, paddingHorizontal: t.spacing.xl, paddingVertical: t.spacing.md },
+  sm: {
+    minHeight: controls.button.sm,
+    paddingHorizontal: t.spacing.lg,
+    paddingVertical: t.spacing.xs
+  },
+  md: {
+    minHeight: controls.button.md,
+    paddingHorizontal: t.spacing.xl,
+    paddingVertical: t.spacing.sm
+  },
+  lg: {
+    minHeight: controls.button.lg,
+    paddingHorizontal: t.spacing.xl,
+    paddingVertical: t.spacing.md
+  },
   primary: { backgroundColor: t.colors.primary },
-  secondary: { backgroundColor: t.colors.primarySoft, borderWidth: 1, borderColor: t.colors.primary },
+  secondary: {
+    backgroundColor: t.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: t.colors.primary
+  },
   destructive: { backgroundColor: t.colors.danger },
   success: { backgroundColor: t.colors.success },
-  outline: { backgroundColor: t.colors.surface, borderWidth: 1, borderColor: t.colors.borderStrong },
+  outline: {
+    backgroundColor: t.colors.surface,
+    borderWidth: 1,
+    borderColor: t.colors.borderStrong
+  },
   ghost: { backgroundColor: "transparent" },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.85 },

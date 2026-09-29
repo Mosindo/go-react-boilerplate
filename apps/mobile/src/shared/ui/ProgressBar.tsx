@@ -11,7 +11,12 @@ export type ProgressBarProps = {
 };
 
 const makeStyles = (t: Theme) => ({
-  track: { height: 6, borderRadius: 3, backgroundColor: t.colors.surfaceMuted, overflow: "hidden" as const },
+  track: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: t.colors.surfaceMuted,
+    overflow: "hidden" as const
+  },
   fill: { height: 6, borderRadius: 3, backgroundColor: t.colors.primary }
 });
 

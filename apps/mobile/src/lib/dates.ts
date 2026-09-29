@@ -1,9 +1,7 @@
 export const MIN_AGE = 18;
 export const MAX_AGE = 120;
 
-export type BirthDateResult =
-  | { ok: true; iso: string; age: number }
-  | { ok: false; error: string };
+export type BirthDateResult = { ok: true; iso: string; age: number } | { ok: false; error: string };
 
 /** Keeps digits only (max 8) and inserts the slashes of a DD/MM/YYYY mask. */
 export function maskBirthDateInput(raw: string): string {
@@ -25,10 +23,17 @@ export function isValidCalendarDate(year: number, month: number, day: number): b
     return false;
   }
   const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
 }
 
-export function computeAge(year: number, month: number, day: number, today: Date = new Date()): number {
+export function computeAge(
+  year: number,
+  month: number,
+  day: number,
+  today: Date = new Date()
+): number {
   let age = today.getFullYear() - year;
   const beforeBirthday =
     today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day);

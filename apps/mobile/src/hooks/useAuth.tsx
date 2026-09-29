@@ -108,7 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [bootAttempt]);
 
   const applySession = useCallback(async (session: AuthSession) => {
-    const next: AuthTokens = { accessToken: session.accessToken, refreshToken: session.refreshToken };
+    const next: AuthTokens = {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken
+    };
     await saveTokens(next);
     expiredRef.current = false;
     setTokens(next);

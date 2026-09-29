@@ -12,7 +12,13 @@ import DiscoverScreen from "./src/screens/DiscoverScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
-import { clearGlobalError, ErrorView, LoadingView, ToastHost, useGlobalFeedback } from "./src/shared/feedback";
+import {
+  clearGlobalError,
+  ErrorView,
+  LoadingView,
+  ToastHost,
+  useGlobalFeedback
+} from "./src/shared/feedback";
 import { SafeAreaLayout, TabBar, type TabItem } from "./src/shared/layout";
 import { ThemeProvider, useTheme, useThemedStyles, type Theme } from "./src/shared/ui";
 
@@ -27,7 +33,12 @@ const makeStyles = (t: Theme) => ({
     right: t.spacing.lg,
     bottom: t.spacing.xxxl + t.spacing.xxl
   },
-  bootError: { padding: t.spacing.lg, gap: t.spacing.md, flex: 1, justifyContent: "center" as const }
+  bootError: {
+    padding: t.spacing.lg,
+    gap: t.spacing.md,
+    flex: 1,
+    justifyContent: "center" as const
+  }
 });
 
 function MainTabs() {
@@ -59,7 +70,9 @@ function MainTabs() {
             openConversationId={openConversationId}
           />
         ) : null}
-        {tab === "notifications" ? <NotificationsScreen onOpenConversation={openConversation} /> : null}
+        {tab === "notifications" ? (
+          <NotificationsScreen onOpenConversation={openConversation} />
+        ) : null}
         {tab === "profile" ? <ProfileScreen /> : null}
       </View>
       <TabBar active={tab} items={items} onChange={setTab} />

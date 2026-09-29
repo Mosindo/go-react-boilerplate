@@ -15,7 +15,14 @@ type Props = {
 };
 
 const makeStyles = (t: Theme) => ({
-  root: { flex: 1, padding: t.spacing.xl, justifyContent: "space-between" as const, maxWidth: 560, width: "100%" as const, alignSelf: "center" as const },
+  root: {
+    flex: 1,
+    padding: t.spacing.xl,
+    justifyContent: "space-between" as const,
+    maxWidth: 560,
+    width: "100%" as const,
+    alignSelf: "center" as const
+  },
   hero: { flex: 1, justifyContent: "center" as const, gap: t.spacing.md },
   logo: { color: t.colors.primary, fontSize: 56, lineHeight: 64, letterSpacing: -1 },
   actions: { gap: t.spacing.sm },

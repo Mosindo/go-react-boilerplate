@@ -20,7 +20,10 @@ export function errorStatus(error: unknown): number | null {
  * Maps any thrown value to a message that is safe and friendly to show.
  * Server messages (docs/API.md: always human readable) are used for 4xx, but never for 5xx.
  */
-export function messageFromError(error: unknown, fallback: string = strings.errors.generic): string {
+export function messageFromError(
+  error: unknown,
+  fallback: string = strings.errors.generic
+): string {
   const like = asErrorLike(error);
   if (!like) {
     return fallback;
@@ -38,7 +41,8 @@ export function messageFromError(error: unknown, fallback: string = strings.erro
     return message || fallback;
   }
   if (status === 429) {
-    const seconds = typeof like.retryAfterSeconds === "number" ? Math.ceil(like.retryAfterSeconds) : null;
+    const seconds =
+      typeof like.retryAfterSeconds === "number" ? Math.ceil(like.retryAfterSeconds) : null;
     return seconds && seconds > 0
       ? `Too many attempts. Please wait ${seconds} second${seconds === 1 ? "" : "s"} and try again.`
       : strings.errors.rateLimited;
@@ -70,7 +74,10 @@ export function isStatus(error: unknown, ...statuses: number[]): boolean {
 }
 
 /** Parses a Retry-After header (delta-seconds or HTTP date). Returns whole seconds or null. */
-export function parseRetryAfter(value: string | null | undefined, now: number = Date.now()): number | null {
+export function parseRetryAfter(
+  value: string | null | undefined,
+  now: number = Date.now()
+): number | null {
   if (!value) {
     return null;
   }
