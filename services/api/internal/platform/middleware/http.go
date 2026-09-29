@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,4 +138,15 @@ func generateRequestID() string {
 		return time.Now().UTC().Format("20060102150405.000000000")
 	}
 	return hex.EncodeToString(buf)
+}
+
+// LimitBody caps request bodies (default protection against oversized JSON). Multipart uploads
+// are skipped: their handlers enforce a dedicated, larger limit.
+func LimitBody(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/form-data") {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		}
+		c.Next()
+	}
 }

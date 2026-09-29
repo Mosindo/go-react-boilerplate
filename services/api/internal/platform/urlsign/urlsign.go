@@ -47,3 +47,9 @@ func (s *Signer) mac(resourceID string, exp int64) string {
 	m.Write([]byte(strconv.FormatInt(exp, 10)))
 	return hex.EncodeToString(m.Sum(nil))
 }
+
+// PhotoURL returns the relative, signed URL for a photo file; clients prefix it with the API base URL.
+func (s *Signer) PhotoURL(photoID string) string {
+	exp, sig := s.Sign(photoID)
+	return "/photos/" + photoID + "/file?exp=" + strconv.FormatInt(exp, 10) + "&sig=" + sig
+}
