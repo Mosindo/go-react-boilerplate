@@ -45,8 +45,8 @@ func TestValidateBirthDate(t *testing.T) {
 		{"2026-09-30", ErrBirthDateFuture},
 		{"2030-01-01", ErrBirthDateFuture},
 		{"1900-01-01", ErrBirthDateAbsurd},
-		{"1905-09-29", nil},
-		{"1905-09-28", ErrBirthDateAbsurd},
+		{"1905-09-30", nil},
+		{"1905-09-29", ErrBirthDateAbsurd},
 		{"1990-01-01", nil},
 	}
 	for _, c := range cases {

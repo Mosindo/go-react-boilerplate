@@ -58,7 +58,7 @@ WHERE me.user_id = $1
            OR (b.blocker_id = o.user_id AND b.blocked_id = $1))
   AND ($2::timestamptz IS NULL
        OR COALESCE(c.last_message_at, m.created_at) < $2
-       OR (COALESCE(c.last_message_at, m.created_at) = $2 AND ($3::uuid IS NULL OR c.id < $3)))
+       OR (COALESCE(c.last_message_at, m.created_at) = $2 AND $3::uuid IS NOT NULL AND c.id < $3))
 ORDER BY COALESCE(c.last_message_at, m.created_at) DESC, c.id DESC
 LIMIT $4`
 
