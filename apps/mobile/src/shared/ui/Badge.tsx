@@ -1,7 +1,8 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
-import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import { Text, type TextTone } from "./Text";
+import { type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
 
 export type BadgeVariant = "default" | "primary" | "success" | "warning" | "danger" | "muted";
 export type BadgeSize = "sm" | "md";
@@ -13,75 +14,36 @@ export type BadgeProps = Omit<ViewProps, "style"> & {
   variant?: BadgeVariant;
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => ({
   base: {
-    borderRadius: radii.pill,
+    borderRadius: t.radii.pill,
     borderWidth: 1,
-    alignSelf: "flex-start",
-    justifyContent: "center"
+    alignSelf: "flex-start" as const,
+    justifyContent: "center" as const
   },
-  sizeSm: {
-    minHeight: 24,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs
-  },
-  sizeMd: {
-    minHeight: 28,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs
-  },
-  default: {
-    backgroundColor: colors.backgroundElevated,
-    borderColor: colors.border
-  },
-  primary: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryBorder
-  },
-  success: {
-    backgroundColor: colors.successSoft,
-    borderColor: colors.successBorder
-  },
-  warning: {
-    backgroundColor: colors.warningSoft,
-    borderColor: colors.warningBorder
-  },
-  danger: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.dangerBorder
-  },
-  muted: {
-    backgroundColor: colors.surfaceSubtle,
-    borderColor: colors.border
-  }
+  sm: { minHeight: 22, paddingHorizontal: t.spacing.sm, paddingVertical: 2 },
+  md: { minHeight: 28, paddingHorizontal: t.spacing.md, paddingVertical: t.spacing.xxs },
+  default: { backgroundColor: t.colors.surface, borderColor: t.colors.border },
+  primary: { backgroundColor: t.colors.primarySoft, borderColor: t.colors.primary },
+  success: { backgroundColor: t.colors.successSoft, borderColor: t.colors.success },
+  warning: { backgroundColor: t.colors.warningSoft, borderColor: t.colors.warning },
+  danger: { backgroundColor: t.colors.dangerSoft, borderColor: t.colors.danger },
+  muted: { backgroundColor: t.colors.surfaceMuted, borderColor: t.colors.border }
 });
 
-const sizeStyles: Record<BadgeSize, ViewStyle> = {
-  sm: styles.sizeSm,
-  md: styles.sizeMd
-};
-
-const variantStyles: Record<BadgeVariant, ViewStyle> = {
-  default: styles.default,
-  primary: styles.primary,
-  success: styles.success,
-  warning: styles.warning,
-  danger: styles.danger,
-  muted: styles.muted
-};
-
-const toneByVariant: Record<BadgeVariant, "danger" | "muted" | "primary" | "secondary" | "success"> = {
+const toneByVariant: Record<BadgeVariant, TextTone> = {
   default: "secondary",
   primary: "primary",
   success: "success",
-  warning: "secondary",
+  warning: "default",
   danger: "danger",
   muted: "muted"
 };
 
 export function Badge({ label, size = "md", style, variant = "default", ...props }: BadgeProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <View style={[styles.base, sizeStyles[size], variantStyles[variant], style]} {...props}>
+    <View style={[styles.base, styles[size], styles[variant], style]} {...props}>
       <Text tone={toneByVariant[variant]} variant="caption" weight="bold">
         {label}
       </Text>

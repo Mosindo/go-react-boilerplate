@@ -1,7 +1,10 @@
 import type { AppNotification, ConversationSummary, Message } from "../../api/models";
 
 export type ConversationsPage = { conversations: ConversationSummary[] };
-export type NotificationsPage = { notifications: AppNotification[]; unreadCount: number };
+export type NotificationsPage = {
+  notifications: AppNotification[];
+  unreadCount: number;
+};
 
 type WithConversations = { pages: ConversationsPage[] };
 type WithNotifications = { pages: NotificationsPage[] };
@@ -48,7 +51,10 @@ export function totalUnreadMessages(pages: readonly ConversationsPage[] | undefi
 function withoutConversation(pages: ConversationsPage[], id: string): ConversationsPage[] {
   return pages.map((page) =>
     page.conversations.some((c) => c.id === id)
-      ? { ...page, conversations: page.conversations.filter((c) => c.id !== id) }
+      ? {
+          ...page,
+          conversations: page.conversations.filter((c) => c.id !== id)
+        }
       : page
   );
 }
@@ -61,7 +67,10 @@ export function putConversationFirst<D extends WithConversations>(
   const pages = withoutConversation(data.pages, conversation.id);
   if (pages.length === 0) return { ...data, pages: [{ conversations: [conversation] }] };
   const [first, ...rest] = pages;
-  return { ...data, pages: [{ ...first, conversations: [conversation, ...first.conversations] }, ...rest] };
+  return {
+    ...data,
+    pages: [{ ...first, conversations: [conversation, ...first.conversations] }, ...rest]
+  };
 }
 
 export function removeConversation<D extends WithConversations>(data: D, id: string): D {
@@ -166,11 +175,17 @@ export function prependNotification<D extends WithNotifications>(
   const current = unreadNotificationCount(data.pages);
   const nextUnread = notification.isRead ? current : current + 1;
   if (data.pages.length === 0) {
-    return { ...data, pages: [{ notifications: [notification], unreadCount: nextUnread }] };
+    return {
+      ...data,
+      pages: [{ notifications: [notification], unreadCount: nextUnread }]
+    };
   }
   const [first, ...rest] = data.pages;
   return withUnread(
-    { ...data, pages: [{ ...first, notifications: [notification, ...first.notifications] }, ...rest] },
+    {
+      ...data,
+      pages: [{ ...first, notifications: [notification, ...first.notifications] }, ...rest]
+    },
     nextUnread
   );
 }

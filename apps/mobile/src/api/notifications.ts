@@ -9,14 +9,20 @@ export async function listNotifications(
 ): Promise<{ notifications: AppNotification[]; unreadCount: number }> {
   const query = new URLSearchParams({ limit: String(limit) });
   if (before) query.set("before", before);
-  const res = await apiRequest<{ notifications: AppNotification[] | null; unreadCount: number }>(
-    `/notifications?${query.toString()}`
-  );
-  return { notifications: res?.notifications ?? [], unreadCount: res?.unreadCount ?? 0 };
+  const res = await apiRequest<{
+    notifications: AppNotification[] | null;
+    unreadCount: number;
+  }>(`/notifications?${query.toString()}`);
+  return {
+    notifications: res?.notifications ?? [],
+    unreadCount: res?.unreadCount ?? 0
+  };
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  await apiRequest<void>(`/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+  await apiRequest<void>(`/notifications/${encodeURIComponent(id)}/read`, {
+    method: "POST"
+  });
 }
 
 export async function markAllNotificationsRead(): Promise<void> {

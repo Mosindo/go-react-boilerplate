@@ -22,10 +22,22 @@ import {
 const me = "me";
 
 function message(id: string, conversationId: string, senderId: string, at: string): Message {
-  return { id, conversationId, senderId, body: id, createdAt: at, readAt: null };
+  return {
+    id,
+    conversationId,
+    senderId,
+    body: id,
+    createdAt: at,
+    readAt: null
+  };
 }
 
-function conv(id: string, updatedAt: string, unread = 0, last: Message | null = null): ConversationSummary {
+function conv(
+  id: string,
+  updatedAt: string,
+  unread = 0,
+  last: Message | null = null
+): ConversationSummary {
   return {
     id,
     matchId: `match-${id}`,
@@ -37,17 +49,23 @@ function conv(id: string, updatedAt: string, unread = 0, last: Message | null = 
   };
 }
 
-function convData(...pages: ConversationSummary[][]): { pages: ConversationsPage[] } {
+function convData(...pages: ConversationSummary[][]): {
+  pages: ConversationsPage[];
+} {
   return { pages: pages.map((conversations) => ({ conversations })) };
 }
 
 describe("conversation reducers", () => {
   it("moves a conversation to the top on an incoming message and bumps unread", () => {
-    const data = convData([conv("a", "2026-01-01T00:00:00Z"), conv("b", "2026-01-02T00:00:00Z")], [
-      conv("c", "2025-12-01T00:00:00Z")
-    ]);
+    const data = convData(
+      [conv("a", "2026-01-01T00:00:00Z"), conv("b", "2026-01-02T00:00:00Z")],
+      [conv("c", "2025-12-01T00:00:00Z")]
+    );
     const m = message("m1", "c", "them", "2026-01-03T00:00:00Z");
-    const out = applyMessageToConversations(data, m, { myUserId: me, isOpen: false });
+    const out = applyMessageToConversations(data, m, {
+      myUserId: me,
+      isOpen: false
+    });
     expect(out.found).toBe(true);
     expect(flattenConversations(out.data.pages).map((c) => c.id)).toEqual(["c", "a", "b"]);
     expect(findConversation(out.data.pages, "c")?.unreadCount).toBe(1);
@@ -57,20 +75,37 @@ describe("conversation reducers", () => {
   it("does not bump unread when the thread is open, or for my own message, or a duplicate", () => {
     const m = message("m1", "a", "them", "2026-01-03T00:00:00Z");
     const data = convData([conv("a", "2026-01-01T00:00:00Z")]);
-    const open = applyMessageToConversations(data, m, { myUserId: me, isOpen: true });
+    const open = applyMessageToConversations(data, m, {
+      myUserId: me,
+      isOpen: true
+    });
     expect(findConversation(open.data.pages, "a")?.unreadCount).toBe(0);
-    const mine = applyMessageToConversations(data, { ...m, senderId: me }, { myUserId: me, isOpen: false });
+    const mine = applyMessageToConversations(
+      data,
+      { ...m, senderId: me },
+      { myUserId: me, isOpen: false }
+    );
     expect(findConversation(mine.data.pages, "a")?.unreadCount).toBe(0);
-    const first = applyMessageToConversations(data, m, { myUserId: me, isOpen: false });
-    const dup = applyMessageToConversations(first.data, m, { myUserId: me, isOpen: false });
+    const first = applyMessageToConversations(data, m, {
+      myUserId: me,
+      isOpen: false
+    });
+    const dup = applyMessageToConversations(first.data, m, {
+      myUserId: me,
+      isOpen: false
+    });
     expect(findConversation(dup.data.pages, "a")?.unreadCount).toBe(1);
   });
 
   it("reports unknown conversations", () => {
-    const out = applyMessageToConversations(convData([]), message("m", "zzz", "them", "2026-01-01T00:00:00Z"), {
-      myUserId: me,
-      isOpen: false
-    });
+    const out = applyMessageToConversations(
+      convData([]),
+      message("m", "zzz", "them", "2026-01-01T00:00:00Z"),
+      {
+        myUserId: me,
+        isOpen: false
+      }
+    );
     expect(out.found).toBe(false);
   });
 
@@ -85,7 +120,10 @@ describe("conversation reducers", () => {
   });
 
   it("sets unread and sums it", () => {
-    let data = convData([conv("a", "2026-01-01T00:00:00Z", 2), conv("b", "2026-01-01T00:00:00Z", 3)]);
+    let data = convData([
+      conv("a", "2026-01-01T00:00:00Z", 2),
+      conv("b", "2026-01-01T00:00:00Z", 3)
+    ]);
     expect(totalUnreadMessages(data.pages)).toBe(5);
     data = setConversationUnread(data, "a", 0);
     expect(totalUnreadMessages(data.pages)).toBe(3);
@@ -100,14 +138,25 @@ describe("conversation reducers", () => {
   });
 
   it("splits new matches from active conversations", () => {
-    const list = [conv("a", "2026-01-01T00:00:00Z"), conv("b", "2026-01-01T00:00:00Z", 0, message("m", "b", me, "x"))];
+    const list = [
+      conv("a", "2026-01-01T00:00:00Z"),
+      conv("b", "2026-01-01T00:00:00Z", 0, message("m", "b", me, "x"))
+    ];
     expect(selectNewMatches(list).map((c) => c.id)).toEqual(["a"]);
     expect(selectActiveConversations(list).map((c) => c.id)).toEqual(["b"]);
   });
 });
 
 function notif(id: string, isRead = false): AppNotification {
-  return { id, type: "message", title: "t", body: "b", data: {}, isRead, createdAt: "2026-01-01T00:00:00Z" };
+  return {
+    id,
+    type: "message",
+    title: "t",
+    body: "b",
+    data: {},
+    isRead,
+    createdAt: "2026-01-01T00:00:00Z"
+  };
 }
 
 describe("notification reducers", () => {

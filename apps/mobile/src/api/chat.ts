@@ -23,9 +23,10 @@ export async function listMessages(
 ): Promise<{ messages: Message[]; nextCursor: string | null }> {
   const query = new URLSearchParams({ limit: String(limit) });
   if (before) query.set("before", before);
-  const res = await apiRequest<{ messages: Message[] | null; nextCursor: string | null }>(
-    `/conversations/${encodeURIComponent(conversationId)}/messages?${query.toString()}`
-  );
+  const res = await apiRequest<{
+    messages: Message[] | null;
+    nextCursor: string | null;
+  }>(`/conversations/${encodeURIComponent(conversationId)}/messages?${query.toString()}`);
   return { messages: res?.messages ?? [], nextCursor: res?.nextCursor ?? null };
 }
 

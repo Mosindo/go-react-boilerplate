@@ -1,7 +1,8 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
 
 export type MessageItemProps = {
   content: string;
@@ -9,38 +10,28 @@ export type MessageItemProps = {
   style?: StyleProp<ViewStyle>;
 };
 
+const makeStyles = (t: Theme) => ({
+  bubble: {
+    maxWidth: "78%" as const,
+    borderRadius: t.radii.lg,
+    paddingHorizontal: t.spacing.lg,
+    paddingVertical: t.spacing.sm,
+    marginBottom: t.spacing.sm
+  },
+  mine: { alignSelf: "flex-end" as const, backgroundColor: t.colors.primary },
+  theirs: {
+    alignSelf: "flex-start" as const,
+    backgroundColor: t.colors.surface,
+    borderWidth: 1,
+    borderColor: t.colors.border
+  }
+});
+
 export function MessageItem({ content, mine = false, style }: MessageItemProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.bubble, mine ? styles.mine : styles.theirs, style]}>
-      <Text style={mine ? styles.mineText : styles.theirsText} tone={mine ? "inverse" : "default"}>
-        {content}
-      </Text>
+      <Text tone={mine ? "inverse" : "default"}>{content}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  bubble: {
-    maxWidth: "78%",
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm
-  },
-  mine: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.text
-  },
-  theirs: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  mineText: {
-    color: colors.inverse
-  },
-  theirsText: {
-    color: colors.text
-  }
-});

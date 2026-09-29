@@ -1,6 +1,10 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Button } from "../ui/Button";
+import { Card } from "../ui/Card";
+import { Text } from "../ui/Text";
+import { type Theme } from "../ui/theme";
+import { useThemedStyles } from "../ui/useThemedStyles";
 
 type ErrorViewProps = {
   actionLabel?: string;
@@ -12,8 +16,18 @@ type ErrorViewProps = {
   compact?: boolean;
 };
 
+const makeStyles = (t: Theme) => ({
+  card: { gap: t.spacing.md },
+  cardCompact: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const
+  },
+  copy: { flex: 1, gap: t.spacing.xxs }
+});
+
 export function ErrorView({
-  actionLabel = "Retry",
+  actionLabel = "Try again",
   compact = false,
   message,
   onAction,
@@ -21,8 +35,14 @@ export function ErrorView({
   testID,
   title = "Something went wrong"
 }: ErrorViewProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
+    <Card
+      accessibilityRole="alert"
+      padding={compact ? "sm" : "md"}
+      style={[styles.card, compact ? styles.cardCompact : null, style]}
+      testID={testID}
+    >
       <View style={styles.copy}>
         <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
           {title}
@@ -35,18 +55,3 @@ export function ErrorView({
     </Card>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    gap: spacing.md
-  },
-  cardCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  }
-});

@@ -1,7 +1,9 @@
 import React, { useMemo } from "react";
-import { Image, StyleSheet, View, type ImageStyle, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { Image, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { Text } from "./Text";
-import { colors, controls } from "./tokens";
+import { type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
+import { controls } from "./tokens";
 
 export type AvatarProps = {
   name?: string;
@@ -12,65 +14,42 @@ export type AvatarProps = {
 };
 
 function getInitials(name?: string): string {
-  if (!name) {
-    return "?";
-  }
-
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return "?";
   }
-
   if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0] ?? "").slice(0, 2).toUpperCase();
   }
-
-  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+  return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => ({
   container: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primarySoft,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    backgroundColor: t.colors.primarySoft,
     borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    overflow: "hidden"
+    borderColor: t.colors.border,
+    overflow: "hidden" as const
   },
-  image: {
-    width: "100%",
-    height: "100%"
-  }
+  image: { width: "100%" as const, height: "100%" as const }
 });
 
 export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri }: AvatarProps) {
+  const styles = useThemedStyles(makeStyles);
   const initials = useMemo(() => getInitials(name), [name]);
 
   return (
     <View
-      style={[
-        styles.container,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2
-        },
-        style
-      ]}
+      accessibilityLabel={name ? `${name}'s photo` : "Profile photo"}
+      accessibilityRole="image"
+      style={[styles.container, { width: size, height: size, borderRadius: size / 2 }, style]}
     >
       {uri ? (
-        <Image source={{ uri }} style={styles.image as StyleProp<ImageStyle>} />
+        <Image accessibilityIgnoresInvertColors source={{ uri }} style={styles.image} />
       ) : (
-        <Text
-          style={textStyle}
-          tone="primary"
-          variant={size >= controls.avatar.lg ? "heading" : "label"}
-          weight="bold"
-        >
+        <Text style={textStyle} tone="primary" variant={size >= controls.avatar.lg ? "heading" : "label"} weight="bold">
           {initials}
         </Text>
       )}

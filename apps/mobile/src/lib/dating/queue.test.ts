@@ -28,15 +28,24 @@ describe("discoverQueueReducer", () => {
       profiles: [profile("a"), profile("b"), profile("a")]
     });
     expect(s.queue.map((p) => p.userId)).toEqual(["a", "b"]);
-    s = discoverQueueReducer(s, { type: "append", profiles: [profile("b"), profile("c")] });
+    s = discoverQueueReducer(s, {
+      type: "append",
+      profiles: [profile("b"), profile("c")]
+    });
     expect(s.queue.map((p) => p.userId)).toEqual(["a", "b", "c"]);
   });
 
   it("never re-shows a card already acted on", () => {
-    let s = discoverQueueReducer(initialDiscoverQueue, { type: "append", profiles: [profile("a")] });
+    let s = discoverQueueReducer(initialDiscoverQueue, {
+      type: "append",
+      profiles: [profile("a")]
+    });
     s = discoverQueueReducer(s, { type: "act", userId: "a" });
     expect(s.queue).toEqual([]);
-    s = discoverQueueReducer(s, { type: "append", profiles: [profile("a"), profile("b")] });
+    s = discoverQueueReducer(s, {
+      type: "append",
+      profiles: [profile("a"), profile("b")]
+    });
     expect(s.queue.map((p) => p.userId)).toEqual(["b"]);
   });
 

@@ -1,7 +1,8 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
 
 export type FormFieldProps = {
   children: ReactNode;
@@ -10,33 +11,51 @@ export type FormFieldProps = {
   helperText?: string;
   label?: string;
   required?: boolean;
+  /** Right-aligned text next to the label, e.g. a character counter. */
+  hint?: string;
 };
+
+const makeStyles = (t: Theme) => ({
+  container: { width: "100%" as const, gap: t.spacing.xs },
+  labelRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
+    gap: t.spacing.xs
+  }
+});
 
 export function FormField({
   children,
   containerStyle,
   error,
   helperText,
+  hint,
   label,
   required = false
 }: FormFieldProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.container, containerStyle]}>
-      {label ? (
+      {label || hint ? (
         <View style={styles.labelRow}>
-          <Text tone="secondary" variant="label" weight="semibold">
-            {label}
-          </Text>
-          {required ? (
-            <Text style={styles.required} tone="danger" variant="label" weight="bold">
-              *
+          {label ? (
+            <Text tone="secondary" variant="label" weight="semibold">
+              {required ? `${label} *` : label}
+            </Text>
+          ) : (
+            <View />
+          )}
+          {hint ? (
+            <Text tone="muted" variant="caption">
+              {hint}
             </Text>
           ) : null}
         </View>
       ) : null}
       {children}
       {error ? (
-        <Text tone="danger" variant="caption" weight="medium">
+        <Text accessibilityLiveRegion="polite" accessibilityRole="alert" tone="danger" variant="caption" weight="medium">
           {error}
         </Text>
       ) : helperText ? (
@@ -47,18 +66,3 @@ export function FormField({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    width: "100%",
-    gap: spacing.sm
-  },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  required: {
-    color: colors.danger
-  }
-});

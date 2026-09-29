@@ -14,5 +14,7 @@ export async function fetchDiscover(
 }
 
 export function fetchPublicProfile(userId: string, signal?: AbortSignal): Promise<PublicProfile> {
-  return apiRequest<PublicProfile>(`/profiles/${encodeURIComponent(userId)}`, { signal });
+  return apiRequest<PublicProfile>(`/profiles/${encodeURIComponent(userId)}`, {
+    signal
+  });
 }

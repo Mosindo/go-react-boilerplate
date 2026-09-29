@@ -1,6 +1,8 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, colors, spacing } from "../ui";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Text } from "../ui/Text";
+import { type Theme } from "../ui/theme";
+import { useThemedStyles } from "../ui/useThemedStyles";
 
 type HeaderProps = {
   action?: ReactNode;
@@ -12,50 +14,35 @@ type HeaderProps = {
   style?: StyleProp<ViewStyle>;
 };
 
+const makeStyles = (t: Theme) => ({
+  root: {
+    flexDirection: "row" as const,
+    alignItems: "flex-start" as const,
+    justifyContent: "space-between" as const,
+    gap: t.spacing.md
+  },
+  rootCentered: { justifyContent: "center" as const },
+  copy: { flex: 1, gap: t.spacing.xs },
+  copyCentered: { alignItems: "center" as const }
+});
+
 export function Header({ action, centered = false, eyebrow, leading, subtitle, style, title }: HeaderProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.root, centered ? styles.rootCentered : null, style]}>
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
+      {leading ? <View>{leading}</View> : null}
       <View style={[styles.copy, centered ? styles.copyCentered : null]}>
         {eyebrow ? (
-          <Text tone="secondary" variant="eyebrow" weight="bold">
+          <Text tone="primary" variant="eyebrow" weight="bold">
             {eyebrow}
           </Text>
         ) : null}
-        <Text style={styles.title} variant="title" weight="bold">
+        <Text accessibilityRole="header" variant="title" weight="bold">
           {title}
         </Text>
         {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
       </View>
-      {action ? <View style={styles.action}>{action}</View> : null}
+      {action ? <View>{action}</View> : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.lg
-  },
-  rootCentered: {
-    justifyContent: "center"
-  },
-  leading: {
-    paddingTop: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.sm
-  },
-  copyCentered: {
-    alignItems: "center"
-  },
-  action: {
-    paddingTop: spacing.md
-  },
-  title: {
-    color: colors.text
-  }
-});

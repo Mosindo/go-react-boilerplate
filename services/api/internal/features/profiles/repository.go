@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	ErrNotFound         = errors.New("profile not found")
-	ErrUnknownInterest  = errors.New("unknown interest")
+	ErrNotFound        = errors.New("profile not found")
+	ErrUnknownInterest = errors.New("unknown interest")
 )
 
 type Repository interface {

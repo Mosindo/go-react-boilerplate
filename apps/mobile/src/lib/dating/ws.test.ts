@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  BACKOFF_MAX_MS,
-  buildWsUrlFromBase,
-  computeBackoffMs,
-  parseRealtimeEvent
-} from "./ws";
+import { BACKOFF_MAX_MS, buildWsUrlFromBase, computeBackoffMs, parseRealtimeEvent } from "./ws";
 
 describe("buildWsUrlFromBase", () => {
   it("converts http to ws and https to wss", () => {
@@ -43,9 +38,20 @@ describe("parseRealtimeEvent", () => {
       data: { message }
     });
     expect(
-      parseRealtimeEvent({ type: "conversation.read", data: { conversationId: "c", readAt: "t" } })
-    ).toEqual({ type: "conversation.read", data: { conversationId: "c", readAt: "t" } });
-    expect(parseRealtimeEvent({ type: "match.removed", data: { conversationId: "c" } })).not.toBeNull();
+      parseRealtimeEvent({
+        type: "conversation.read",
+        data: { conversationId: "c", readAt: "t" }
+      })
+    ).toEqual({
+      type: "conversation.read",
+      data: { conversationId: "c", readAt: "t" }
+    });
+    expect(
+      parseRealtimeEvent({
+        type: "match.removed",
+        data: { conversationId: "c" }
+      })
+    ).not.toBeNull();
   });
 
   it("parses match.new and notification.new", () => {
@@ -58,8 +64,18 @@ describe("parseRealtimeEvent", () => {
       unreadCount: 0,
       updatedAt: "t"
     };
-    expect(parseRealtimeEvent({ type: "match.new", data: { conversation } })?.type).toBe("match.new");
-    const notification = { id: "n", type: "match", title: "t", body: "b", data: {}, isRead: false, createdAt: "t" };
+    expect(parseRealtimeEvent({ type: "match.new", data: { conversation } })?.type).toBe(
+      "match.new"
+    );
+    const notification = {
+      id: "n",
+      type: "match",
+      title: "t",
+      body: "b",
+      data: {},
+      isRead: false,
+      createdAt: "t"
+    };
     expect(parseRealtimeEvent({ type: "notification.new", data: { notification } })?.type).toBe(
       "notification.new"
     );
@@ -70,6 +86,11 @@ describe("parseRealtimeEvent", () => {
     expect(parseRealtimeEvent(null)).toBeNull();
     expect(parseRealtimeEvent({ type: "message.new", data: { message: { id: 1 } } })).toBeNull();
     expect(parseRealtimeEvent({ type: "future.thing", data: {} })).toBeNull();
-    expect(parseRealtimeEvent({ type: "match.new", data: { conversation: { id: "x" } } })).toBeNull();
+    expect(
+      parseRealtimeEvent({
+        type: "match.new",
+        data: { conversation: { id: "x" } }
+      })
+    ).toBeNull();
   });
 });

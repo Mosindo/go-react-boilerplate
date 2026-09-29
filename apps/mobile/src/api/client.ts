@@ -298,10 +298,8 @@ export async function apiRequest<T = unknown>(path: string, options?: ApiRequest
       if (response.status >= 500) {
         showGlobalError(strings.errors.server);
       }
-      if (response.status === 401 && authenticated) {
-        await clearTokens();
-        authHandlers.onSessionExpired?.();
-      }
+      // A 401 that survives a successful token refresh is a business answer (e.g. wrong current password),
+      // not a dead session: the user stays signed in. Dead sessions are handled by the refresh outcome above.
       throw error;
     }
 

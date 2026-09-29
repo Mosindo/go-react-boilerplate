@@ -59,7 +59,13 @@ function isPhoto(v: unknown): v is Photo {
 }
 
 export function isConversationSummary(v: unknown): v is ConversationSummary {
-  if (!isRec(v) || !isStr(v.id) || !isStr(v.matchId) || !isStr(v.matchedAt) || !isStr(v.updatedAt)) {
+  if (
+    !isRec(v) ||
+    !isStr(v.id) ||
+    !isStr(v.matchId) ||
+    !isStr(v.matchedAt) ||
+    !isStr(v.updatedAt)
+  ) {
     return false;
   }
   if (typeof v.unreadCount !== "number") return false;
@@ -110,24 +116,38 @@ export function parseRealtimeEvent(raw: unknown): RealtimeEvent | null {
       return isMessage(data.message)
         ? {
             type: "message.new",
-            data: { message: { ...data.message, readAt: data.message.readAt ?? null } }
+            data: {
+              message: { ...data.message, readAt: data.message.readAt ?? null }
+            }
           }
         : null;
     case "conversation.read":
       return isStr(data.conversationId) && isStr(data.readAt)
-        ? { type: "conversation.read", data: { conversationId: data.conversationId, readAt: data.readAt } }
+        ? {
+            type: "conversation.read",
+            data: { conversationId: data.conversationId, readAt: data.readAt }
+          }
         : null;
     case "match.new":
       return isConversationSummary(data.conversation)
-        ? { type: "match.new", data: { conversation: normaliseConversation(data.conversation) } }
+        ? {
+            type: "match.new",
+            data: { conversation: normaliseConversation(data.conversation) }
+          }
         : null;
     case "match.removed":
       return isStr(data.conversationId)
-        ? { type: "match.removed", data: { conversationId: data.conversationId } }
+        ? {
+            type: "match.removed",
+            data: { conversationId: data.conversationId }
+          }
         : null;
     case "notification.new":
       return isNotification(data.notification)
-        ? { type: "notification.new", data: { notification: data.notification } }
+        ? {
+            type: "notification.new",
+            data: { notification: data.notification }
+          }
         : null;
     default:
       return null;

@@ -1,9 +1,9 @@
 import React from "react";
-import { StyleSheet, Text as RNText, type StyleProp, type TextProps as RNTextProps, type TextStyle } from "react-native";
-import { colors, fontWeights, typography } from "./tokens";
+import { Text as RNText, type StyleProp, type TextProps as RNTextProps, type TextStyle } from "react-native";
+import { useTheme } from "./theme";
 
 export type TextVariant = "body" | "label" | "title" | "heading" | "caption" | "eyebrow" | "button";
-export type TextTone = "default" | "muted" | "primary" | "secondary" | "danger" | "success" | "inverse";
+export type TextTone = "default" | "muted" | "subtle" | "primary" | "secondary" | "danger" | "success" | "inverse";
 export type TextWeight = "regular" | "medium" | "semibold" | "bold";
 
 export type TextProps = RNTextProps & {
@@ -13,83 +13,39 @@ export type TextProps = RNTextProps & {
   style?: StyleProp<TextStyle>;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    color: colors.text,
-    ...typography.body
-  },
-  regular: {
-    fontWeight: fontWeights.regular
-  },
-  medium: {
-    fontWeight: fontWeights.medium
-  },
-  semibold: {
-    fontWeight: fontWeights.semibold
-  },
-  bold: {
-    fontWeight: fontWeights.bold
-  },
-  defaultTone: {
-    color: colors.text
-  },
-  mutedTone: {
-    color: colors.textMuted
-  },
-  primaryTone: {
-    color: colors.primary
-  },
-  secondaryTone: {
-    color: colors.secondary
-  },
-  dangerTone: {
-    color: colors.danger
-  },
-  successTone: {
-    color: colors.success
-  },
-  inverseTone: {
-    color: colors.inverse
-  }
-});
-
-const variantStyles: Record<TextVariant, TextStyle> = {
-  body: typography.body,
-  label: typography.label,
-  title: typography.title,
-  heading: typography.heading,
-  caption: typography.caption,
-  eyebrow: typography.eyebrow,
-  button: typography.button
-};
-
-const weightStyles: Record<TextWeight, TextStyle> = {
-  regular: styles.regular,
-  medium: styles.medium,
-  semibold: styles.semibold,
-  bold: styles.bold
-};
-
-const toneStyles: Record<TextTone, TextStyle> = {
-  default: styles.defaultTone,
-  muted: styles.mutedTone,
-  primary: styles.primaryTone,
-  secondary: styles.secondaryTone,
-  danger: styles.dangerTone,
-  success: styles.successTone,
-  inverse: styles.inverseTone
-};
+/** Caps runaway Dynamic Type so layouts survive, while still honouring the user's setting. */
+const MAX_FONT_SCALE = 1.6;
 
 export function Text({
   children,
+  maxFontSizeMultiplier = MAX_FONT_SCALE,
   style,
   tone = "default",
   variant = "body",
   weight = "regular",
   ...props
 }: TextProps) {
+  const theme = useTheme();
+  const toneColors: Record<TextTone, string> = {
+    default: theme.colors.text,
+    muted: theme.colors.textMuted,
+    subtle: theme.colors.textSubtle,
+    primary: theme.colors.primary,
+    secondary: theme.colors.secondary,
+    danger: theme.colors.danger,
+    success: theme.colors.success,
+    inverse: theme.colors.primaryForeground
+  };
   return (
-    <RNText style={[styles.base, variantStyles[variant], weightStyles[weight], toneStyles[tone], style]} {...props}>
+    <RNText
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
+      style={[
+        theme.typography[variant] as TextStyle,
+        { fontWeight: theme.fontWeights[weight], color: toneColors[tone] },
+        style
+      ]}
+      {...props}
+    >
       {children}
     </RNText>
   );

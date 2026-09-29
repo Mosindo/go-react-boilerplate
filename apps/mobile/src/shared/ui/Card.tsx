@@ -1,6 +1,7 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
-import { colors, radii, shadows, spacing } from "./tokens";
+import { View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import { type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
 
 export type CardVariant = "default" | "muted" | "accent";
 export type CardPadding = "sm" | "md" | "lg" | "xl";
@@ -13,67 +14,42 @@ export type CardProps = Omit<ViewProps, "style"> & {
   style?: StyleProp<ViewStyle>;
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (t: Theme) => ({
   base: {
-    borderRadius: radii.lg,
+    borderRadius: t.radii.lg,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.backgroundElevated,
-    ...shadows.card
+    borderColor: t.colors.border,
+    backgroundColor: t.colors.surface
   },
-  muted: {
-    backgroundColor: colors.surfaceMuted
-  },
-  accent: {
-    backgroundColor: colors.surfaceAccent,
-    borderColor: colors.primaryBorder
-  },
-  interactive: {
-    borderColor: colors.borderStrong,
-    ...shadows.floating
-  },
-  selected: {
-    backgroundColor: colors.surfaceAccent,
-    borderColor: colors.primaryBorder,
-    ...shadows.floating
-  },
-  paddingSm: {
-    padding: spacing.md
-  },
-  paddingMd: {
-    padding: spacing.lg
-  },
-  paddingLg: {
-    padding: spacing.xl
-  },
-  paddingXl: {
-    padding: spacing.xxl
-  }
+  default: {},
+  muted: { backgroundColor: t.colors.surfaceMuted },
+  accent: { backgroundColor: t.colors.primarySoft, borderColor: t.colors.primary },
+  interactive: { borderColor: t.colors.borderStrong },
+  selected: { backgroundColor: t.colors.primarySoft, borderColor: t.colors.primary, borderWidth: 2 },
+  sm: { padding: t.spacing.md },
+  md: { padding: t.spacing.lg },
+  lg: { padding: t.spacing.xl },
+  xl: { padding: t.spacing.xxl }
 });
 
-const variantStyles: Record<CardVariant, ViewStyle | null> = {
-  default: null,
-  muted: styles.muted,
-  accent: styles.accent
-};
-
-const paddingStyles: Record<CardPadding, ViewStyle> = {
-  sm: styles.paddingSm,
-  md: styles.paddingMd,
-  lg: styles.paddingLg,
-  xl: styles.paddingXl
-};
-
-export function Card({ children, padding = "md", style, variant = "default", ...props }: CardProps) {
-  const { interactive = false, selected = false, ...viewProps } = props;
+export function Card({
+  children,
+  interactive = false,
+  padding = "md",
+  selected = false,
+  style,
+  variant = "default",
+  ...viewProps
+}: CardProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View
       style={[
         styles.base,
-        variantStyles[variant],
+        styles[variant],
         interactive ? styles.interactive : null,
         selected ? styles.selected : null,
-        paddingStyles[padding],
+        styles[padding],
         style
       ]}
       {...viewProps}

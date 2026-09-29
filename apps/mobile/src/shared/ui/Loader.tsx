@@ -1,7 +1,8 @@
 import React from "react";
-import { ActivityIndicator, StyleSheet, View, type ActivityIndicatorProps, type StyleProp, type ViewStyle } from "react-native";
+import { ActivityIndicator, View, type ActivityIndicatorProps, type StyleProp, type ViewStyle } from "react-native";
 import { Text } from "./Text";
-import { colors, spacing, typography } from "./tokens";
+import { useTheme, type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
 
 export type LoaderProps = {
   fullScreen?: boolean;
@@ -10,26 +11,23 @@ export type LoaderProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-const styles = StyleSheet.create({
-  inline: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  },
-  fullScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.md
-  }
+const makeStyles = (t: Theme) => ({
+  inline: { alignItems: "center" as const, justifyContent: "center" as const, gap: t.spacing.sm },
+  fullScreen: { flex: 1, alignItems: "center" as const, justifyContent: "center" as const, gap: t.spacing.md }
 });
 
 export function Loader({ fullScreen = false, label, size = "large", style }: LoaderProps) {
+  const theme = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
-    <View style={[fullScreen ? styles.fullScreen : styles.inline, style]}>
-      <ActivityIndicator color={colors.primary} size={size} />
+    <View
+      accessibilityLabel={label ?? "Loading"}
+      accessibilityRole="progressbar"
+      style={[fullScreen ? styles.fullScreen : styles.inline, style]}
+    >
+      <ActivityIndicator color={theme.colors.primary} size={size} />
       {label ? (
-        <Text style={typography.label} tone="muted">
+        <Text tone="muted" variant="label">
           {label}
         </Text>
       ) : null}

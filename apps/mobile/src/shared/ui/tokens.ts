@@ -1,3 +1,7 @@
+/**
+ * @deprecated Legacy static palette kept only so old imports compile. Read colours from `useTheme()` instead
+ * so dark mode works.
+ */
 export const colors = {
   primary: "#4c6fff",
   primarySoft: "#e8edff",
@@ -107,18 +111,21 @@ export const typography = {
 
 export const controls = {
   button: {
-    sm: 40,
+    sm: 44,
     md: 50,
     lg: 56
   },
+  /** Minimum touch target (WCAG / Apple HIG). */
+  minTarget: 44,
   input: {
     md: 52,
     multiline: 128
   },
   avatar: {
     sm: 40,
-    md: 44,
-    lg: 56
+    md: 48,
+    lg: 64,
+    xl: 96
   }
 } as const;
 
@@ -138,7 +145,7 @@ export const shadows = {
     elevation: 8
   },
   focus: {
-    shadowColor: "#4c6fff",
+    shadowColor: "#C2452D",
     shadowOpacity: 0.16,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },

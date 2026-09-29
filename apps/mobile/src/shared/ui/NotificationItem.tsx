@@ -1,9 +1,10 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import { Badge } from "./Badge";
 import { Card } from "./Card";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
 
 export type NotificationItemProps = {
   body: string;
@@ -15,59 +16,36 @@ export type NotificationItemProps = {
   type: string;
 };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+const makeStyles = (t: Theme) => ({
+  card: { marginBottom: t.spacing.md, gap: t.spacing.xs },
+  header: {
+    flexDirection: "row" as const,
+    justifyContent: "space-between" as const,
+    alignItems: "center" as const,
+    gap: t.spacing.md
+  },
+  title: { flex: 1 }
+});
+
+export function NotificationItem({ body, createdAtLabel, isRead, onPress, style, title, type }: NotificationItemProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
+    <Pressable accessibilityRole={onPress ? "button" : undefined} disabled={!onPress} onPress={onPress}>
       <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
         <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
+          <Text style={styles.title} variant="label" weight="bold">
             {title}
           </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
+          <Badge label={isRead ? "Read" : "New"} size="sm" variant={isRead ? "muted" : "primary"} />
         </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
+        <Text tone="secondary" variant="eyebrow" weight="bold">
           {type}
         </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
+        <Text>{body}</Text>
+        <Text tone="muted" variant="caption">
           {createdAtLabel}
         </Text>
       </Card>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.sm
-  },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
-});

@@ -28,7 +28,11 @@ export type ThreadMessageItem = {
   groupedWithOlder: boolean;
 };
 
-export type ThreadSeparatorItem = { kind: "separator"; key: string; label: string };
+export type ThreadSeparatorItem = {
+  kind: "separator";
+  key: string;
+  label: string;
+};
 
 export type ThreadItem = ThreadMessageItem | ThreadSeparatorItem;
 

@@ -13,7 +13,14 @@ import {
 } from "./messages";
 
 function msg(id: string, senderId: string, at: Date, readAt: string | null = null): Message {
-  return { id, conversationId: "c1", senderId, body: `body ${id}`, createdAt: at.toISOString(), readAt };
+  return {
+    id,
+    conversationId: "c1",
+    senderId,
+    body: `body ${id}`,
+    createdAt: at.toISOString(),
+    readAt
+  };
 }
 
 const me = "me";
@@ -23,7 +30,12 @@ const now = new Date(2026, 5, 15, 12);
 describe("flattenMessages / upsertMessage", () => {
   const m1 = msg("m1", them, new Date(2026, 5, 15, 9));
   const m2 = msg("m2", me, new Date(2026, 5, 15, 10));
-  const data = { pages: [{ messages: [m2], nextCursor: "m2" }, { messages: [m1], nextCursor: null }] };
+  const data = {
+    pages: [
+      { messages: [m2], nextCursor: "m2" },
+      { messages: [m1], nextCursor: null }
+    ]
+  };
 
   it("dedupes across pages and sorts newest first", () => {
     const pages: MessagesPage[] = [
@@ -58,7 +70,10 @@ describe("markMineRead", () => {
     const data = {
       pages: [
         {
-          messages: [msg("a", me, new Date(2026, 5, 15, 10)), msg("b", them, new Date(2026, 5, 15, 9))],
+          messages: [
+            msg("a", me, new Date(2026, 5, 15, 10)),
+            msg("b", them, new Date(2026, 5, 15, 9))
+          ],
           nextCursor: null
         }
       ]
@@ -78,7 +93,12 @@ describe("buildThreadItems", () => {
       msg("m1", me, new Date(2026, 5, 14, 22))
     ];
     const pending: PendingMessage[] = [
-      { localId: "l1", body: "hey", createdAt: new Date(2026, 5, 15, 11).toISOString(), status: "sending" }
+      {
+        localId: "l1",
+        body: "hey",
+        createdAt: new Date(2026, 5, 15, 11).toISOString(),
+        status: "sending"
+      }
     ];
     const items = buildThreadItems(server, pending, me, now);
     expect(items.map((i) => (i.kind === "message" ? i.key : `sep:${i.label}`))).toEqual([

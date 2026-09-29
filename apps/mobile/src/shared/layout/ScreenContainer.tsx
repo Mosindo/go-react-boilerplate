@@ -1,6 +1,7 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, spacing } from "../ui";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { type Theme } from "../ui/theme";
+import { useThemedStyles } from "../ui/useThemedStyles";
 import { SafeAreaLayout } from "./SafeAreaLayout";
 
 type ScreenContainerProps = {
@@ -13,6 +14,19 @@ type ScreenContainerProps = {
   testID?: string;
 };
 
+const makeStyles = (t: Theme) => ({
+  outer: {
+    flex: 1,
+    backgroundColor: t.colors.background,
+    paddingHorizontal: t.spacing.lg,
+    paddingTop: t.spacing.lg,
+    paddingBottom: t.spacing.lg
+  },
+  centered: { justifyContent: "center" as const },
+  content: { flex: 1, width: "100%" as const, alignSelf: "center" as const },
+  contentCentered: { flex: 0 }
+});
+
 export function ScreenContainer({
   centered = false,
   children,
@@ -22,6 +36,7 @@ export function ScreenContainer({
   style,
   testID
 }: ScreenContainerProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <SafeAreaLayout edges={edges} style={style}>
       <View style={[styles.outer, centered ? styles.centered : null]}>
@@ -35,24 +50,3 @@ export function ScreenContainer({
     </SafeAreaLayout>
   );
 }
-
-const styles = StyleSheet.create({
-  outer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
-  },
-  centered: {
-    justifyContent: "center"
-  },
-  content: {
-    flex: 1,
-    width: "100%",
-    alignSelf: "center"
-  },
-  contentCentered: {
-    flex: 0
-  }
-});

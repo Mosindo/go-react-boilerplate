@@ -1,7 +1,8 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Text, type TextTone } from "./Text";
+import { type Theme } from "./theme";
+import { useThemedStyles } from "./useThemedStyles";
 
 export type NoticeTone = "default" | "danger" | "success" | "warning";
 
@@ -10,50 +11,33 @@ export type NoticeProps = {
   style?: StyleProp<ViewStyle>;
   title: string;
   tone?: NoticeTone;
+  testID?: string;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    padding: spacing.md,
-    gap: spacing.xs
-  },
-  default: {
-    backgroundColor: colors.surfaceSubtle,
-    borderColor: colors.border
-  },
-  danger: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.dangerBorder
-  },
-  success: {
-    backgroundColor: colors.successSoft,
-    borderColor: colors.successBorder
-  },
-  warning: {
-    backgroundColor: colors.warningSoft,
-    borderColor: colors.warningBorder
-  }
+const makeStyles = (t: Theme) => ({
+  base: { borderRadius: t.radii.md, borderWidth: 1, padding: t.spacing.md, gap: t.spacing.xxs },
+  default: { backgroundColor: t.colors.surfaceMuted, borderColor: t.colors.border },
+  danger: { backgroundColor: t.colors.dangerSoft, borderColor: t.colors.danger },
+  success: { backgroundColor: t.colors.successSoft, borderColor: t.colors.success },
+  warning: { backgroundColor: t.colors.warningSoft, borderColor: t.colors.warning }
 });
 
-const toneStyles: Record<NoticeTone, ViewStyle> = {
-  default: styles.default,
-  danger: styles.danger,
-  success: styles.success,
-  warning: styles.warning
-};
-
-const titleToneByNotice: Record<NoticeTone, "danger" | "default" | "secondary" | "success"> = {
+const titleToneByNotice: Record<NoticeTone, TextTone> = {
   default: "default",
   danger: "danger",
   success: "success",
-  warning: "secondary"
+  warning: "default"
 };
 
-export function Notice({ description, style, title, tone = "default" }: NoticeProps) {
+export function Notice({ description, style, testID, title, tone = "default" }: NoticeProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
-    <View style={[styles.base, toneStyles[tone], style]}>
+    <View
+      accessibilityLiveRegion="polite"
+      accessibilityRole={tone === "danger" ? "alert" : undefined}
+      style={[styles.base, styles[tone], style]}
+      testID={testID}
+    >
       <Text tone={titleToneByNotice[tone]} variant="label" weight="bold">
         {title}
       </Text>

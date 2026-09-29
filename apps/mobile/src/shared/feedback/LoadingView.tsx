@@ -1,6 +1,10 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Card, Loader, Text, colors, spacing } from "../ui";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Card } from "../ui/Card";
+import { Loader } from "../ui/Loader";
+import { Text } from "../ui/Text";
+import { type Theme } from "../ui/theme";
+import { useThemedStyles } from "../ui/useThemedStyles";
 
 type LoadingViewProps = {
   fullScreen?: boolean;
@@ -11,6 +15,19 @@ type LoadingViewProps = {
   tone?: "default" | "muted";
 };
 
+const makeStyles = (t: Theme) => ({
+  fullScreen: { flex: 1, alignItems: "center" as const, justifyContent: "center" as const },
+  inline: { width: "100%" as const },
+  card: {
+    width: "100%" as const,
+    maxWidth: 420,
+    alignSelf: "center" as const,
+    alignItems: "center" as const,
+    gap: t.spacing.sm
+  },
+  message: { textAlign: "center" as const }
+});
+
 export function LoadingView({
   fullScreen = false,
   label = "Loading...",
@@ -19,6 +36,7 @@ export function LoadingView({
   testID,
   tone = "muted"
 }: LoadingViewProps) {
+  const styles = useThemedStyles(makeStyles);
   const content = (
     <Card padding="lg" style={styles.card} variant="muted">
       <Loader label={label} />
@@ -30,39 +48,9 @@ export function LoadingView({
     </Card>
   );
 
-  if (fullScreen) {
-    return (
-      <View style={[styles.fullScreen, style]} testID={testID}>
-        {content}
-      </View>
-    );
-  }
-
   return (
-    <View style={[styles.inline, style]} testID={testID}>
+    <View style={[fullScreen ? styles.fullScreen : styles.inline, style]} testID={testID}>
       {content}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  fullScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  inline: {
-    width: "100%"
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    alignSelf: "center",
-    alignItems: "center",
-    gap: spacing.sm,
-    borderColor: colors.border
-  },
-  message: {
-    textAlign: "center"
-  }
-});
