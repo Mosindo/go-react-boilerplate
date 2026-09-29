@@ -11,3 +11,4 @@ export * from "./Notice";
 export * from "./NotificationItem";
 export * from "./Text";
 export * from "./tokens";
+export * from "./theme";
