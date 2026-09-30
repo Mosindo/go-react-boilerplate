@@ -23,13 +23,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Removed (du routage et du schéma)
 - Billing Stripe, multi-tenant `organizations`, posts, commentaires, votes, module `files`, annuaire `/users`.
 
-### Fichiers hérités à supprimer
-La suppression de fichiers n'a pas été effectuée sans validation explicite. Ces fichiers ne sont plus référencés par l'application ni par l'API (ils compilent toujours) :
-
-- `services/api/internal/features/{billing,comments,files,posts,users}/`
-- `apps/mobile/src/screens/`, `apps/mobile/src/shared/`, `apps/mobile/src/theme/`, `apps/mobile/src/hooks/useAuth.tsx`, `apps/mobile/src/store/tokenStore.ts`, `apps/mobile/src/api/{auth,client,endpoints,platform,types}.ts`, `apps/mobile/tamagui.config.ts`
-- `docs/agents/payments-agent.md`, `.codex/config.toml`
-- Dépendances associées : `tamagui`, `@tamagui/babel-plugin`, `@types/react-native`
+### Removed (fichiers)
+- Modules backend `billing`, `comments`, `files`, `posts`, `users` ; anciens écrans, API client, thème et UI du mobile ; configuration Tamagui ; documentation « payments agent » et configuration `.codex`.
+- Dépendances `tamagui`, `@tamagui/babel-plugin`, `@types/react-native`.
 
 ## [0.1.0] - 2026-03-17
 

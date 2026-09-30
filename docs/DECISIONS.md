@@ -52,4 +52,3 @@ Ce document explique brièvement les choix faits lors de la transformation du bo
 - **Rate limiting** en mémoire, par instance.
 - Une URL de photo déjà signée reste valable jusqu'à son expiration (≤ 2 h), même après un blocage.
 - Sur le web, la couleur du curseur des interrupteurs suit le style par défaut de react-native-web.
-- **Fichiers hérités du boilerplate** encore présents mais non utilisés (la suppression de fichiers nécessite une validation) : voir la section dédiée du CHANGELOG.

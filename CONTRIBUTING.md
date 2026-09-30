@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to `Lueur`.
 
 ## Ground Rules
 
