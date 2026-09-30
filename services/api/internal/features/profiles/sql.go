@@ -2,16 +2,21 @@ package profiles
 
 import "fmt"
 
-// EligibleSQL is the single definition of "a profile that can be shown to and
-// interacted with by others": complete, discoverable, with at least one photo.
+// CompleteSQL is the single definition of a complete profile: first name,
+// birthdate, gender, dating preferences and at least one photo.
 // alias is the SQL alias of the profiles table.
-func EligibleSQL(alias string) string {
-	return fmt.Sprintf(`(%[1]s.discoverable
-		AND %[1]s.first_name <> ''
+func CompleteSQL(alias string) string {
+	return fmt.Sprintf(`(%[1]s.first_name <> ''
 		AND %[1]s.birthdate IS NOT NULL
 		AND %[1]s.gender IS NOT NULL
 		AND EXISTS (SELECT 1 FROM photos eph WHERE eph.user_id = %[1]s.user_id)
 		AND EXISTS (SELECT 1 FROM preferences epf WHERE epf.user_id = %[1]s.user_id AND cardinality(epf.interested_in) > 0))`, alias)
+}
+
+// EligibleSQL is true for profiles that may be shown to others: complete and
+// not paused by their owner.
+func EligibleSQL(alias string) string {
+	return "(" + alias + ".discoverable AND " + CompleteSQL(alias) + ")"
 }
 
 // NotBlockedSQL is true when neither user has blocked the other. Arguments

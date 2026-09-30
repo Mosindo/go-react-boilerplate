@@ -1,59 +1,66 @@
 package chat
 
-import "time"
+import (
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+	"example.com/api/internal/features/profiles"
+)
+
+const MaxMessageRunes = 2000
+
+type Message struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type Conversation struct {
+	ID          string           `json:"id"`
+	MatchID     string           `json:"matchId"`
+	MatchedAt   time.Time        `json:"matchedAt"`
+	User        profiles.Summary `json:"user"`
+	LastMessage *Message         `json:"lastMessage"`
+	UnreadCount int              `json:"unreadCount"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
+type ConversationsResponse struct {
+	Conversations []Conversation `json:"conversations"`
+	NextCursor    *string        `json:"nextCursor"`
 }
 
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type MessagesResponse struct {
+	// Messages are ordered newest first.
+	Messages []Message `json:"messages"`
+	// OtherLastReadAt drives read receipts: a sent message is "read" when
+	// its createdAt is <= this value.
+	OtherLastReadAt *time.Time `json:"otherLastReadAt"`
+	NextCursor      *string    `json:"nextCursor"`
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Body string `json:"body" binding:"required,max=8000"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+type ReadEvent struct {
+	ConversationID string    `json:"conversationId"`
+	ReaderID       string    `json:"readerId"`
+	LastReadAt     time.Time `json:"lastReadAt"`
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+type conversationRow struct {
+	ID          string
+	MatchID     string
+	MatchedAt   time.Time
+	OtherUserID string
+	LastMessage *Message
+	UnreadCount int
+	ActivityAt  time.Time
+}
+
+// cursor is a keyset position (timestamp + id tie-breaker).
+type cursor struct {
+	At time.Time
+	ID string
 }

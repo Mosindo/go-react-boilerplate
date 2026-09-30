@@ -58,5 +58,5 @@ type Tokens struct {
 }
 
 func toMeResponse(user User) MeResponse {
-	return MeResponse{ID: user.ID, Email: user.Email, CreatedAt: user.CreatedAt}
+	return MeResponse(user)
 }

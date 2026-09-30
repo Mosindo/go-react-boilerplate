@@ -3,275 +3,187 @@ package auth
 import (
 	"context"
 	"errors"
-	"os"
+	"regexp"
 	"strings"
 	"testing"
-	"time"
 
-	chatfeature "example.com/api/internal/features/chat"
-	usersfeature "example.com/api/internal/features/users"
-	"example.com/api/internal/platform/db"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"example.com/api/internal/platform/authtoken"
+	"example.com/api/internal/testutil"
 )
 
-func TestAuthServiceRegisterLoginMe(t *testing.T) {
-	pool := setupFeaturesTestDB(t)
-	defer pool.Close()
+const testSecret = "integration-secret-0123456789abcdef"
 
-	authRepo := NewPGRepository(pool)
-	svc := NewService(authRepo, []byte("services-test-secret"))
-	email := uniqueEmail("authsvc")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email})
+type recordingCleaner struct {
+	prepared  []string
+	finalized []string
+}
 
-	tokens, user, err := svc.Register(context.Background(), "  "+strings.ToUpper(email)+"  ", password, "auth-test-agent", "127.0.0.1")
+func (c *recordingCleaner) PrepareAccountDeletion(_ context.Context, userID string) (func(context.Context), error) {
+	c.prepared = append(c.prepared, userID)
+	return func(context.Context) { c.finalized = append(c.finalized, userID) }, nil
+}
+
+func newTestService(t *testing.T) (*Service, *testutil.CaptureMailer, *recordingCleaner, *PGRepository) {
+	pool := testutil.DB(t)
+	repo := NewPGRepository(pool)
+	mail := &testutil.CaptureMailer{}
+	cleaner := &recordingCleaner{}
+	return NewService(repo, authtoken.NewManager([]byte(testSecret)), mail, cleaner), mail, cleaner, repo
+}
+
+func TestRegisterLoginRefreshLogout(t *testing.T) {
+	svc, _, _, repo := newTestService(t)
+	ctx := context.Background()
+	email := testutil.Email(t, repo.dbPool, "auth")
+
+	tokens, user, err := svc.Register(ctx, "  "+strings.ToUpper(email)+" ", "Password123", "agent", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if tokens.AccessToken == "" || tokens.RefreshToken == "" {
-		t.Fatalf("expected non-empty access and refresh tokens")
-	}
-	if user.Email != email {
-		t.Fatalf("expected normalized email %q, got %q", email, user.Email)
-	}
-	if user.OrganizationID == "" {
-		t.Fatalf("expected organization id on registered user")
+	if user.Email != email || tokens.AccessToken == "" || tokens.RefreshToken == "" {
+		t.Fatalf("unexpected register result: %+v", user)
 	}
 
-	_, _, err = svc.Register(context.Background(), email, password, "", "")
-	if !errors.Is(err, ErrEmailExists) {
+	var profileRows, prefRows int
+	_ = repo.dbPool.QueryRow(ctx, `SELECT COUNT(*) FROM profiles WHERE user_id = $1`, user.ID).Scan(&profileRows)
+	_ = repo.dbPool.QueryRow(ctx, `SELECT COUNT(*) FROM preferences WHERE user_id = $1`, user.ID).Scan(&prefRows)
+	if profileRows != 1 || prefRows != 1 {
+		t.Fatalf("registration must create profile and preferences rows (%d, %d)", profileRows, prefRows)
+	}
+
+	if _, _, err := svc.Register(ctx, email, "Password123", "", ""); !errors.Is(err, ErrEmailExists) {
 		t.Fatalf("expected ErrEmailExists, got %v", err)
 	}
-
-	_, _, err = svc.Login(context.Background(), email, "wrong-password", "", "")
-	if !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	if _, _, err := svc.Register(ctx, "weak_"+email, "weak", "", ""); !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("expected ErrWeakPassword, got %v", err)
+	}
+	if _, _, err := svc.Login(ctx, email, "WrongPass1", "", ""); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected invalid credentials, got %v", err)
+	}
+	if _, _, err := svc.Login(ctx, "nobody@integration.test", "Password123", "", ""); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("unknown email must look like invalid credentials, got %v", err)
 	}
 
-	loginTokens, loggedIn, err := svc.Login(context.Background(), email, password, "auth-test-agent", "127.0.0.1")
+	login, _, err := svc.Login(ctx, email, "Password123", "agent", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	if loginTokens.AccessToken == "" || loginTokens.RefreshToken == "" {
-		t.Fatalf("expected non-empty login tokens")
-	}
-	if loggedIn.ID != user.ID {
-		t.Fatalf("expected login user id %s, got %s", user.ID, loggedIn.ID)
-	}
-	if loggedIn.OrganizationID != user.OrganizationID {
-		t.Fatalf("expected login user organization id %s, got %s", user.OrganizationID, loggedIn.OrganizationID)
-	}
-
-	refreshedTokens, refreshedUser, err := svc.Refresh(context.Background(), loginTokens.RefreshToken, "auth-test-agent", "127.0.0.1")
+	rotated, _, err := svc.Refresh(ctx, login.RefreshToken, "agent", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
-	if refreshedTokens.AccessToken == "" || refreshedTokens.RefreshToken == "" {
-		t.Fatalf("expected non-empty refreshed tokens")
+	if rotated.RefreshToken == login.RefreshToken {
+		t.Fatal("refresh token must rotate")
 	}
-	if refreshedTokens.RefreshToken == loginTokens.RefreshToken {
-		t.Fatalf("expected rotated refresh token")
-	}
-	if refreshedUser.OrganizationID != user.OrganizationID {
-		t.Fatalf("expected refreshed user organization id %s, got %s", user.OrganizationID, refreshedUser.OrganizationID)
+	if _, _, err := svc.Refresh(ctx, login.RefreshToken, "", ""); !errors.Is(err, ErrInvalidRefreshToken) {
+		t.Fatalf("reusing a rotated refresh token must fail, got %v", err)
 	}
 
-	if err := svc.Logout(context.Background(), refreshedTokens.RefreshToken); err != nil {
+	claims, err := authtoken.NewManager([]byte(testSecret)).Parse(rotated.AccessToken, authtoken.TypeAccess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active, _ := svc.SessionActive(ctx, claims.SessionID, user.ID); !active {
+		t.Fatal("session should be active")
+	}
+	if err := svc.Logout(ctx, rotated.RefreshToken); err != nil {
 		t.Fatalf("logout: %v", err)
 	}
-
-	_, _, err = svc.Refresh(context.Background(), refreshedTokens.RefreshToken, "auth-test-agent", "127.0.0.1")
-	if !errors.Is(err, ErrInvalidRefreshToken) {
-		t.Fatalf("expected ErrInvalidRefreshToken after logout, got %v", err)
-	}
-
-	meUser, err := svc.Me(context.Background(), user.ID)
-	if err != nil {
-		t.Fatalf("me existing user: %v", err)
-	}
-	if meUser.Email != email {
-		t.Fatalf("expected me email %q, got %q", email, meUser.Email)
-	}
-	if meUser.OrganizationID != user.OrganizationID {
-		t.Fatalf("expected me organization id %s, got %s", user.OrganizationID, meUser.OrganizationID)
-	}
-
-	_, err = svc.Me(context.Background(), "00000000-0000-0000-0000-000000000000")
-	if !errors.Is(err, ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	if active, _ := svc.SessionActive(ctx, claims.SessionID, user.ID); active {
+		t.Fatal("logout must revoke the session immediately")
 	}
 }
 
-func TestUsersServiceListAndGetByID(t *testing.T) {
-	pool := setupFeaturesTestDB(t)
-	defer pool.Close()
-
-	authRepo := NewPGRepository(pool)
-	authSvc := NewService(authRepo, []byte("services-test-secret"))
-	usersRepo := usersfeature.NewPGRepository(pool)
-	usersSvc := usersfeature.NewService(usersRepo)
-
-	email1 := uniqueEmail("users1")
-	email2 := uniqueEmail("users2")
-	email3 := uniqueEmail("users3")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email1, email2, email3})
-
-	_, user1, err := authSvc.Register(context.Background(), email1, password, "", "")
+func TestPasswordResetFlow(t *testing.T) {
+	svc, mail, _, repo := newTestService(t)
+	ctx := context.Background()
+	email := testutil.Email(t, repo.dbPool, "reset")
+	first, user, err := svc.Register(ctx, email, "Password123", "", "")
 	if err != nil {
-		t.Fatalf("register user1: %v", err)
-	}
-	_, user2, err := authSvc.Register(context.Background(), email2, password, "", "")
-	if err != nil {
-		t.Fatalf("register user2: %v", err)
-	}
-	_, user3, err := authSvc.Register(context.Background(), email3, password, "", "")
-	if err != nil {
-		t.Fatalf("register user3: %v", err)
+		t.Fatal(err)
 	}
 
-	listed, err := usersSvc.ListWithPagination(context.Background(), user1.OrganizationID, 10, 0)
-	if err != nil {
-		t.Fatalf("list users: %v", err)
+	if err := svc.ForgotPassword(ctx, "unknown_"+email); err != nil || len(mail.Sent) != 0 {
+		t.Fatalf("unknown email must succeed silently without mail (err=%v, sent=%d)", err, len(mail.Sent))
 	}
-	if !containsUser(listed, user1.ID) || !containsUser(listed, user2.ID) || !containsUser(listed, user3.ID) {
-		t.Fatalf("expected user list to contain all registered users")
+	if err := svc.ForgotPassword(ctx, email); err != nil {
+		t.Fatalf("forgot: %v", err)
 	}
+	if len(mail.Sent) != 1 || mail.Sent[0].To != email {
+		t.Fatalf("expected one reset email, got %+v", mail.Sent)
+	}
+	code := regexp.MustCompile(`\b\d{6}\b`).FindString(mail.Sent[0].Body)
+	if code == "" {
+		t.Fatal("reset email must contain a 6-digit code")
+	}
+	wrong := "000000"
+	if wrong == code {
+		wrong = "111111"
+	}
+	if err := svc.ResetPassword(ctx, email, wrong, "NewPassword1"); !errors.Is(err, ErrInvalidResetCode) {
+		t.Fatalf("expected invalid code, got %v", err)
+	}
+	if err := svc.ResetPassword(ctx, email, code, "NewPassword1"); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if err := svc.ResetPassword(ctx, email, code, "OtherPassword1"); !errors.Is(err, ErrInvalidResetCode) {
+		t.Fatalf("a code must be single use, got %v", err)
+	}
+	if _, _, err := svc.Refresh(ctx, first.RefreshToken, "", ""); !errors.Is(err, ErrInvalidRefreshToken) {
+		t.Fatalf("reset must revoke existing sessions, got %v", err)
+	}
+	if _, _, err := svc.Login(ctx, email, "NewPassword1", "", ""); err != nil {
+		t.Fatalf("login with new password: %v", err)
+	}
+	_ = user
+}
 
-	gotUser, err := usersSvc.GetByID(context.Background(), user1.OrganizationID, user2.ID)
-	if err != nil {
-		t.Fatalf("get user by id: %v", err)
+func TestResetCodeLocksAfterTooManyAttempts(t *testing.T) {
+	svc, mail, _, repo := newTestService(t)
+	ctx := context.Background()
+	email := testutil.Email(t, repo.dbPool, "bruteforce")
+	if _, _, err := svc.Register(ctx, email, "Password123", "", ""); err != nil {
+		t.Fatal(err)
 	}
-	if gotUser.Email != email2 {
-		t.Fatalf("expected user email %q, got %q", email2, gotUser.Email)
+	if err := svc.ForgotPassword(ctx, email); err != nil {
+		t.Fatal(err)
 	}
-	if gotUser.OrganizationID != user1.OrganizationID {
-		t.Fatalf("expected user organization id %s, got %s", user1.OrganizationID, gotUser.OrganizationID)
+	code := regexp.MustCompile(`\b\d{6}\b`).FindString(mail.Sent[0].Body)
+	wrong := "000000"
+	if wrong == code {
+		wrong = "111111"
 	}
-
-	_, err = usersSvc.GetByID(context.Background(), user1.OrganizationID, "00000000-0000-0000-0000-000000000000")
-	if !errors.Is(err, usersfeature.ErrUserNotFound) {
-		t.Fatalf("expected users ErrUserNotFound, got %v", err)
+	for i := 0; i < maxResetCodeAttempts; i++ {
+		_ = svc.ResetPassword(ctx, email, wrong, "NewPassword1")
+	}
+	if err := svc.ResetPassword(ctx, email, code, "NewPassword1"); !errors.Is(err, ErrInvalidResetCode) {
+		t.Fatalf("correct code must be refused after too many attempts, got %v", err)
 	}
 }
 
-func TestChatServiceSendAndListFlow(t *testing.T) {
-	pool := setupFeaturesTestDB(t)
-	defer pool.Close()
-
-	authRepo := NewPGRepository(pool)
-	authSvc := NewService(authRepo, []byte("services-test-secret"))
-	chatRepo := chatfeature.NewPGRepository(pool)
-	chatSvc := chatfeature.NewService(chatRepo)
-
-	email1 := uniqueEmail("chat1")
-	email2 := uniqueEmail("chat2")
-	email3 := uniqueEmail("chat3")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email1, email2, email3})
-
-	_, user1, err := authSvc.Register(context.Background(), email1, password, "", "")
+func TestDeleteAccountRequiresPasswordAndCleansUp(t *testing.T) {
+	svc, _, cleaner, repo := newTestService(t)
+	ctx := context.Background()
+	email := testutil.Email(t, repo.dbPool, "delete")
+	_, user, err := svc.Register(ctx, email, "Password123", "", "")
 	if err != nil {
-		t.Fatalf("register user1: %v", err)
+		t.Fatal(err)
 	}
-	_, user2, err := authSvc.Register(context.Background(), email2, password, "", "")
-	if err != nil {
-		t.Fatalf("register user2: %v", err)
+	if err := svc.DeleteAccount(ctx, user.ID, "WrongPassword1"); err == nil {
+		t.Fatal("wrong password must be refused")
 	}
-	_, user3, err := authSvc.Register(context.Background(), email3, password, "", "")
-	if err != nil {
-		t.Fatalf("register user3: %v", err)
+	if err := svc.DeleteAccount(ctx, user.ID, "Password123"); err != nil {
+		t.Fatalf("delete: %v", err)
 	}
-
-	_, err = chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, "00000000-0000-0000-0000-000000000000", "should fail")
-	if !errors.Is(err, chatfeature.ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound for missing recipient, got %v", err)
+	if len(cleaner.finalized) != 1 || cleaner.finalized[0] != user.ID {
+		t.Fatalf("cleaners must run after deletion: %+v", cleaner)
 	}
-
-	_, err = chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, user2.ID, "   ")
-	if !errors.Is(err, chatfeature.ErrMessageContentNeeded) {
-		t.Fatalf("expected ErrMessageContentNeeded, got %v", err)
+	var remaining int
+	_ = repo.dbPool.QueryRow(ctx, `SELECT COUNT(*) FROM profiles WHERE user_id = $1`, user.ID).Scan(&remaining)
+	if remaining != 0 {
+		t.Fatal("profile must be deleted with the account")
 	}
-
-	sentToUser2, err := chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, user2.ID, "hello service chat")
-	if err != nil {
-		t.Fatalf("send message to user2: %v", err)
+	if _, err := svc.Me(ctx, user.ID); !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("expected user not found, got %v", err)
 	}
-	if sentToUser2.Content != "hello service chat" {
-		t.Fatalf("unexpected sent message content: %q", sentToUser2.Content)
-	}
-
-	if _, err := chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, user3.ID, "hello third user"); err != nil {
-		t.Fatalf("send message to user3: %v", err)
-	}
-
-	messages, err := chatSvc.ListMessages(context.Background(), user1.OrganizationID, user1.ID, user2.ID)
-	if err != nil {
-		t.Fatalf("list messages: %v", err)
-	}
-	if len(messages) == 0 {
-		t.Fatalf("expected at least one message")
-	}
-
-	chats, err := chatSvc.ListChats(context.Background(), user1.OrganizationID, user1.ID)
-	if err != nil {
-		t.Fatalf("list chats: %v", err)
-	}
-	if !containsChatSummary(chats, user2.ID) || !containsChatSummary(chats, user3.ID) {
-		t.Fatalf("expected chats list to include both conversation users")
-	}
-}
-
-func setupFeaturesTestDB(t *testing.T) *pgxpool.Pool {
-	t.Helper()
-
-	databaseURL := os.Getenv("DATABASE_URL_TEST")
-	if databaseURL == "" {
-		databaseURL = os.Getenv("DATABASE_URL")
-	}
-	if databaseURL == "" {
-		t.Skip("skip features integration tests: DATABASE_URL_TEST or DATABASE_URL must be set")
-	}
-
-	pool, err := db.Connect(context.Background(), databaseURL)
-	if err != nil {
-		t.Skipf("skip features integration tests: postgres unavailable (%v)", err)
-	}
-
-	if err := db.RunMigrations(context.Background(), pool); err != nil {
-		pool.Close()
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	return pool
-}
-
-func uniqueEmail(prefix string) string {
-	return prefix + "_" + time.Now().UTC().Format("20060102150405.000000000") + "@boilerplate.test"
-}
-
-func cleanupUsers(t *testing.T, pool *pgxpool.Pool, emails []string) {
-	t.Helper()
-	_, err := pool.Exec(context.Background(), `DELETE FROM users WHERE email = ANY($1)`, emails)
-	if err != nil {
-		t.Fatalf("cleanup users: %v", err)
-	}
-}
-
-func containsUser(users []usersfeature.User, userID string) bool {
-	for _, user := range users {
-		if user.ID == userID {
-			return true
-		}
-	}
-	return false
-}
-
-func containsChatSummary(chats []chatfeature.ChatSummary, userID string) bool {
-	for _, chat := range chats {
-		if chat.UserID == userID {
-			return true
-		}
-	}
-	return false
 }
