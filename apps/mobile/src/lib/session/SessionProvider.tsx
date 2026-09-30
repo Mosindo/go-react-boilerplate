@@ -10,6 +10,7 @@ type Status = "restoring" | "signedOut" | "signedIn";
 type SessionContextValue = {
   status: Status;
   userId: string | null;
+  isModerator: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -24,12 +25,14 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>("restoring");
   const [userId, setUserId] = useState<string | null>(null);
+  const [isModerator, setIsModerator] = useState(false);
   const [expiredNotice, setExpiredNotice] = useState(false);
 
   const reset = useCallback(async () => {
     await session.set(null);
     queryClient.clear();
     setUserId(null);
+    setIsModerator(false);
     setStatus("signedOut");
   }, []);
 
@@ -37,6 +40,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     onSessionExpired(() => {
       queryClient.clear();
       setUserId(null);
+      setIsModerator(false);
       setStatus("signedOut");
       setExpiredNotice(true);
     });
@@ -51,6 +55,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const me = await authApi.me();
         if (active) {
           setUserId(me.id);
+          setIsModerator(me.role === "moderator");
           setStatus("signedIn");
         }
       } catch {
@@ -67,6 +72,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     await session.set({ accessToken: auth.accessToken, refreshToken: auth.refreshToken });
     setExpiredNotice(false);
     setUserId(auth.user.id);
+    setIsModerator(auth.user.role === "moderator");
     setStatus("signedIn");
   }, []);
 
@@ -74,6 +80,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     () => ({
       status,
       userId,
+      isModerator,
       expiredNotice,
       dismissExpiredNotice: () => setExpiredNotice(false),
       signIn: async (email, password) => apply(await authApi.login(email.trim(), password)),
@@ -87,7 +94,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       },
       forget: reset
     }),
-    [apply, expiredNotice, reset, status, userId]
+    [apply, expiredNotice, isModerator, reset, status, userId]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

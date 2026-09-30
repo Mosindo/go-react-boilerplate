@@ -12,7 +12,7 @@
    │             storage (fichiers privés), media (URLs signées), geo, mailer,
    │             httpx (réponses/erreurs), errors (AppError)
    └─ features/  auth · profiles · photos · discovery · matching · chat ·
-                 notifications · safety
+                 notifications · safety · moderation
    ▼
  PostgreSQL 16  (+ dossier privé des photos)
 ```

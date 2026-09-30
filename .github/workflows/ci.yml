@@ -36,8 +36,8 @@ jobs:
         run: go vet ./...
       - name: Unit and integration tests (PostgreSQL)
         run: go test -count=1 ./...
-      - name: Build API and seed binaries
-        run: go build ./cmd/api ./cmd/seed
+      - name: Build API, seed and admin binaries
+        run: go build ./cmd/api ./cmd/seed ./cmd/admin
 
   mobile:
     runs-on: ubuntu-latest
@@ -101,6 +101,7 @@ jobs:
           PORT: "18080"
         run: |
           go build -o "$RUNNER_TEMP/api" ./cmd/api
+          go build -o "$RUNNER_TEMP/admin" ./cmd/admin
           nohup "$RUNNER_TEMP/api" > "$RUNNER_TEMP/api.log" 2>&1 &
           for i in $(seq 1 60); do curl -fsS http://localhost:18080/health && exit 0; sleep 1; done
           cat "$RUNNER_TEMP/api.log"; exit 1
@@ -117,6 +118,7 @@ jobs:
         env:
           EXPO_PUBLIC_API_URL: http://localhost:18080
           E2E_API_URL: http://localhost:18080
+          E2E_ADMIN_CMD: env DATABASE_URL=postgres://postgres:postgres@localhost:5432/app?sslmode=disable JWT_SECRET=ci-e2e-${{ github.run_id }}-0123456789abcdefghij ${{ runner.temp }}/admin
         run: |
           npx expo export --platform web --output-dir dist
           npx playwright test

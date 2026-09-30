@@ -17,6 +17,7 @@ Elle est **entièrement gratuite** : aucun abonnement, aucun paywall, aucun « b
 | Chat | Conversation créée au match, messages texte, temps réel (WebSocket), horodatage, lu/non lu et accusé de lecture, pagination, suppression locale d'une conversation, envoi optimiste avec reprise |
 | Notifications | Notifications in-app (nouveau match, nouveau message dédupliqué par conversation), badges, poussées en temps réel |
 | Confidentialité & sécurité | Mettre son profil en pause, masquer sa distance, bloquer, débloquer, signaler (bloque aussi), rate limiting, contrôle d'accès côté serveur partout |
+| Modération | Rôle modérateur (attribué uniquement en ligne de commande), file des signalements dans l'app (identité du signaleur masquée), classement sans suite / traité, suspension et réactivation de comptes (sessions révoquées, connexion refusée, retrait de la découverte) |
 
 Décisions produit et limites connues : voir [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -43,12 +44,13 @@ Décisions produit et limites connues : voir [docs/DECISIONS.md](docs/DECISIONS.
 ├─ services/api/                API Go
 │  ├─ cmd/api/                  Serveur HTTP (+ tests d'intégration HTTP de bout en bout)
 │  ├─ cmd/seed/                 Données de démonstration (hors production)
+│  ├─ cmd/admin/                Opérations privilégiées (rôle modérateur)
 │  └─ internal/
 │     ├─ app/                   Composition root (câblage des features)
 │     ├─ platform/              config, db (migrations), middleware, authtoken, ratelimit,
 │     │                         realtime, storage, media (URLs signées), geo, mailer, httpx, errors
 │     └─ features/              auth, profiles, photos, discovery, matching, chat,
-│                               notifications, safety  (handler → service → repository)
+│                               notifications, safety, moderation  (handler → service → repository)
 ├─ docker-compose.yml           PostgreSQL + API
 └─ docs/                        ARCHITECTURE.md, DECISIONS.md
 ```
@@ -100,6 +102,17 @@ go run ./cmd/seed -purge                       # supprime tous les membres de d�
 ```
 
 Les comptes de démo utilisent le domaine réservé `@demo.invalid`, sont marqués `users.is_demo = true`, ont des photos abstraites générées (aucun visage réel), et la commande refuse de s'exécuter si `APP_ENV=production`. Mot de passe commun : `DemoPassword1`.
+
+## Modération
+
+```bash
+cd services/api
+go run ./cmd/admin role moderateur@exemple.com moderator   # accorder le rôle
+go run ./cmd/admin role moderateur@exemple.com member      # le retirer
+# En conteneur : docker compose exec api ./admin role <email> moderator
+```
+
+Le rôle n'est jamais attribuable via l'API. Un modérateur voit « File de modération » dans *Confidentialité et compte* ; un compte modérateur sans profil de rencontre accède directement à la file, sans apparaître dans la découverte.
 
 ## Lancement local
 
@@ -158,6 +171,7 @@ MOBILE_E2E_API_URL=http://localhost:18080 npm run e2e:api
 #   API démarrée avec APP_ENV=test et ALLOWED_ORIGINS=http://localhost:8099
 EXPO_PUBLIC_API_URL=http://localhost:18080 npx expo export --platform web --output-dir dist
 E2E_API_URL=http://localhost:18080 npx playwright test
+#   (le test de modération requiert E2E_ADMIN_CMD, ex. "env DATABASE_URL=... JWT_SECRET=... go run ./cmd/admin")
 
 # E2E natif (Maestro, appareil/émulateur + Expo Go)
 npm run e2e:ui:run
@@ -197,6 +211,7 @@ Sans `DATABASE_URL_TEST`, les tests d'intégration sont ignorés (skip) et seuls
 | GET / POST | `/conversations/:id/messages`, `/conversations/:id/read` | Messages (pagination par curseur), lecture |
 | GET / POST | `/notifications`, `/notifications/:id/read`, `/notifications/read-all` | Notifications |
 | GET / POST / DELETE | `/blocks`, `/blocks/:userId`, `/reports` | Blocages et signalements |
+| GET / POST | `/moderation/reports`, `/moderation/reports/:id/resolve`, `/moderation/users/:id/suspend`, `/unsuspend` | Modération (rôle modérateur) |
 | POST / GET | `/realtime/ticket`, `/realtime` | Ticket (60 s) puis WebSocket |
 
 Erreurs : `{"error": "message", "code": "code_stable"}` avec le statut HTTP approprié.

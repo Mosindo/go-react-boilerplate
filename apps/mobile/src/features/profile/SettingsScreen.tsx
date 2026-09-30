@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<AppStackParamList, "Settings">;
 
 export default function SettingsScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { signOut, forget } = useSession();
+  const { signOut, forget, isModerator } = useSession();
   const { data: profile, isLoading, error, refetch } = useProfile();
   const update = useProfileMutation(profileApi.update);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
@@ -56,6 +56,15 @@ export default function SettingsScreen({ navigation }: Props) {
         />
         <ListRow icon="ban-outline" onPress={() => navigation.navigate("BlockedUsers")} title="Personnes bloquées" />
       </Card>
+
+      {isModerator ? (
+        <>
+          <Text variant="heading">Modération</Text>
+          <Card>
+            <ListRow icon="flag-outline" onPress={() => navigation.navigate("Moderation")} subtitle="Signalements en attente" testID="settings-moderation" title="File de modération" />
+          </Card>
+        </>
+      ) : null}
 
       <Text variant="heading">Compte</Text>
       <Card>

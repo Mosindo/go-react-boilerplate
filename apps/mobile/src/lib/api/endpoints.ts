@@ -9,6 +9,7 @@ import type {
   Gender,
   Interest,
   Message,
+  ModerationReport,
   MessagesPage,
   NotificationsPage,
   OwnProfile,
@@ -119,4 +120,14 @@ export const safetyApi = {
 // Realtime ------------------------------------------------------------------
 export const realtimeApi = {
   ticket: () => api<{ ticket: string }>("/realtime/ticket", { method: "POST" }).then((r) => r.ticket)
+};
+
+// Moderation (moderators only) --------------------------------------------
+export const moderationApi = {
+  reports: (offset = 0) =>
+    api<{ reports: ModerationReport[]; nextOffset?: number }>(`/moderation/reports?status=open&limit=20&offset=${offset}`),
+  resolve: (reportId: string, status: "reviewed" | "dismissed") =>
+    api<void>(`/moderation/reports/${reportId}/resolve`, { method: "POST", body: { status } }),
+  suspend: (userId: string) => api<void>(`/moderation/users/${userId}/suspend`, { method: "POST" }),
+  unsuspend: (userId: string) => api<void>(`/moderation/users/${userId}/unsuspend`, { method: "POST" })
 };

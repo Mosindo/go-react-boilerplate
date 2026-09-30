@@ -3,7 +3,7 @@ import { DarkTheme, DefaultTheme, NavigationContainer, type Theme as NavTheme } 
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { ErrorState, LoadingState } from "../design/components";
+import { ErrorState, IconButton, LoadingState } from "../design/components";
 import { useTheme } from "../design/ThemeProvider";
 import ForgotPasswordScreen from "../features/auth/ForgotPasswordScreen";
 import SignInScreen from "../features/auth/SignInScreen";
@@ -22,6 +22,7 @@ import BlockedUsersScreen from "../features/profile/BlockedUsersScreen";
 import EditProfileScreen from "../features/profile/EditProfileScreen";
 import { useProfile } from "../features/profile/hooks";
 import MyProfileScreen from "../features/profile/MyProfileScreen";
+import ModerationScreen from "../features/moderation/ModerationScreen";
 import PreferencesScreen from "../features/profile/PreferencesScreen";
 import SettingsScreen from "../features/profile/SettingsScreen";
 import { errorMessage } from "../lib/api/client";
@@ -82,8 +83,27 @@ function MainTabs() {
   );
 }
 
+/** Staff accounts without a dating profile only get the moderation space. */
+function ModeratorOnlyNavigator() {
+  const { colors } = useTheme();
+  const { signOut } = useSession();
+  return (
+    <AppStack.Navigator screenOptions={{ headerShadowVisible: false, headerTintColor: colors.text, headerStyle: { backgroundColor: colors.background } }}>
+      <AppStack.Screen
+        component={ModerationScreen}
+        name="Moderation"
+        options={{
+          title: "Modération",
+          headerRight: () => <IconButton icon="log-out-outline" label="Se déconnecter" onPress={() => void signOut()} testID="moderator-signout" />
+        }}
+      />
+    </AppStack.Navigator>
+  );
+}
+
 function SignedInNavigator({ userId }: { userId: string }) {
   const { colors } = useTheme();
+  const { isModerator } = useSession();
   const { data: profile, isLoading, error, refetch } = useProfile();
   // null until the profile is loaded; then fixed for this session so the
   // optional onboarding steps are not skipped once the profile is complete.
@@ -97,6 +117,10 @@ function SignedInNavigator({ userId }: { userId: string }) {
 
   if (isLoading || (profile && onboarding === null)) return <LoadingState />;
   if (error || !profile) return <ErrorState message={errorMessage(error)} onRetry={() => void refetch()} />;
+
+  if (isModerator && !profile.completeness.complete) {
+    return <ModeratorOnlyNavigator />;
+  }
 
   if (onboarding || !profile.completeness.complete) {
     return (
@@ -124,6 +148,7 @@ function SignedInNavigator({ userId }: { userId: string }) {
         <AppStack.Screen component={PreferencesScreen} name="Preferences" options={{ title: "Préférences" }} />
         <AppStack.Screen component={SettingsScreen} name="Settings" options={{ title: "Confidentialité et compte" }} />
         <AppStack.Screen component={BlockedUsersScreen} name="BlockedUsers" options={{ title: "Personnes bloquées" }} />
+        <AppStack.Screen component={ModerationScreen} name="Moderation" options={{ title: "Modération" }} />
       </AppStack.Navigator>
     </RealtimeProvider>
   );

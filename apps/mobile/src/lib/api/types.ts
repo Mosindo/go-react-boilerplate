@@ -54,7 +54,7 @@ export type ProfileSummary = {
   photo: Photo | null;
 };
 
-export type AuthUser = { id: string; email: string; createdAt: string };
+export type AuthUser = { id: string; email: string; role: "member" | "moderator"; createdAt: string };
 
 export type AuthSession = {
   accessToken: string;
@@ -111,3 +111,16 @@ export type NotificationsPage = {
 export type ReportReason = "fake_profile" | "inappropriate_content" | "harassment" | "spam" | "underage" | "other";
 
 export type BlockedUser = { user: ProfileSummary; blockedAt: string };
+
+export type ModerationReport = {
+  id: string;
+  reason: ReportReason;
+  details: string;
+  status: "open" | "reviewed" | "dismissed";
+  createdAt: string;
+  reviewedAt?: string;
+  reportedUser: ProfileSummary | null;
+  reportedProfile?: PublicProfile;
+  openReportsOnUser: number;
+  reportedUserSuspended: boolean;
+};

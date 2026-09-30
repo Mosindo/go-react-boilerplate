@@ -20,6 +20,7 @@ Core modules (`services/api/internal/features`):
 - chat (match-bound conversations, read state, local hide)
 - notifications
 - safety (blocks, reports)
+- moderation (moderator role via `cmd/admin` only, report queue, suspension)
 
 ---
 
@@ -67,6 +68,7 @@ Target structure:
   - `chat/`
   - `notifications/`
   - `safety/`
+  - `moderation/`
 
 Each feature should contain:
 - `handler.go`
@@ -156,6 +158,7 @@ Integration tests to keep healthy:
 - Chat (`/conversations`, `/conversations/:id/messages`) including permissions
 - Notifications (`/notifications`)
 - Safety (`/blocks`, `/reports`)
+- Moderation (`/moderation/*`)
 - Realtime (`/realtime/ticket`, `/realtime`)
 
 Integration tests run when `DATABASE_URL_TEST` is set (`go test ./...`).

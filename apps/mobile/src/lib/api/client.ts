@@ -35,6 +35,8 @@ const MESSAGES: Record<string, string> = {
   unsupported_media_type: "Format non pris en charge (JPEG, PNG ou WebP uniquement).",
   image_too_large: "Image trop lourde (10 Mo maximum).",
   invalid_password: "Mot de passe incorrect.",
+  account_suspended: "Ce compte a été suspendu suite à des signalements.",
+  forbidden: "Action non autorisée.",
   birthdate_locked: "La date de naissance ne peut plus être modifiée.",
   not_found: "Élément introuvable ou plus disponible.",
   internal_error: "Une erreur est survenue. Réessayez dans un instant."

@@ -6,7 +6,8 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api \
- && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/seed ./cmd/seed
+ && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/seed ./cmd/seed \
+ && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/admin ./cmd/admin
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates \
@@ -14,7 +15,7 @@ RUN apk add --no-cache ca-certificates \
  && mkdir -p /app/data/uploads && chown -R app:app /app/data
 WORKDIR /app
 
-COPY --from=builder /out/api /out/seed ./
+COPY --from=builder /out/api /out/seed /out/admin ./
 
 ENV UPLOAD_DIR=/app/data/uploads \
     APP_ENV=production

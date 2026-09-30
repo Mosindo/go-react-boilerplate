@@ -22,4 +22,5 @@ export type AppStackParamList = {
   Preferences: undefined;
   Settings: undefined;
   BlockedUsers: undefined;
+  Moderation: undefined;
 };
