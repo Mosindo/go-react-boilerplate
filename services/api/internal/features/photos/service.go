@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"runtime"
 	"strings"
 
 	apperr "example.com/api/internal/platform/errors"
@@ -24,10 +25,22 @@ type Service struct {
 	repo   Repository
 	store  storage.Store
 	signer *media.Signer
+	// processing bounds concurrent image decodes (CPU and memory heavy).
+	processing chan struct{}
 }
 
 func NewService(repo Repository, store storage.Store, signer *media.Signer) *Service {
-	return &Service{repo: repo, store: store, signer: signer}
+	return &Service{repo: repo, store: store, signer: signer, processing: make(chan struct{}, runtime.NumCPU())}
+}
+
+func (s *Service) process(ctx context.Context, raw []byte) (ProcessedImage, error) {
+	select {
+	case s.processing <- struct{}{}:
+	case <-ctx.Done():
+		return ProcessedImage{}, ctx.Err()
+	}
+	defer func() { <-s.processing }()
+	return ProcessImage(raw)
 }
 
 func (s *Service) List(ctx context.Context, userID string) ([]Photo, error) {
@@ -43,7 +56,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]Photo, error) {
 }
 
 func (s *Service) Upload(ctx context.Context, userID string, raw []byte) ([]Photo, error) {
-	img, err := ProcessImage(raw)
+	img, err := s.process(ctx, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +78,7 @@ func (s *Service) Upload(ctx context.Context, userID string, raw []byte) ([]Phot
 }
 
 func (s *Service) Replace(ctx context.Context, userID, photoID string, raw []byte) ([]Photo, error) {
-	img, err := ProcessImage(raw)
+	img, err := s.process(ctx, raw)
 	if err != nil {
 		return nil, err
 	}

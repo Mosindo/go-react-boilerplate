@@ -35,6 +35,7 @@ const (
 	refreshTokenTTL      = 30 * 24 * time.Hour
 	resetCodeTTL         = 30 * time.Minute
 	maxResetCodeAttempts = 5
+	resetResendInterval  = time.Minute
 )
 
 // AccountCleaner releases resources owned by a user that the database cascade
@@ -178,6 +179,15 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 		if errors.Is(err, ErrRepositoryNotFound) {
 			return nil
 		}
+		return err
+	}
+
+	// At most one email per minute per account, whatever the caller's IP.
+	existing, err := s.repo.GetResetCode(ctx, stored.User.ID)
+	if err == nil && time.Since(existing.CreatedAt) < resetResendInterval {
+		return nil
+	}
+	if err != nil && !errors.Is(err, ErrRepositoryNotFound) {
 		return err
 	}
 

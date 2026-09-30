@@ -187,3 +187,20 @@ func TestDeleteAccountRequiresPasswordAndCleansUp(t *testing.T) {
 		t.Fatalf("expected user not found, got %v", err)
 	}
 }
+
+func TestForgotPasswordIsThrottledPerAccount(t *testing.T) {
+	svc, mail, _, repo := newTestService(t)
+	ctx := context.Background()
+	email := testutil.Email(t, repo.dbPool, "throttle")
+	if _, _, err := svc.Register(ctx, email, "Password123", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := svc.ForgotPassword(ctx, email); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(mail.Sent) != 1 {
+		t.Fatalf("expected a single email within the resend interval, got %d", len(mail.Sent))
+	}
+}

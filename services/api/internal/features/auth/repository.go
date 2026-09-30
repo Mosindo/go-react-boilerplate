@@ -27,6 +27,7 @@ type StoredResetCode struct {
 	CodeHash  string
 	Attempts  int
 	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
 type Repository interface {
@@ -208,10 +209,10 @@ func (r *PGRepository) UpsertResetCode(ctx context.Context, userID, codeHash str
 func (r *PGRepository) GetResetCode(ctx context.Context, userID string) (StoredResetCode, error) {
 	var code StoredResetCode
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT user_id, code_hash, attempts, expires_at
+		SELECT user_id, code_hash, attempts, expires_at, created_at
 		FROM password_reset_codes
 		WHERE user_id = $1
-	`, userID).Scan(&code.UserID, &code.CodeHash, &code.Attempts, &code.ExpiresAt)
+	`, userID).Scan(&code.UserID, &code.CodeHash, &code.Attempts, &code.ExpiresAt, &code.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredResetCode{}, ErrRepositoryNotFound
