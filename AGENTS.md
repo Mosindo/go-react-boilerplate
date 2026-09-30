@@ -1,30 +1,25 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Lueur`, a free dating application (Go API + Expo app), built from the former `go-react-saas` boilerplate at the founder's explicit request.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Lueur is a dating app that must stay 100 % free: no subscription, paywall,
+paid boost, artificial like limit or mandatory ads. Rate limits are anti-abuse
+only. Product decisions are recorded in `docs/DECISIONS.md`.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Core modules (`services/api/internal/features`):
+- auth (accounts, sessions, password reset, account deletion)
+- profiles (profile, preferences, interests, coarse location, privacy)
+- photos (secure upload/processing, signed media URLs)
+- discovery (candidate query + pluggable Scorer)
+- matching (swipes, matches, unmatch)
+- chat (match-bound conversations, read state, local hide)
 - notifications
-- files
+- safety (blocks, reports)
 
 ---
 
@@ -65,12 +60,13 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -117,6 +113,7 @@ Secrets:
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - see `.env.example` for the optional ones (`APP_ENV`, `UPLOAD_DIR`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*`)
 
 ---
 
@@ -130,12 +127,13 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
+- `swipes (swiper_id, target_id)` and `swipes (target_id, action, created_at)`
+- `matches (user_low_id, user_high_id)`
+- `conversation_participants (conversation_id, user_id)` and `(user_id, conversation_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `blocks (blocker_id, blocked_id)` and `(blocked_id, blocker_id)`
 
 ---
 
@@ -146,17 +144,21 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npx eslint .` and `npx jest` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/register`, `/auth/login`, `/auth/refresh`, `/me`, password reset, account deletion)
+- Profile and photos (`/profile`, `/profile/photos`)
+- Discovery and matching (`/discovery`, `/swipes`, `/matches/:id`)
+- Chat (`/conversations`, `/conversations/:id/messages`) including permissions
 - Notifications (`/notifications`)
+- Safety (`/blocks`, `/reports`)
+- Realtime (`/realtime/ticket`, `/realtime`)
+
+Integration tests run when `DATABASE_URL_TEST` is set (`go test ./...`).
 
 ---
 
@@ -177,11 +179,12 @@ Mandatory rules to avoid recurring environment issues:
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+  - onboarding (profile + photo)
+  - discovery loads
+  - like -> match
+  - chat send/receive in real time
   - notifications read flow
+  (automated by `apps/mobile/e2e/web` with Playwright)
 
 ---
 
