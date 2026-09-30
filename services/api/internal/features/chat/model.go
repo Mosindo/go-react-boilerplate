@@ -49,6 +49,13 @@ type ReadEvent struct {
 	LastReadAt     time.Time `json:"lastReadAt"`
 }
 
+// participantState is the caller's membership check result.
+type participantState struct {
+	OtherUserID     string
+	HiddenAt        *time.Time
+	OtherLastReadAt *time.Time
+}
+
 type conversationRow struct {
 	ID          string
 	MatchID     string

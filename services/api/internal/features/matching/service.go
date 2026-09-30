@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 
 	"example.com/api/internal/features/notifications"
 	"example.com/api/internal/features/profiles"
@@ -37,6 +38,8 @@ func NewService(repo Repository, profiles SummaryProvider, notifier notification
 // Swipe records a like or pass. A like answering an existing like creates a
 // match and its conversation atomically, then notifies both members.
 func (s *Service) Swipe(ctx context.Context, swiperID, targetID, action string) (SwipeResponse, error) {
+	// Canonical form: the self check and the pair lock key compare strings.
+	targetID = strings.ToLower(targetID)
 	if swiperID == targetID {
 		return SwipeResponse{}, ErrCannotSwipeSelf
 	}

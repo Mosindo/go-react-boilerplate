@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 
 	"example.com/api/internal/features/profiles"
 	apperr "example.com/api/internal/platform/errors"
@@ -30,6 +31,7 @@ func NewService(repo Repository, profiles SummaryProvider, publisher realtime.Pu
 }
 
 func (s *Service) Block(ctx context.Context, blockerID, blockedID string) error {
+	blockedID = strings.ToLower(blockedID)
 	if blockerID == blockedID {
 		return ErrSelfAction
 	}
@@ -77,6 +79,7 @@ func (s *Service) ListBlocked(ctx context.Context, blockerID string) ([]BlockedU
 
 // Report files a moderation report and, by default, blocks the person.
 func (s *Service) Report(ctx context.Context, reporterID string, req ReportRequest) error {
+	req.UserID = strings.ToLower(req.UserID)
 	if reporterID == req.UserID {
 		return ErrSelfAction
 	}

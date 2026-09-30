@@ -87,8 +87,10 @@ func (r *PGRepository) Replace(ctx context.Context, userID, photoID, storageKey 
 	if err != nil {
 		return "", err
 	}
+	// A new id gives the replaced photo a new signed URL, so clients never
+	// keep showing the previous image from their (immutable) cache.
 	if _, err := tx.Exec(ctx, `
-		UPDATE photos SET storage_key = $3, width = $4, height = $5, size_bytes = $6, created_at = NOW()
+		UPDATE photos SET id = gen_random_uuid(), storage_key = $3, width = $4, height = $5, size_bytes = $6, created_at = NOW()
 		WHERE id = $1 AND user_id = $2
 	`, photoID, userID, storageKey, width, height, size); err != nil {
 		return "", err

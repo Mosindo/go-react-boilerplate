@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { authApi } from "../api/endpoints";
-import { onSessionExpired } from "../api/client";
+import { ApiError, onSessionExpired } from "../api/client";
 import { unregisterPush } from "../push/push";
 import { session } from "../api/session";
 import type { AuthSession } from "../api/types";
@@ -59,8 +59,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           setIsModerator(me.role === "moderator");
           setStatus("signedIn");
         }
-      } catch {
-        if (active) await reset();
+      } catch (error) {
+        if (!active) return;
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          // The server rejected the session: forget it.
+          await reset();
+        } else {
+          // Offline or server unavailable: show sign-in but keep the stored
+          // session so the next launch can restore it.
+          setStatus("signedOut");
+        }
       }
     })();
     return () => {

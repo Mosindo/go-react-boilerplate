@@ -15,9 +15,8 @@ var ErrRepositoryNotParticipant = errors.New("not a participant")
 type Repository interface {
 	ListConversations(ctx context.Context, userID string, before *cursor, limit int) ([]conversationRow, error)
 	GetConversation(ctx context.Context, userID, conversationID string) (conversationRow, error)
-	Participants(ctx context.Context, userID, conversationID string) (otherUserID string, hiddenAt *time.Time, err error)
+	Participants(ctx context.Context, userID, conversationID string) (participantState, error)
 	ListMessages(ctx context.Context, conversationID string, after *time.Time, before *cursor, limit int) ([]Message, error)
-	OtherLastReadAt(ctx context.Context, userID, conversationID string) (*time.Time, error)
 	CreateMessage(ctx context.Context, conversationID, senderID, body string) (Message, error)
 	MarkRead(ctx context.Context, userID, conversationID string) (*time.Time, error)
 	Hide(ctx context.Context, userID, conversationID string) error
@@ -105,21 +104,21 @@ func (r *PGRepository) GetConversation(ctx context.Context, userID, conversation
 }
 
 // Participants verifies membership (and absence of blocks) and returns the
-// other participant and the caller's local-deletion watermark.
-func (r *PGRepository) Participants(ctx context.Context, userID, conversationID string) (string, *time.Time, error) {
-	var otherID string
-	var hiddenAt *time.Time
+// other participant, the caller's local-deletion watermark and the other
+// participant's read watermark.
+func (r *PGRepository) Participants(ctx context.Context, userID, conversationID string) (participantState, error) {
+	var state participantState
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT other.user_id, me.hidden_at
+		SELECT other.user_id, me.hidden_at, other.last_read_at
 		FROM conversation_participants me
 		JOIN conversation_participants other ON other.conversation_id = me.conversation_id AND other.user_id <> me.user_id
 		WHERE me.conversation_id = $2 AND me.user_id = $1
 		  AND `+profiles.NotBlockedSQL("me.user_id", "other.user_id"),
-		userID, conversationID).Scan(&otherID, &hiddenAt)
+		userID, conversationID).Scan(&state.OtherUserID, &state.HiddenAt, &state.OtherLastReadAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil, ErrRepositoryNotParticipant
+		return participantState{}, ErrRepositoryNotParticipant
 	}
-	return otherID, hiddenAt, err
+	return state, err
 }
 
 func (r *PGRepository) ListMessages(ctx context.Context, conversationID string, after *time.Time, before *cursor, limit int) ([]Message, error) {
@@ -148,18 +147,6 @@ func (r *PGRepository) ListMessages(ctx context.Context, conversationID string, 
 		items = append(items, m)
 	}
 	return items, rows.Err()
-}
-
-func (r *PGRepository) OtherLastReadAt(ctx context.Context, userID, conversationID string) (*time.Time, error) {
-	var at *time.Time
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT last_read_at FROM conversation_participants
-		WHERE conversation_id = $2 AND user_id <> $1
-	`, userID, conversationID).Scan(&at)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	return at, err
 }
 
 func (r *PGRepository) CreateMessage(ctx context.Context, conversationID, senderID, body string) (Message, error) {

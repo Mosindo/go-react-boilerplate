@@ -24,6 +24,7 @@ export class RealtimeClient {
   private retry = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
+  private connecting = false;
   private appStateSub: { remove: () => void } | null = null;
   connected = false;
 
@@ -40,11 +41,10 @@ export class RealtimeClient {
     this.running = false;
     this.appStateSub?.remove();
     this.appStateSub = null;
-    if (this.timer) {
-      clearTimeout(this.timer);
-    }
-    this.socket?.close();
+    this.clearTimer();
+    const socket = this.socket;
     this.socket = null;
+    socket?.close();
     this.setConnected(false);
   }
 
@@ -77,21 +77,27 @@ export class RealtimeClient {
   }
 
   private async connect(): Promise<void> {
-    if (!this.running || this.socket) {
+    // One attempt at a time: app-state changes, reconnect timers and
+    // stop/start cycles must never open parallel sockets.
+    if (!this.running || this.socket || this.connecting) {
       return;
     }
+    this.clearTimer();
+    this.connecting = true;
     try {
       const ticket = await realtimeApi.ticket();
-      if (!this.running) {
+      if (!this.running || this.socket) {
         return;
       }
       const socket = new WebSocket(websocketUrl(`/realtime?ticket=${encodeURIComponent(ticket)}`));
       this.socket = socket;
       socket.onopen = () => {
+        if (this.socket !== socket) return;
         this.retry = 0;
         this.setConnected(true);
       };
       socket.onmessage = (message) => {
+        if (this.socket !== socket) return;
         try {
           const event = JSON.parse(String(message.data)) as RealtimeEvent;
           this.listeners.forEach((listener) => listener(event));
@@ -100,6 +106,8 @@ export class RealtimeClient {
         }
       };
       socket.onclose = () => {
+        // A socket replaced or dropped by stop() must not touch current state.
+        if (this.socket !== socket) return;
         this.socket = null;
         this.setConnected(false);
         this.scheduleReconnect();
@@ -107,6 +115,15 @@ export class RealtimeClient {
       socket.onerror = () => socket.close();
     } catch {
       this.scheduleReconnect();
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private clearTimer() {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
   }
 
@@ -114,9 +131,11 @@ export class RealtimeClient {
     if (!this.running || AppState.currentState === "background") {
       return;
     }
+    this.clearTimer();
     const delay = Math.min(30_000, 1000 * 2 ** this.retry) + Math.random() * 500;
     this.retry += 1;
     this.timer = setTimeout(() => {
+      this.timer = null;
       void this.connect();
     }, delay);
   }

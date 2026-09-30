@@ -41,7 +41,7 @@ type Repository interface {
 	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
 	UpsertResetCode(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
 	GetResetCode(ctx context.Context, userID string) (StoredResetCode, error)
-	IncrementResetAttempts(ctx context.Context, userID string) error
+	ConsumeResetAttempt(ctx context.Context, userID string, maxAttempts int) (codeHash string, err error)
 	ResetPassword(ctx context.Context, userID, passwordHash string) error
 	DeleteUser(ctx context.Context, userID string) error
 }
@@ -224,12 +224,24 @@ func (r *PGRepository) GetResetCode(ctx context.Context, userID string) (StoredR
 	return code, nil
 }
 
-func (r *PGRepository) IncrementResetAttempts(ctx context.Context, userID string) error {
-	_, err := r.dbPool.Exec(ctx, `UPDATE password_reset_codes SET attempts = attempts + 1 WHERE user_id = $1`, userID)
-	return err
+// ConsumeResetAttempt atomically counts one verification attempt and returns
+// the code hash, or ErrRepositoryNotFound when there is no usable code (none,
+// expired, or attempts exhausted).
+func (r *PGRepository) ConsumeResetAttempt(ctx context.Context, userID string, maxAttempts int) (string, error) {
+	var codeHash string
+	err := r.dbPool.QueryRow(ctx, `
+		UPDATE password_reset_codes SET attempts = attempts + 1
+		WHERE user_id = $1 AND attempts < $2 AND expires_at > NOW()
+		RETURNING code_hash
+	`, userID, maxAttempts).Scan(&codeHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositoryNotFound
+	}
+	return codeHash, err
 }
 
-// ResetPassword updates the hash, consumes the code and revokes every session.
+// ResetPassword updates the hash, consumes the code, revokes every session
+// and forgets the account's push tokens.
 func (r *PGRepository) ResetPassword(ctx context.Context, userID, passwordHash string) error {
 	tx, err := r.dbPool.Begin(ctx)
 	if err != nil {
@@ -244,6 +256,10 @@ func (r *PGRepository) ResetPassword(ctx context.Context, userID, passwordHash s
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
+		return err
+	}
+	// Every device is signed out: stop pushing this account's activity to them.
+	if _, err := tx.Exec(ctx, `DELETE FROM push_tokens WHERE user_id = $1`, userID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

@@ -225,20 +225,16 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		}
 		return err
 	}
-	resetCode, err := s.repo.GetResetCode(ctx, stored.User.ID)
+	// The attempt is counted atomically before comparing, so concurrent
+	// guesses cannot exceed maxResetCodeAttempts.
+	codeHash, err := s.repo.ConsumeResetAttempt(ctx, stored.User.ID, maxResetCodeAttempts)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
 			return ErrInvalidResetCode
 		}
 		return err
 	}
-	if resetCode.Attempts >= maxResetCodeAttempts || time.Now().After(resetCode.ExpiresAt) {
-		return ErrInvalidResetCode
-	}
-	if subtle.ConstantTimeCompare([]byte(resetCode.CodeHash), []byte(hashSecret(strings.TrimSpace(code)))) != 1 {
-		if err := s.repo.IncrementResetAttempts(ctx, stored.User.ID); err != nil {
-			return err
-		}
+	if subtle.ConstantTimeCompare([]byte(codeHash), []byte(hashSecret(strings.TrimSpace(code)))) != 1 {
 		return ErrInvalidResetCode
 	}
 

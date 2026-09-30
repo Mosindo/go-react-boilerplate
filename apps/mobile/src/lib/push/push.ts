@@ -5,6 +5,7 @@ import * as Notifications from "expo-notifications";
 import { notificationsApi } from "../api/endpoints";
 
 let registeredToken: string | null = null;
+const handledResponses = new Set<string>();
 
 // In the foreground, realtime updates and in-app badges already inform the
 // member, so system banners are only shown when the app is in background.
@@ -65,7 +66,13 @@ export async function unregisterPush(): Promise<void> {
 export function onPushOpened(onOpen: (conversationId: string) => void): () => void {
   if (Platform.OS === "web") return () => undefined;
   const open = (response: Notifications.NotificationResponse | null) => {
-    const conversationId = response?.notification.request.content.data?.conversationId;
+    if (!response) return;
+    // getLastNotificationResponseAsync returns the same tap on every mount
+    // (e.g. after signing in again): act on each tap only once.
+    const id = response.notification.request.identifier;
+    if (handledResponses.has(id)) return;
+    handledResponses.add(id);
+    const conversationId = response.notification.request.content.data?.conversationId;
     if (typeof conversationId === "string") onOpen(conversationId);
   };
   void Notifications.getLastNotificationResponseAsync().then(open);

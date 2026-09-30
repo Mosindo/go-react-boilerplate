@@ -78,8 +78,8 @@ func (r *PGRepository) ResolveReport(ctx context.Context, reportID, moderatorID,
 	return nil
 }
 
-// SetSuspended suspends (revoking every session and closing the member's open
-// reports as reviewed) or reinstates a member. Moderators cannot be suspended
+// SetSuspended suspends (revoking every session and push token and closing
+// the member's open reports as reviewed) or reinstates a member. Moderators cannot be suspended
 // through the API.
 func (r *PGRepository) SetSuspended(ctx context.Context, userID, moderatorID string, suspended bool) error {
 	tx, err := r.dbPool.Begin(ctx)
@@ -105,6 +105,9 @@ func (r *PGRepository) SetSuspended(ctx context.Context, userID, moderatorID str
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM push_tokens WHERE user_id = $1`, userID); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `

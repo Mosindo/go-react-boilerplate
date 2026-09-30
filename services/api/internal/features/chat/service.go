@@ -101,26 +101,25 @@ func (s *Service) ListMessages(ctx context.Context, userID, conversationID, rawC
 	if !ok {
 		return MessagesResponse{}, ErrInvalidCursor
 	}
-	_, hiddenAt, err := s.repo.Participants(ctx, userID, conversationID)
+	state, err := s.repo.Participants(ctx, userID, conversationID)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotParticipant) {
 			return MessagesResponse{}, ErrConversationNotFound
 		}
 		return MessagesResponse{}, err
 	}
-	messages, err := s.repo.ListMessages(ctx, conversationID, hiddenAt, before, limit+1)
+	messages, err := s.repo.ListMessages(ctx, conversationID, state.HiddenAt, before, limit+1)
 	if err != nil {
 		return MessagesResponse{}, err
 	}
-	resp := MessagesResponse{Messages: messages}
+	resp := MessagesResponse{Messages: messages, OtherLastReadAt: state.OtherLastReadAt}
 	if len(messages) > limit {
 		resp.Messages = messages[:limit]
 		last := resp.Messages[limit-1]
 		next := encodeCursor(last.CreatedAt, last.ID)
 		resp.NextCursor = &next
 	}
-	resp.OtherLastReadAt, err = s.repo.OtherLastReadAt(ctx, userID, conversationID)
-	return resp, err
+	return resp, nil
 }
 
 func (s *Service) SendMessage(ctx context.Context, userID, conversationID, rawBody string) (Message, error) {
@@ -131,13 +130,14 @@ func (s *Service) SendMessage(ctx context.Context, userID, conversationID, rawBo
 	if body == "" {
 		return Message{}, ErrEmptyMessage
 	}
-	otherID, _, err := s.repo.Participants(ctx, userID, conversationID)
+	state, err := s.repo.Participants(ctx, userID, conversationID)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotParticipant) {
 			return Message{}, ErrConversationNotFound
 		}
 		return Message{}, err
 	}
+	otherID := state.OtherUserID
 
 	message, err := s.repo.CreateMessage(ctx, conversationID, userID, body)
 	if err != nil {
@@ -160,13 +160,14 @@ func (s *Service) SendMessage(ctx context.Context, userID, conversationID, rawBo
 }
 
 func (s *Service) MarkRead(ctx context.Context, userID, conversationID string) error {
-	otherID, _, err := s.repo.Participants(ctx, userID, conversationID)
+	state, err := s.repo.Participants(ctx, userID, conversationID)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotParticipant) {
 			return ErrConversationNotFound
 		}
 		return err
 	}
+	otherID := state.OtherUserID
 	at, err := s.repo.MarkRead(ctx, userID, conversationID)
 	if err != nil {
 		return err
@@ -182,7 +183,7 @@ func (s *Service) MarkRead(ctx context.Context, userID, conversationID string) e
 // Hide deletes the conversation locally: it disappears from the caller's list
 // until a new message arrives, and older messages stay hidden for them only.
 func (s *Service) Hide(ctx context.Context, userID, conversationID string) error {
-	if _, _, err := s.repo.Participants(ctx, userID, conversationID); err != nil {
+	if _, err := s.repo.Participants(ctx, userID, conversationID); err != nil {
 		if errors.Is(err, ErrRepositoryNotParticipant) {
 			return ErrConversationNotFound
 		}
