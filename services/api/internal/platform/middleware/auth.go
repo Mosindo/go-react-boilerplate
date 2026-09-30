@@ -1,64 +1,49 @@
 package middleware
 
 import (
-	"errors"
+	"context"
 	"net/http"
 	"strings"
 
+	"example.com/api/internal/platform/authtoken"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker reports whether a session is still active (not revoked).
+// It lets logout, password reset and account deletion take effect before the
+// access token expires.
+type SessionChecker interface {
+	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+func RequireUser(tokens *authtoken.Manager, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token", "code": "unauthorized"})
 			return
 		}
 
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, errors.New("unexpected signing method")
+		claims, err := tokens.Parse(tokenString, authtoken.TypeAccess)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
+			return
+		}
+
+		if sessions != nil {
+			active, err := sessions.SessionActive(c.Request.Context(), claims.SessionID, claims.UserID)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "could not verify session", "code": "unavailable"})
+				return
 			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method type")
+			if !active {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "session expired", "code": "unauthorized"})
+				return
 			}
-			return secret, nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
 		}
 
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		userID, ok := stringClaim(claims, "uid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		sessionID, ok := stringClaim(claims, "sid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
-		c.Set("sessionID", sessionID)
+		c.Set("userID", claims.UserID)
+		c.Set("sessionID", claims.SessionID)
 		c.Next()
 	}
 }
@@ -69,12 +54,4 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
-}
-
-func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
-	value, ok := claims[key].(string)
-	if !ok || strings.TrimSpace(value) == "" {
-		return "", false
-	}
-	return value, true
 }

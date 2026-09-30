@@ -1,26 +1,21 @@
 package auth
 
-import (
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-)
+import "time"
 
 type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string
+	Email     string
+	CreatedAt time.Time
 }
 
 type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,min=8,max=128"`
+	Password string `json:"password" binding:"required,min=8,max=72"`
 }
 
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,max=128"`
+	Password string `json:"password" binding:"required,max=72"`
 }
 
 type RefreshRequest struct {
@@ -31,15 +26,27 @@ type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email,max=254"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email,max=254"`
+	Code        string `json:"code" binding:"required,len=6,numeric"`
+	NewPassword string `json:"newPassword" binding:"required,min=8,max=72"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=72"`
+}
+
 type MeResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type AuthResponse struct {
-	Token        string     `json:"token"`
 	AccessToken  string     `json:"accessToken"`
 	RefreshToken string     `json:"refreshToken"`
 	User         MeResponse `json:"user"`
@@ -50,9 +57,6 @@ type Tokens struct {
 	RefreshToken string
 }
 
-type AccessTokenClaims struct {
-	UserID         string `json:"uid"`
-	OrganizationID string `json:"oid"`
-	SessionID      string `json:"sid"`
-	jwt.RegisteredClaims
+func toMeResponse(user User) MeResponse {
+	return MeResponse{ID: user.ID, Email: user.Email, CreatedAt: user.CreatedAt}
 }

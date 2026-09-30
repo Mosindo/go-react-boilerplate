@@ -3,31 +3,20 @@ package notifications
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var (
-	ErrNotificationNotFound = errors.New("notification not found")
-)
-
-type StoredNotification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
+var ErrRepositoryNotFound = errors.New("notification not found")
 
 type Repository interface {
-	ListNotifications(ctx context.Context, userID string, limit, offset int) ([]StoredNotification, error)
-	CreateNotification(ctx context.Context, userID, kind, title, body string) (StoredNotification, error)
-	MarkRead(ctx context.Context, userID, notificationID string) (StoredNotification, error)
+	List(ctx context.Context, userID string, limit, offset int) ([]Notification, error)
+	UnreadCount(ctx context.Context, userID string) (int, error)
+	Create(ctx context.Context, userID, kind, title, body string, data []byte, dedupeKey string) (Notification, bool, error)
+	MarkRead(ctx context.Context, userID, notificationID string) (Notification, error)
+	MarkAllRead(ctx context.Context, userID string) error
+	MarkReadByConversation(ctx context.Context, userID, conversationID string) error
 }
 
 type PGRepository struct {
@@ -38,9 +27,19 @@ func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
 	return &PGRepository{dbPool: dbPool}
 }
 
-func (r *PGRepository) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]StoredNotification, error) {
+const notificationColumns = `id, type, title, body, data, is_read, created_at, read_at`
+
+func scanNotification(row pgx.Row) (Notification, error) {
+	var n Notification
+	var data []byte
+	err := row.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &data, &n.IsRead, &n.CreatedAt, &n.ReadAt)
+	n.Data = data
+	return n, err
+}
+
+func (r *PGRepository) List(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
 	rows, err := r.dbPool.Query(ctx, `
-		SELECT id, user_id, type, title, body, is_read, created_at, read_at
+		SELECT `+notificationColumns+`
 		FROM notifications
 		WHERE user_id = $1
 		ORDER BY created_at DESC, id DESC
@@ -51,82 +50,69 @@ func (r *PGRepository) ListNotifications(ctx context.Context, userID string, lim
 	}
 	defer rows.Close()
 
-	notifications := make([]StoredNotification, 0)
+	items := make([]Notification, 0, limit)
 	for rows.Next() {
-		var notification StoredNotification
-		var readAt *time.Time
-		if err := rows.Scan(
-			&notification.ID,
-			&notification.UserID,
-			&notification.Type,
-			&notification.Title,
-			&notification.Body,
-			&notification.IsRead,
-			&notification.CreatedAt,
-			&readAt,
-		); err != nil {
+		n, err := scanNotification(rows)
+		if err != nil {
 			return nil, err
 		}
-		notification.ReadAt = readAt
-		notifications = append(notifications, notification)
+		items = append(items, n)
 	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return notifications, nil
+	return items, rows.Err()
 }
 
-func (r *PGRepository) CreateNotification(ctx context.Context, userID, kind, title, body string) (StoredNotification, error) {
-	var notification StoredNotification
-	var readAt *time.Time
-	err := r.dbPool.QueryRow(ctx, `
-		INSERT INTO notifications (user_id, type, title, body)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, user_id, type, title, body, is_read, created_at, read_at
-	`, userID, kind, title, body).Scan(
-		&notification.ID,
-		&notification.UserID,
-		&notification.Type,
-		&notification.Title,
-		&notification.Body,
-		&notification.IsRead,
-		&notification.CreatedAt,
-		&readAt,
-	)
-	if err != nil {
-		return StoredNotification{}, err
-	}
-	notification.ReadAt = readAt
-	return notification, nil
+func (r *PGRepository) UnreadCount(ctx context.Context, userID string) (int, error) {
+	var count int
+	err := r.dbPool.QueryRow(ctx, `SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE`, userID).Scan(&count)
+	return count, err
 }
 
-func (r *PGRepository) MarkRead(ctx context.Context, userID, notificationID string) (StoredNotification, error) {
-	var notification StoredNotification
-	var readAt *time.Time
-	err := r.dbPool.QueryRow(ctx, `
-		UPDATE notifications
-		SET is_read = TRUE,
-		    read_at = COALESCE(read_at, NOW())
-		WHERE id = $1
-		  AND user_id = $2
-		RETURNING id, user_id, type, title, body, is_read, created_at, read_at
-	`, notificationID, userID).Scan(
-		&notification.ID,
-		&notification.UserID,
-		&notification.Type,
-		&notification.Title,
-		&notification.Body,
-		&notification.IsRead,
-		&notification.CreatedAt,
-		&readAt,
-	)
+// Create inserts a notification. When dedupeKey is set and an unread
+// notification with the same key exists, nothing is inserted (created=false):
+// a burst of messages yields a single "new message" notification.
+func (r *PGRepository) Create(ctx context.Context, userID, kind, title, body string, data []byte, dedupeKey string) (Notification, bool, error) {
+	row := r.dbPool.QueryRow(ctx, `
+		INSERT INTO notifications (user_id, type, title, body, data)
+		SELECT $1, $2, $3, $4, $5
+		WHERE $6 = '' OR NOT EXISTS (
+			SELECT 1 FROM notifications
+			WHERE user_id = $1 AND is_read = FALSE AND data->>'dedupeKey' = $6
+		)
+		RETURNING `+notificationColumns, userID, kind, title, body, data, dedupeKey)
+	n, err := scanNotification(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return StoredNotification{}, ErrNotificationNotFound
+			return Notification{}, false, nil
 		}
-		return StoredNotification{}, err
+		return Notification{}, false, err
 	}
-	notification.ReadAt = readAt
-	return notification, nil
+	return n, true, nil
+}
+
+func (r *PGRepository) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
+	n, err := scanNotification(r.dbPool.QueryRow(ctx, `
+		UPDATE notifications
+		SET is_read = TRUE, read_at = COALESCE(read_at, NOW())
+		WHERE id = $1 AND user_id = $2
+		RETURNING `+notificationColumns, notificationID, userID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Notification{}, ErrRepositoryNotFound
+	}
+	return n, err
+}
+
+func (r *PGRepository) MarkAllRead(ctx context.Context, userID string) error {
+	_, err := r.dbPool.Exec(ctx, `
+		UPDATE notifications SET is_read = TRUE, read_at = NOW()
+		WHERE user_id = $1 AND is_read = FALSE
+	`, userID)
+	return err
+}
+
+func (r *PGRepository) MarkReadByConversation(ctx context.Context, userID, conversationID string) error {
+	_, err := r.dbPool.Exec(ctx, `
+		UPDATE notifications SET is_read = TRUE, read_at = NOW()
+		WHERE user_id = $1 AND is_read = FALSE AND data->>'conversationId' = $2
+	`, userID, conversationID)
+	return err
 }
