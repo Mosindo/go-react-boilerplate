@@ -67,8 +67,8 @@ func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash strin
 	err = tx.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash)
 		VALUES ($1, $2)
-		RETURNING id, email, created_at
-	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.CreatedAt)
+		RETURNING id, email, role, created_at
+	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.Role, &user.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return User{}, ErrRepositoryEmailExists
@@ -100,9 +100,9 @@ func (r *PGRepository) GetUserAuthByID(ctx context.Context, userID string) (Stor
 func (r *PGRepository) getUserAuth(ctx context.Context, where string, arg string) (StoredUserWithPassword, error) {
 	var stored StoredUserWithPassword
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, created_at, password_hash
+		SELECT id, email, role, suspended_at IS NOT NULL, created_at, password_hash
 		FROM users
-		`+where, arg).Scan(&stored.User.ID, &stored.User.Email, &stored.User.CreatedAt, &stored.PasswordHash)
+		`+where, arg).Scan(&stored.User.ID, &stored.User.Email, &stored.User.Role, &stored.User.Suspended, &stored.User.CreatedAt, &stored.PasswordHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUserWithPassword{}, ErrRepositoryNotFound
@@ -182,8 +182,10 @@ func (r *PGRepository) SessionActive(ctx context.Context, sessionID, userID stri
 	var active bool
 	err := r.dbPool.QueryRow(ctx, `
 		SELECT EXISTS (
-			SELECT 1 FROM sessions
-			WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > NOW()
+			SELECT 1 FROM sessions s
+			JOIN users u ON u.id = s.user_id
+			WHERE s.id = $1 AND s.user_id = $2 AND s.revoked_at IS NULL AND s.expires_at > NOW()
+			  AND u.suspended_at IS NULL
 		)
 	`, sessionID, userID).Scan(&active)
 	if err != nil || !active {

@@ -582,3 +582,59 @@ func TestSimultaneousLikesCreateExactlyOneMatch(t *testing.T) {
 		}
 	}
 }
+
+func TestModerationFlow(t *testing.T) {
+	_, register := setupServer(t)
+	pool := testutil.DB(t)
+	mod := register("moderator")
+	reporter := register("reporter")
+	target := register("target")
+	completeProfile(t, reporter, "Rita", "1990-05-05", "woman", []string{"man"}, 48.85, 2.35, []int{1})
+	completeProfile(t, target, "Tony", "1989-06-06", "man", []string{"woman"}, 48.86, 2.34, []int{1})
+
+	// Not a moderator yet.
+	expect(t, mod.do(http.MethodGet, "/moderation/reports", nil), http.StatusForbidden, "member cannot moderate")
+	if _, err := pool.Exec(context.Background(), `UPDATE users SET role = 'moderator' WHERE id = $1`, mod.userID); err != nil {
+		t.Fatal(err)
+	}
+
+	expect(t, reporter.do(http.MethodPost, "/reports", map[string]any{"userId": target.userID, "reason": "harassment", "details": "messages insistants", "block": false}), http.StatusCreated, "report")
+	var list struct {
+		Reports []struct {
+			ID           string `json:"id"`
+			Reason       string `json:"reason"`
+			ReportedUser struct {
+				UserID string `json:"userId"`
+			} `json:"reportedUser"`
+		} `json:"reports"`
+	}
+	r := mod.do(http.MethodGet, "/moderation/reports", nil)
+	expect(t, r, http.StatusOK, "list reports")
+	if strings.Contains(string(r.Body), reporter.userID) || strings.Contains(string(r.Body), reporter.email) {
+		t.Fatal("reporter identity must not be exposed to moderators")
+	}
+	r.json(t, &list)
+	var reportID string
+	for _, rep := range list.Reports {
+		if rep.ReportedUser.UserID == target.userID {
+			reportID = rep.ID
+		}
+	}
+	if reportID == "" {
+		t.Fatalf("report not listed: %s", r.Body)
+	}
+
+	// Suspension: sessions revoked, login refused, hidden from discovery.
+	expect(t, mod.do(http.MethodPost, "/moderation/users/"+mod.userID+"/suspend", nil), http.StatusForbidden, "self suspension")
+	expect(t, mod.do(http.MethodPost, "/moderation/users/"+target.userID+"/suspend", nil), http.StatusNoContent, "suspend")
+	expect(t, target.do(http.MethodGet, "/me", nil), http.StatusUnauthorized, "suspended session revoked")
+	login := (&client{t: t, base: target.base}).do(http.MethodPost, "/auth/login", map[string]string{"email": target.email, "password": "Password123"})
+	expect(t, login, http.StatusForbidden, "suspended login")
+	if findCard(discover(t, reporter), target.userID) != nil {
+		t.Fatal("suspended member must not be discoverable")
+	}
+	expect(t, mod.do(http.MethodPost, "/moderation/reports/"+reportID+"/resolve", map[string]string{"status": "dismissed"}), http.StatusNotFound, "report already closed by suspension")
+
+	expect(t, mod.do(http.MethodPost, "/moderation/users/"+target.userID+"/unsuspend", nil), http.StatusNoContent, "unsuspend")
+	expect(t, (&client{t: t, base: target.base}).do(http.MethodPost, "/auth/login", map[string]string{"email": target.email, "password": "Password123"}), http.StatusOK, "login after unsuspend")
+}

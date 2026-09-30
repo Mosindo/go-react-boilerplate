@@ -11,6 +11,7 @@ import (
 	"example.com/api/internal/features/chat"
 	"example.com/api/internal/features/discovery"
 	"example.com/api/internal/features/matching"
+	"example.com/api/internal/features/moderation"
 	"example.com/api/internal/features/notifications"
 	"example.com/api/internal/features/photos"
 	"example.com/api/internal/features/profiles"
@@ -105,6 +106,7 @@ func NewWithOptions(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, 
 	discoveryService := discovery.NewService(discovery.NewPGRepository(pool), profilesService, discovery.DefaultScorer{})
 	chatService := chat.NewService(chat.NewPGRepository(pool), profilesService, notificationsService, hub)
 	safetyService := safety.NewService(safety.NewPGRepository(pool), profilesService, hub)
+	moderationService := moderation.NewService(moderation.NewPGRepository(pool), profilesService)
 
 	r := gin.New()
 	if len(cfg.TrustedProxies) > 0 {
@@ -144,6 +146,7 @@ func NewWithOptions(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, 
 	chat.RegisterRoutes(r, chat.NewHandler(chatService), requireUser, messageLimit)
 	notifications.RegisterRoutes(r, notifications.NewHandler(notificationsService), requireUser)
 	safety.RegisterRoutes(r, safety.NewHandler(safetyService), requireUser, reportLimit)
+	moderation.RegisterRoutes(r, moderation.NewHandler(moderationService), requireUser)
 	realtime.RegisterRoutes(r, hub, requireUser)
 
 	return &App{Router: r, Hub: hub}, nil

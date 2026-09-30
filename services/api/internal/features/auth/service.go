@@ -29,6 +29,7 @@ var (
 	ErrInvalidResetCode    = apperr.New(http.StatusBadRequest, "invalid_reset_code", "invalid or expired code")
 	ErrWeakPassword        = apperr.Validation("password must contain between 8 and 72 characters, including a letter and a digit")
 	ErrResetUnavailable    = apperr.New(http.StatusServiceUnavailable, "reset_unavailable", "password reset is not configured on this server")
+	ErrAccountSuspended    = apperr.New(http.StatusForbidden, "account_suspended", "this account has been suspended")
 )
 
 const (
@@ -96,6 +97,9 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	if err := bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(password)); err != nil {
 		return Tokens{}, User{}, ErrInvalidCredentials
 	}
+	if stored.User.Suspended {
+		return Tokens{}, User{}, ErrAccountSuspended
+	}
 
 	tokens, err := s.issueSessionTokens(ctx, stored.User.ID, userAgent, ipAddress)
 	if err != nil {
@@ -123,6 +127,9 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 			return Tokens{}, User{}, ErrUserNotFound
 		}
 		return Tokens{}, User{}, err
+	}
+	if stored.User.Suspended {
+		return Tokens{}, User{}, ErrAccountSuspended
 	}
 
 	nextRefresh, err := randomToken()

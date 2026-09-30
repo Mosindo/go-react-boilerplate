@@ -13,10 +13,11 @@ func CompleteSQL(alias string) string {
 		AND EXISTS (SELECT 1 FROM preferences epf WHERE epf.user_id = %[1]s.user_id AND cardinality(epf.interested_in) > 0))`, alias)
 }
 
-// EligibleSQL is true for profiles that may be shown to others: complete and
-// not paused by their owner.
+// EligibleSQL is true for profiles that may be shown to others: complete, not
+// paused by their owner and not suspended by moderation.
 func EligibleSQL(alias string) string {
-	return "(" + alias + ".discoverable AND " + CompleteSQL(alias) + ")"
+	return "(" + alias + ".discoverable AND " + CompleteSQL(alias) +
+		" AND NOT EXISTS (SELECT 1 FROM users esu WHERE esu.id = " + alias + ".user_id AND esu.suspended_at IS NOT NULL))"
 }
 
 // NotBlockedSQL is true when neither user has blocked the other. Arguments
