@@ -18,6 +18,7 @@ import (
 	"example.com/api/internal/platform/authtoken"
 	apperr "example.com/api/internal/platform/errors"
 	"example.com/api/internal/platform/mailer"
+	"example.com/api/internal/platform/realtime"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -47,10 +48,11 @@ type AccountCleaner interface {
 }
 
 type Service struct {
-	repo     Repository
-	tokens   *authtoken.Manager
-	mailer   mailer.Mailer
-	cleaners []AccountCleaner
+	disconnector realtime.Disconnector
+	repo         Repository
+	tokens       *authtoken.Manager
+	mailer       mailer.Mailer
+	cleaners     []AccountCleaner
 	// dummyHash equalizes login timing for unknown emails.
 	dummyHash []byte
 }
@@ -58,6 +60,18 @@ type Service struct {
 func NewService(repo Repository, tokens *authtoken.Manager, mail mailer.Mailer, cleaners ...AccountCleaner) *Service {
 	dummy, _ := bcrypt.GenerateFromPassword([]byte("timing-equalizer-password"), bcrypt.DefaultCost)
 	return &Service{repo: repo, tokens: tokens, mailer: mail, cleaners: cleaners, dummyHash: dummy}
+}
+
+// SetDisconnector lets the service close live realtime connections when an
+// account loses access (password reset, deletion).
+func (s *Service) SetDisconnector(d realtime.Disconnector) {
+	s.disconnector = d
+}
+
+func (s *Service) disconnect(ctx context.Context, userID string) {
+	if s.disconnector != nil {
+		s.disconnector.DisconnectUsers(ctx, []string{userID})
+	}
 }
 
 func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
@@ -242,7 +256,11 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 	if err != nil {
 		return err
 	}
-	return s.repo.ResetPassword(ctx, stored.User.ID, string(hash))
+	if err := s.repo.ResetPassword(ctx, stored.User.ID, string(hash)); err != nil {
+		return err
+	}
+	s.disconnect(ctx, stored.User.ID)
+	return nil
 }
 
 // DeleteAccount permanently removes the account after password confirmation.
@@ -270,6 +288,7 @@ func (s *Service) DeleteAccount(ctx context.Context, userID, password string) er
 	if err := s.repo.DeleteUser(ctx, userID); err != nil {
 		return err
 	}
+	s.disconnect(ctx, userID)
 	for _, finalize := range finalizers {
 		finalize(ctx)
 	}

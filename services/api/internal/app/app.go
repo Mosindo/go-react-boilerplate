@@ -113,6 +113,8 @@ func NewWithOptions(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, 
 	chatService := chat.NewService(chat.NewPGRepository(pool), profilesService, notificationsService, hub)
 	safetyService := safety.NewService(safety.NewPGRepository(pool), profilesService, hub)
 	moderationService := moderation.NewService(moderation.NewPGRepository(pool), profilesService)
+	authService.SetDisconnector(hub)
+	moderationService.SetDisconnector(hub)
 
 	r := gin.New()
 	if len(cfg.TrustedProxies) > 0 {

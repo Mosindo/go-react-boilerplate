@@ -53,12 +53,28 @@ func (NopPublisher) Publish(context.Context, []string, Event) {}
 
 type envelope struct {
 	UserIDs []string        `json:"u"`
-	Event   json.RawMessage `json:"e"`
+	Event   json.RawMessage `json:"e,omitempty"`
+	// Control carries hub commands; "disconnect" closes the users' sockets.
+	Control string `json:"c,omitempty"`
 }
 
+const controlDisconnect = "disconnect"
+
 type client struct {
-	userID string
-	send   chan []byte
+	userID    string
+	send      chan []byte
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+func (c *client) kick() {
+	c.closeOnce.Do(func() { close(c.done) })
+}
+
+// Disconnector closes the live connections of users whose access ended
+// (suspension, password reset, account deletion).
+type Disconnector interface {
+	DisconnectUsers(ctx context.Context, userIDs []string)
 }
 
 type Hub struct {
@@ -158,6 +174,10 @@ func (h *Hub) listen(ctx context.Context) error {
 		if err := json.Unmarshal([]byte(notification.Payload), &env); err != nil {
 			continue
 		}
+		if env.Control == controlDisconnect {
+			h.kick(env.UserIDs)
+			continue
+		}
 		h.deliver(env.UserIDs, env.Event)
 	}
 }
@@ -172,6 +192,30 @@ func (h *Hub) deliver(userIDs []string, frame []byte) {
 			default:
 				// Slow consumer: drop the frame; the client resyncs on reconnect.
 			}
+		}
+	}
+}
+
+// DisconnectUsers closes the users' sockets on every API instance.
+func (h *Hub) DisconnectUsers(ctx context.Context, userIDs []string) {
+	if len(userIDs) == 0 {
+		return
+	}
+	payload, err := json.Marshal(envelope{UserIDs: userIDs, Control: controlDisconnect})
+	if err != nil {
+		return
+	}
+	if _, err := h.pool.Exec(ctx, `SELECT pg_notify($1, $2)`, channelName, string(payload)); err != nil {
+		log.Printf(`{"event":"realtime_disconnect_failed","error":%q}`, err.Error())
+	}
+}
+
+func (h *Hub) kick(userIDs []string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, userID := range userIDs {
+		for c := range h.clients[userID] {
+			c.kick()
 		}
 	}
 }
@@ -222,7 +266,7 @@ func (h *Hub) ConnectHandler(c *gin.Context) {
 		return
 	}
 
-	cl := &client{userID: claims.UserID, send: make(chan []byte, sendBuffer)}
+	cl := &client{userID: claims.UserID, send: make(chan []byte, sendBuffer), done: make(chan struct{})}
 	if !h.register(cl) {
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many connections", "code": "rate_limited"})
 		return
@@ -271,6 +315,10 @@ func (h *Hub) writePump(ws *websocket.Conn, cl *client) {
 
 	for {
 		select {
+		case <-cl.done:
+			_ = ws.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "access revoked"))
+			return
 		case frame, ok := <-cl.send:
 			_ = ws.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {

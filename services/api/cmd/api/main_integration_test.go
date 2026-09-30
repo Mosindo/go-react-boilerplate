@@ -648,3 +648,52 @@ func TestPushTokenRegistration(t *testing.T) {
 	expect(t, u.do(http.MethodPut, "/push-tokens", map[string]string{"token": "ExponentPushToken[abcdefghijklmnop]", "platform": "ios"}), http.StatusNoContent, "idempotent")
 	expect(t, u.do(http.MethodDelete, "/push-tokens", map[string]string{"token": "ExponentPushToken[abcdefghijklmnop]"}), http.StatusNoContent, "unregister")
 }
+
+func TestRealtimeConnectionClosedWhenAccessEnds(t *testing.T) {
+	server, register := setupServer(t)
+	pool := testutil.DB(t)
+	mod := register("rt_mod")
+	target := register("rt_target")
+	deleted := register("rt_deleted")
+	if _, err := pool.Exec(context.Background(), `UPDATE users SET role = 'moderator' WHERE id = $1`, mod.userID); err != nil {
+		t.Fatal(err)
+	}
+
+	dial := func(c *client) *websocket.Conn {
+		t.Helper()
+		var ticket struct {
+			Ticket string `json:"ticket"`
+		}
+		c.do(http.MethodPost, "/realtime/ticket", nil).json(t, &ticket)
+		ws, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/realtime?ticket="+ticket.Ticket, nil)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		if _, _, err := ws.ReadMessage(); err != nil { // "connected" frame
+			t.Fatalf("hello: %v", err)
+		}
+		return ws
+	}
+	expectClosed := func(ws *websocket.Conn, label string) {
+		t.Helper()
+		_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				if websocket.IsCloseError(err, websocket.ClosePolicyViolation) || strings.Contains(err.Error(), "close") || strings.Contains(err.Error(), "EOF") {
+					return
+				}
+				t.Fatalf("%s: expected the server to close the socket, got %v", label, err)
+			}
+		}
+	}
+
+	targetWS := dial(target)
+	defer targetWS.Close()
+	expect(t, mod.do(http.MethodPost, "/moderation/users/"+target.userID+"/suspend", nil), http.StatusNoContent, "suspend")
+	expectClosed(targetWS, "suspension")
+
+	deletedWS := dial(deleted)
+	defer deletedWS.Close()
+	expect(t, deleted.do(http.MethodDelete, "/me", map[string]string{"password": "Password123"}), http.StatusNoContent, "delete")
+	expectClosed(deletedWS, "account deletion")
+}

@@ -8,6 +8,7 @@ import (
 
 	"example.com/api/internal/features/profiles"
 	apperr "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/realtime"
 )
 
 var (
@@ -24,8 +25,14 @@ type ProfileProvider interface {
 }
 
 type Service struct {
-	repo     Repository
-	profiles ProfileProvider
+	repo         Repository
+	profiles     ProfileProvider
+	disconnector realtime.Disconnector
+}
+
+// SetDisconnector lets suspension close the member's live connections.
+func (s *Service) SetDisconnector(d realtime.Disconnector) {
+	s.disconnector = d
 }
 
 func NewService(repo Repository, profiles ProfileProvider) *Service {
@@ -128,6 +135,9 @@ func (s *Service) SetSuspended(ctx context.Context, moderatorID, userID string, 
 			return ErrProtected
 		}
 		return err
+	}
+	if suspended && s.disconnector != nil {
+		s.disconnector.DisconnectUsers(ctx, []string{userID})
 	}
 	log.Printf(`{"event":"moderation_suspension","user_id":%q,"suspended":%t,"moderator_id":%q}`, userID, suspended, moderatorID)
 	return nil
