@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { StyleSheet, Switch, View } from "react-native";
+import { Platform, StyleSheet, Switch, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ActionSheet, Button, Card, ErrorState, ListRow, LoadingState, Screen, Text, TextField } from "../../design/components";
 import { useTheme } from "../../design/ThemeProvider";
@@ -11,6 +11,9 @@ import type { AppStackParamList } from "../../navigation/types";
 import { useProfile, useProfileMutation } from "./hooks";
 
 type Props = NativeStackScreenProps<AppStackParamList, "Settings">;
+
+// react-native-web ignores thumbColor for the active state and needs its own prop.
+const webThumb = Platform.OS === "web" ? { activeThumbColor: "#FFFFFF" } : {};
 
 export default function SettingsScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -45,12 +48,12 @@ export default function SettingsScreen({ navigation }: Props) {
       <Text variant="heading">Confidentialité</Text>
       <Card>
         <ListRow
-          right={<Switch accessibilityLabel="Apparaître dans la découverte" onValueChange={(v) => toggle("discoverable", v)} thumbColor="#fff" trackColor={{ true: colors.primary, false: colors.border }} value={profile.discoverable} />}
+          right={<Switch accessibilityLabel="Apparaître dans la découverte" onValueChange={(v) => toggle("discoverable", v)} {...webThumb} thumbColor="#fff" trackColor={{ true: colors.primary, false: colors.border }} value={profile.discoverable} />}
           subtitle="Désactivez pour mettre votre profil en pause. Vos matchs restent accessibles."
           title="Apparaître dans la découverte"
         />
         <ListRow
-          right={<Switch accessibilityLabel="Afficher ma distance" onValueChange={(v) => toggle("showDistance", v)} thumbColor="#fff" trackColor={{ true: colors.primary, false: colors.border }} value={profile.showDistance} />}
+          right={<Switch accessibilityLabel="Afficher ma distance" onValueChange={(v) => toggle("showDistance", v)} {...webThumb} thumbColor="#fff" trackColor={{ true: colors.primary, false: colors.border }} value={profile.showDistance} />}
           subtitle="Une distance arrondie uniquement, jamais votre position."
           title="Afficher ma distance"
         />

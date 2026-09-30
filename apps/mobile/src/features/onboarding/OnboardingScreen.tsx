@@ -101,7 +101,7 @@ function OnboardingFlow({ profile }: { profile: OwnProfile }) {
     gender: ["Vous êtes…", "Pour vous présenter aux bonnes personnes."],
     seeking: ["Qui souhaitez-vous rencontrer ?", "Vous pourrez changer cela à tout moment."],
     photos: ["Ajoutez vos photos", "Au moins une photo, jusqu'à six. La première sera votre photo principale."],
-    location: ["Où êtes-vous ?", "Facultatif, mais utile pour rencontrer des personnes près de chez vous."],
+    location: ["Où êtes-vous ?", "Facultatif. Sans position, votre profil ne sera proposé qu’aux membres qui n’ont pas non plus partagé la leur."],
     about: ["Parlez un peu de vous", "Une courte bio et quelques centres d'intérêt aident à briser la glace."]
   };
   const [title, subtitle] = titles[key];

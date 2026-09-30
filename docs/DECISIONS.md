@@ -21,6 +21,7 @@ Ce document explique brièvement les choix faits lors de la transformation du bo
 - **Âge** : 18 ans minimum, vérifié côté serveur. La date de naissance est **verrouillée une fois saisie** pour empêcher la manipulation de l'âge ; seul l'âge est exposé.
 - **Profil complet** (condition pour découvrir et être découvert) : prénom, date de naissance, genre, au moins un genre recherché, au moins une photo. Bio, intérêts, métier, ville et localisation sont facultatifs.
 - **Préférences mutuelles** : un profil n'apparaît que si chacun correspond aux critères de l'autre (genres, tranche d'âge, distance).
+- **Sans position** : un membre qui partage sa position ne voit que des membres situés dans sa distance maximale ; un membre sans position voit tout le monde (sans filtre de distance) mais n'est proposé qu'aux membres sans position. L'app l'explique à l'étape « Où êtes-vous ? ».
 - **Swipe définitif** : un like ou un « passer » n'est pas réversible, ce qui garantit qu'un profil ne réapparaît jamais. Annuler un match transforme le like en « passer ».
 - **« Qui m'a liké »** : non exposé en liste (pression sociale, confidentialité). À la place, les personnes qui vous ont liké sont classées en tête de votre découverte, gratuitement.
 - **Signaler bloque automatiquement** la personne pour protéger immédiatement l'auteur du signalement. Un profil signalé par 3 personnes distinctes est masqué de la découverte jusqu'à revue.

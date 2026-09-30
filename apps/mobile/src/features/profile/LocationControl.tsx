@@ -63,7 +63,7 @@ export function LocationControl({ profile }: { profile: OwnProfile }) {
       <Text tone="muted" variant="caption">
         {profile.hasLocation
           ? "Position approximative enregistrée (à ~1 km près). Les autres voient uniquement une distance arrondie."
-          : "Utilisée uniquement pour calculer une distance approximative. Jamais affichée précisément."}
+          : "Utilisée uniquement pour calculer une distance approximative, jamais affichée précisément. Sans position, votre profil n’est proposé qu’aux membres sans position."}
       </Text>
       <TextField
         label="Ville affichée (facultatif)"
