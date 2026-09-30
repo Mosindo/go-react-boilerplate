@@ -1,48 +1,46 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lueur critical flow (sign in -> discover -> like -> match -> chat)
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: Login
 - tapOn:
-    id: auth-email-input
+    id: welcome-signin
+- tapOn:
+    id: signin-email
 - inputText: ${TEST_EMAIL}
 - tapOn:
-    id: auth-password-input
+    id: signin-password
 - inputText: ${TEST_PASSWORD}
 - tapOn:
-    id: auth-submit-button
+    id: signin-submit
 
 - assertVisible:
-    id: home-screen
+    id: discover-screen
+- assertVisible: ${CONTACT_NAME}.*
+- tapOn:
+    id: discover-like
 
+- assertVisible:
+    id: match-modal
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
+    id: match-message
 
-- tapOn: Chat
 - assertVisible:
     id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
 - tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
+    id: chat-input
+- inputText: Bonjour depuis Maestro
 - tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
+    id: chat-send
+- assertVisible: Bonjour depuis Maestro
 
-- tapOn: Notifications
+- back
+- tapOn:
+    id: tab-notifications
 - assertVisible:
     id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
+- tapOn:
+    id: tab-me
 - assertVisible:
-    id: profile-screen
+    id: me-screen

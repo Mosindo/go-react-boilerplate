@@ -1,8 +1,8 @@
-name: go-react-boilerplate
+name: lueur
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -21,19 +21,24 @@ services:
     build:
       context: ./services/api
     environment:
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value (openssl rand -base64 48)}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8081,http://localhost:19006}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "18080:8080"
+    volumes:
+      - uploads:/app/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
-
-
+  uploads:

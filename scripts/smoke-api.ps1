@@ -2,93 +2,38 @@ param(
   [string]$ApiBaseUrl = "http://localhost:18080"
 )
 
+# Short API checklist: health, register, profile, me, account deletion.
+# The full journey (match, chat, block) is covered by apps/mobile/scripts/e2e-smoke.js.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $password = "Password123"
+$email = "smoke_$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())_$(Get-Random -Maximum 100000)@smoke.test"
 
-function New-UniqueEmail([string]$prefix) {
-  $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-  $rand = Get-Random -Maximum 100000
-  return "${prefix}_${stamp}_${rand}@go-react-saas.test"
+function Invoke-Api([string]$Method, [string]$Path, [object]$Body = $null, [string]$Token = "") {
+  $headers = @{}
+  if ($Token) { $headers["Authorization"] = "Bearer $Token" }
+  $params = @{ Method = $Method; Uri = "$ApiBaseUrl$Path"; Headers = $headers }
+  if ($null -ne $Body) {
+    $params["Body"] = ($Body | ConvertTo-Json -Depth 5)
+    $params["ContentType"] = "application/json"
+  }
+  return Invoke-RestMethod @params
 }
 
-function Invoke-Api([string]$Method, [string]$Path, [object]$Body = $null, [hashtable]$Headers = @{}) {
-  $uri = "$ApiBaseUrl$Path"
-  if ($null -eq $Body) {
-    return Invoke-RestMethod -Method $Method -Uri $uri -Headers $Headers
-  }
-  return Invoke-RestMethod -Method $Method -Uri $uri -Headers $Headers -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 5)
-}
+Write-Host "[smoke-api] $ApiBaseUrl"
+$health = Invoke-Api GET "/health"
+if ($health.status -ne "ok") { throw "health check failed" }
 
-try {
-  Write-Output "[smoke-api] API=$ApiBaseUrl"
-  $health = Invoke-RestMethod -Method Get -Uri "$ApiBaseUrl/health"
-  if ($health.status -ne "ok") {
-    throw "health check failed"
-  }
+$auth = Invoke-Api POST "/auth/register" @{ email = $email; password = $password }
+if (-not $auth.accessToken) { throw "register did not return an access token" }
 
-  $email1 = New-UniqueEmail "smoke_api_a"
-  $email2 = New-UniqueEmail "smoke_api_b"
+$profile = Invoke-Api PATCH "/profile" @{ firstName = "Smoke"; birthdate = "1990-01-01"; gender = "woman" } $auth.accessToken
+if ($profile.age -lt 18) { throw "unexpected profile age" }
 
-  $auth1 = Invoke-Api "Post" "/auth/register" @{ email = $email1; password = $password }
-  $auth2 = Invoke-Api "Post" "/auth/register" @{ email = $email2; password = $password }
+$me = Invoke-Api GET "/me" $null $auth.accessToken
+if ($me.email -ne $email) { throw "unexpected /me email" }
 
-  $login1 = Invoke-Api "Post" "/auth/login" @{ email = $email1; password = $password }
-  if ($login1.user.id -ne $auth1.user.id) {
-    throw "login user mismatch"
-  }
-
-  $headers1 = @{ Authorization = "Bearer $($auth1.token)" }
-
-  $users = Invoke-Api "Get" "/users" $null $headers1
-  if (-not ($users.users | Where-Object { $_.id -eq $auth2.user.id })) {
-    throw "users list should include second user"
-  }
-
-  $post = Invoke-Api "Post" "/posts" @{ title = "Smoke post"; body = "Validating the generic post feed." } $headers1
-  if ([string]::IsNullOrWhiteSpace($post.id)) {
-    throw "post create failed"
-  }
-
-  $posts = Invoke-Api "Get" "/posts" $null $headers1
-  if (-not ($posts.posts | Where-Object { $_.id -eq $post.id })) {
-    throw "created post missing from list"
-  }
-
-  $msg = Invoke-Api "Post" "/chats/$($auth2.user.id)/messages" @{ content = "hello from smoke-api" } $headers1
-  if ([string]::IsNullOrWhiteSpace($msg.id)) {
-    throw "message send failed"
-  }
-
-  $messages = Invoke-Api "Get" "/chats/$($auth2.user.id)/messages" $null $headers1
-  if (-not $messages.messages -or $messages.messages.Count -lt 1) {
-    throw "message list empty"
-  }
-
-  $notification = Invoke-Api "Post" "/notifications" @{
-    type  = "system"
-    title = "Smoke notification"
-    body  = "Validating the generic notification flow."
-  } $headers1
-  if ([string]::IsNullOrWhiteSpace($notification.id)) {
-    throw "notification create failed"
-  }
-
-  $notifications = Invoke-Api "Get" "/notifications" $null $headers1
-  if (-not ($notifications.notifications | Where-Object { $_.id -eq $notification.id })) {
-    throw "notification missing from list"
-  }
-
-  $readNotification = Invoke-Api "Post" "/notifications/$($notification.id)/read" $null $headers1
-  if ($readNotification.isRead -ne $true) {
-    throw "notification should be marked as read"
-  }
-
-  Write-Output "[smoke-api] PASS"
-  exit 0
-}
-catch {
-  Write-Output "[smoke-api] FAIL $($_.Exception.Message)"
-  exit 1
-}
+Invoke-Api DELETE "/me" @{ password = $password } $auth.accessToken | Out-Null
+Write-Host "[smoke-api] PASS"

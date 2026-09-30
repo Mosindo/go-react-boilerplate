@@ -121,7 +121,7 @@ function OnboardingFlow({ profile }: { profile: OwnProfile }) {
         </View>
       }
       scroll
-      testID={`onboarding-${key}`}
+      testID={`onboarding-step-${key}`}
     >
       <View style={styles.progress} accessibilityLabel={`Étape ${step + 1} sur ${STEPS.length}`}>
         {STEPS.map((s, i) => (

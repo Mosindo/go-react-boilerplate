@@ -30,7 +30,7 @@ export function Screen({ children, scroll, edges = ["top"], contentStyle, footer
     <SafeAreaView edges={edges} style={[styles.fill, { backgroundColor: colors.background }]} testID={testID}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.fill}>
         <View style={styles.column}>{body}</View>
-        {footer ? <View style={[styles.column, styles.footer, { padding: spacing.lg }]}>{footer}</View> : null}
+        {footer ? <View style={[styles.footer, { padding: spacing.lg }]}>{footer}</View> : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -38,7 +38,8 @@ export function Screen({ children, scroll, edges = ["top"], contentStyle, footer
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  column: { flex: 1, width: "100%", maxWidth: 640, alignSelf: "center" },
-  footer: { flex: 0 },
+  // minHeight: 0 lets the body shrink so the footer stays on screen (web flexbox).
+  column: { flex: 1, minHeight: 0, width: "100%", maxWidth: 640, alignSelf: "center" },
+  footer: { flexShrink: 0, width: "100%", maxWidth: 640, alignSelf: "center" },
   scrollContent: { flexGrow: 1, gap: 16 }
 });

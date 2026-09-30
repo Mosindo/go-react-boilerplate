@@ -94,7 +94,7 @@ finally {
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $header = @(
-  "go-react-saas QA Lite Report",
+  "Lueur QA Lite Report",
   "Generated: $stamp",
   "API Base URL: $ApiBaseUrl",
   ""

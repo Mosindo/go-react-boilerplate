@@ -116,7 +116,7 @@ export default function ProfileDetailScreen({ route, navigation }: Props) {
         </View>
       </ScrollView>
       {fromDiscovery ? (
-        <View style={styles.actions}>
+        <View style={[styles.actions, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
           <IconButton disabled={busy} filled icon="close" label="Passer" onPress={() => void swipe("pass")} size={60} tone="muted" />
           <IconButton disabled={busy} filled icon="heart" label="J'aime" onPress={() => void swipe("like")} size={60} testID="detail-like" tone="primary" />
         </View>
@@ -154,5 +154,16 @@ const styles = StyleSheet.create({
   goal: { padding: 14, gap: 4 },
   section: { gap: 8 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  actions: { position: "absolute", bottom: 24, left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 32 }
+  actions: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 32,
+    paddingTop: 12,
+    paddingBottom: 24,
+    borderTopWidth: StyleSheet.hairlineWidth
+  }
 });

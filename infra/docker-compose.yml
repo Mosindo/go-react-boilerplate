@@ -1,33 +1,6 @@
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+# Same stack as the root docker-compose.yml, for running from the infra/ folder:
+#   docker compose -f infra/docker-compose.yml up --build -d
+name: lueur
 
-  api:
-    build:
-      context: ../services/api
-      dockerfile: Dockerfile
-    environment:
-      PORT: "8080"
-      DATABASE_URL: postgresql://app:app@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
-    ports:
-      - "18080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-volumes:
-  postgres_data:
+include:
+  - ../docker-compose.yml

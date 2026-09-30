@@ -41,6 +41,7 @@
     "tamagui": "^2.0.0-rc.25"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.1.10",
     "@types/react-native": "^0.73.0",

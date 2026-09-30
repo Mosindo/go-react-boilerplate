@@ -42,8 +42,8 @@ try {
       $env:MOBILE_E2E_API_URL = $ApiBaseUrl
       $env:EXPO_PUBLIC_API_URL = $ApiBaseUrl
 
-      npm run e2e:smoke | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "npm run e2e:smoke exited with code $LASTEXITCODE" }
+      npm run e2e:api | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "npm run e2e:api exited with code $LASTEXITCODE" }
     }
     finally {
       if ($null -eq $previousMobileApi) {
@@ -70,7 +70,7 @@ finally {
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $header = @(
-  "go-react-saas Smoke Report",
+  "Lueur Smoke Report",
   "Generated: $stamp",
   "API Base URL: $ApiBaseUrl",
   ""
