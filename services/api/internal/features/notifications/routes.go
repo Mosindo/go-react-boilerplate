@@ -6,4 +6,6 @@ func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc
 	r.GET("/notifications", requireUser, handler.List)
 	r.POST("/notifications/read-all", requireUser, handler.MarkAllRead)
 	r.POST("/notifications/:notificationId/read", requireUser, handler.MarkRead)
+	r.PUT("/push-tokens", requireUser, handler.RegisterPushToken)
+	r.DELETE("/push-tokens", requireUser, handler.UnregisterPushToken)
 }

@@ -18,7 +18,7 @@ Core modules (`services/api/internal/features`):
 - discovery (candidate query + pluggable Scorer)
 - matching (swipes, matches, unmatch)
 - chat (match-bound conversations, read state, local hide)
-- notifications
+- notifications (in-app, realtime, Expo push)
 - safety (blocks, reports)
 - moderation (moderator role via `cmd/admin` only, report queue, suspension)
 

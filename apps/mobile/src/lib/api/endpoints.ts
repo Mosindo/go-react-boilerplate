@@ -103,6 +103,9 @@ export const chatApi = {
 
 // Notifications -------------------------------------------------------------
 export const notificationsApi = {
+  registerPushToken: (token: string, platform: "ios" | "android") =>
+    api<void>("/push-tokens", { method: "PUT", body: { token, platform } }),
+  unregisterPushToken: (token: string) => api<void>("/push-tokens", { method: "DELETE", body: { token } }),
   list: (offset = 0) => api<NotificationsPage>(`/notifications?limit=20&offset=${offset}`),
   markRead: (id: string) => api<void>(`/notifications/${id}/read`, { method: "POST" }),
   markAllRead: () => api<void>("/notifications/read-all", { method: "POST" })

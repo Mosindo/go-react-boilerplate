@@ -32,6 +32,8 @@ Ce document explique brièvement les choix faits lors de la transformation du bo
 
 - **Modération** : le rôle modérateur n'est attribuable qu'en ligne de commande (`cmd/admin`), jamais via l'API ; il est revérifié en base à chaque requête. L'identité du signaleur n'est pas montrée au modérateur. Suspendre un compte révoque ses sessions, refuse la connexion, le retire de la découverte et clôture ses signalements ouverts ; les modérateurs ne peuvent pas être suspendus via l'API.
 
+- **Push** : envoyés en arrière-plan (jamais bloquants pour la requête), uniquement pour les notifications créées (donc dédupliquées pour les messages), sans le contenu des messages ; en premier plan, l'app n'affiche pas de bannière système (le temps réel et les badges suffisent). Les jetons signalés `DeviceNotRegistered` sont supprimés, et le jeton de l'appareil est retiré à la déconnexion.
+
 ## Technique
 
 - **Temps réel** : WebSocket authentifié par un ticket JWT de 60 s (type distinct du jeton d'accès, pour ne jamais placer un jeton longue durée dans une URL). La diffusion passe par PostgreSQL `LISTEN/NOTIFY`, ce qui fonctionne avec plusieurs instances sans Redis. Si un événement dépasse la limite de `NOTIFY` (8 Ko), il est envoyé tronqué et le client recharge la ressource.
@@ -47,7 +49,7 @@ Ce document explique brièvement les choix faits lors de la transformation du bo
 
 ## Limites connues et pistes
 
-- **Notifications push natives** (APNs/FCM via Expo) non implémentées : elles nécessitent un projet EAS et des identifiants de stores. Les notifications in-app et temps réel fonctionnent.
+- **Notifications push natives** : implémentées via Expo Push et testées contre un faux serveur Expo ; la livraison réelle sur appareil nécessite un projet EAS et des identifiants APNs/FCM, et n'a pas pu être vérifiée dans cet environnement.
 - **Modération** : outillage volontairement minimal (file de signalements, suspension). Pas d'historique d'actions en interface (les actions sont journalisées côté serveur), pas de sanctions graduées.
 - **Vérification d'email** à l'inscription non implémentée (l'email sert à la récupération de compte).
 - **Stockage des photos** sur disque local (volume). Pour plusieurs instances, implémenter `storage.Store` vers un stockage objet (S3, GCS…).

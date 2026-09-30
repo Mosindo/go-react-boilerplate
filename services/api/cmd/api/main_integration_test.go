@@ -638,3 +638,13 @@ func TestModerationFlow(t *testing.T) {
 	expect(t, mod.do(http.MethodPost, "/moderation/users/"+target.userID+"/unsuspend", nil), http.StatusNoContent, "unsuspend")
 	expect(t, (&client{t: t, base: target.base}).do(http.MethodPost, "/auth/login", map[string]string{"email": target.email, "password": "Password123"}), http.StatusOK, "login after unsuspend")
 }
+
+func TestPushTokenRegistration(t *testing.T) {
+	_, register := setupServer(t)
+	u := register("pushtoken")
+	expect(t, u.do(http.MethodPut, "/push-tokens", map[string]string{"token": "<script>", "platform": "ios"}), http.StatusBadRequest, "invalid token")
+	expect(t, u.do(http.MethodPut, "/push-tokens", map[string]string{"token": "ExponentPushToken[abcdefghijklmnop]", "platform": "web"}), http.StatusBadRequest, "invalid platform")
+	expect(t, u.do(http.MethodPut, "/push-tokens", map[string]string{"token": "ExponentPushToken[abcdefghijklmnop]", "platform": "ios"}), http.StatusNoContent, "register token")
+	expect(t, u.do(http.MethodPut, "/push-tokens", map[string]string{"token": "ExponentPushToken[abcdefghijklmnop]", "platform": "ios"}), http.StatusNoContent, "idempotent")
+	expect(t, u.do(http.MethodDelete, "/push-tokens", map[string]string{"token": "ExponentPushToken[abcdefghijklmnop]"}), http.StatusNoContent, "unregister")
+}

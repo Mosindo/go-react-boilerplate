@@ -15,7 +15,7 @@ Elle est **entièrement gratuite** : aucun abonnement, aucun paywall, aucun « b
 | Découverte | Deck de cartes avec swipe et boutons accessibles, profil complet, filtres mutuels (genres, âges, distances), exclusion des profils déjà traités, bloqués, signalés par ≥ 3 personnes ou inactifs depuis 180 jours, classement pluggable |
 | Matching | Like / passer définitifs, match créé atomiquement quand l'intérêt est réciproque (verrou par paire : jamais de doublon, même en cas de likes simultanés), annulation de match |
 | Chat | Conversation créée au match, messages texte, temps réel (WebSocket), horodatage, lu/non lu et accusé de lecture, pagination, suppression locale d'une conversation, envoi optimiste avec reprise |
-| Notifications | Notifications in-app (nouveau match, nouveau message dédupliqué par conversation), badges, poussées en temps réel |
+| Notifications | Notifications in-app (nouveau match, nouveau message dédupliqué par conversation), badges, temps réel ; notifications push natives iOS/Android via Expo Push (tap → ouvre la conversation), jetons morts nettoyés automatiquement |
 | Confidentialité & sécurité | Mettre son profil en pause, masquer sa distance, bloquer, débloquer, signaler (bloque aussi), rate limiting, contrôle d'accès côté serveur partout |
 | Modération | Rôle modérateur (attribué uniquement en ligne de commande), file des signalements dans l'app (identité du signaleur masquée), classement sans suite / traité, suspension et réactivation de comptes (sessions révoquées, connexion refusée, retrait de la découverte) |
 
@@ -82,6 +82,7 @@ Toutes sont documentées dans [.env.example](.env.example).
 | `ALLOWED_ORIGINS` | pour le web | Origines CORS autorisées (client web). Inutile pour les apps natives. |
 | `TRUSTED_PROXIES` | derrière un proxy | Proxies de confiance pour `X-Forwarded-For` (sinon l'IP réelle du pair est utilisée). |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | en production | Envoi des codes de récupération. Sans SMTP : codes écrits dans les logs en développement, récupération désactivée en production. |
+| `PUSH_ENABLED`, `EXPO_ACCESS_TOKEN` | non | Active l'envoi des push natifs via Expo Push (voir ci-dessous). |
 | `EXPO_PUBLIC_API_URL` | app mobile | URL publique de l'API vue par l'app (IP LAN sur téléphone physique, jamais `localhost`). |
 
 Aucun secret n'est présent dans l'app mobile : seules des variables `EXPO_PUBLIC_*` publiques y sont lues.
@@ -102,6 +103,14 @@ go run ./cmd/seed -purge                       # supprime tous les membres de d�
 ```
 
 Les comptes de démo utilisent le domaine réservé `@demo.invalid`, sont marqués `users.is_demo = true`, ont des photos abstraites générées (aucun visage réel), et la commande refuse de s'exécuter si `APP_ENV=production`. Mot de passe commun : `DemoPassword1`.
+
+## Notifications push
+
+1. Créez le projet EAS de l'app (`cd apps/mobile && npx eas init`) : cela ajoute `extra.eas.projectId` à `app.json`, requis pour obtenir un jeton push.
+2. Configurez APNs / FCM dans EAS (`npx eas credentials`).
+3. Côté API : `PUSH_ENABLED=true` (et `EXPO_ACCESS_TOKEN` si la sécurité renforcée des push est activée sur le compte Expo).
+
+L'app demande l'autorisation après la connexion, uniquement sur un appareil physique. Sans projet EAS, sur simulateur ou sur le web, l'enregistrement est simplement ignoré et les notifications in-app continuent de fonctionner. Le contenu d'un push ne contient jamais le texte d'un message.
 
 ## Modération
 
@@ -210,6 +219,7 @@ Sans `DATABASE_URL_TEST`, les tests d'intégration sont ignorés (skip) et seuls
 | GET / DELETE | `/conversations`, `/conversations/:id` | Conversations, suppression locale |
 | GET / POST | `/conversations/:id/messages`, `/conversations/:id/read` | Messages (pagination par curseur), lecture |
 | GET / POST | `/notifications`, `/notifications/:id/read`, `/notifications/read-all` | Notifications |
+| PUT / DELETE | `/push-tokens` | Enregistrer / retirer le jeton push de l'appareil |
 | GET / POST / DELETE | `/blocks`, `/blocks/:userId`, `/reports` | Blocages et signalements |
 | GET / POST | `/moderation/reports`, `/moderation/reports/:id/resolve`, `/moderation/users/:id/suspend`, `/unsuspend` | Modération (rôle modérateur) |
 | POST / GET | `/realtime/ticket`, `/realtime` | Ticket (60 s) puis WebSocket |

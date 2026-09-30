@@ -22,6 +22,7 @@ import (
 	"example.com/api/internal/platform/mailer"
 	"example.com/api/internal/platform/media"
 	"example.com/api/internal/platform/middleware"
+	"example.com/api/internal/platform/push"
 	"example.com/api/internal/platform/ratelimit"
 	"example.com/api/internal/platform/realtime"
 	"example.com/api/internal/platform/storage"
@@ -66,6 +67,7 @@ func DisabledLimits() Limits {
 type Options struct {
 	Limits Limits
 	Mailer mailer.Mailer
+	Pusher push.Sender
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
@@ -82,7 +84,11 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	if cfg.AppEnv == config.EnvTest {
 		limits = DisabledLimits()
 	}
-	return NewWithOptions(cfg, pool, Options{Limits: limits, Mailer: mail})
+	var pusher push.Sender = push.NopSender{}
+	if cfg.Push.Enabled {
+		pusher = push.NewExpoSender(cfg.Push.ExpoURL, cfg.Push.AccessToken)
+	}
+	return NewWithOptions(cfg, pool, Options{Limits: limits, Mailer: mail, Pusher: pusher})
 }
 
 func NewWithOptions(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, error) {
@@ -100,7 +106,7 @@ func NewWithOptions(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, 
 
 	profilesService := profiles.NewService(profiles.NewPGRepository(pool), signer)
 	photosService := photos.NewService(photos.NewPGRepository(pool), store, signer)
-	notificationsService := notifications.NewService(notifications.NewPGRepository(pool), hub)
+	notificationsService := notifications.NewService(notifications.NewPGRepository(pool), hub, opts.Pusher)
 	authService := auth.NewService(auth.NewPGRepository(pool), tokens, opts.Mailer, photosService)
 	matchingService := matching.NewService(matching.NewPGRepository(pool), profilesService, notificationsService, hub)
 	discoveryService := discovery.NewService(discovery.NewPGRepository(pool), profilesService, discovery.DefaultScorer{})

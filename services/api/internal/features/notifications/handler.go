@@ -46,3 +46,29 @@ func (h *Handler) MarkAllRead(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+func (h *Handler) RegisterPushToken(c *gin.Context) {
+	var req PushTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "notifications.push_token.bind", err)
+		return
+	}
+	if err := h.service.RegisterPushToken(c.Request.Context(), httpx.UserID(c), req.Token, req.Platform); err != nil {
+		httpx.Fail(c, "notifications.push_token", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) UnregisterPushToken(c *gin.Context) {
+	var req DeletePushTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "notifications.push_token_delete.bind", err)
+		return
+	}
+	if err := h.service.UnregisterPushToken(c.Request.Context(), httpx.UserID(c), req.Token); err != nil {
+		httpx.Fail(c, "notifications.push_token_delete", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

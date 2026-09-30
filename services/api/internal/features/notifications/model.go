@@ -26,3 +26,12 @@ type ListResponse struct {
 	UnreadCount   int            `json:"unreadCount"`
 	NextOffset    *int           `json:"nextOffset,omitempty"`
 }
+
+type PushTokenRequest struct {
+	Token    string `json:"token" binding:"required,max=200"`
+	Platform string `json:"platform" binding:"required,oneof=ios android"`
+}
+
+type DeletePushTokenRequest struct {
+	Token string `json:"token" binding:"required,max=200"`
+}

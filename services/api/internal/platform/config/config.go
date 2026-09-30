@@ -37,6 +37,14 @@ type Config struct {
 	TrustedProxies []string
 	UploadDir      string
 	SMTP           SMTPConfig
+	Push           PushConfig
+}
+
+// PushConfig enables native push through the Expo Push service.
+type PushConfig struct {
+	Enabled     bool
+	ExpoURL     string
+	AccessToken string
 }
 
 func (c Config) IsProduction() bool {
@@ -58,6 +66,12 @@ func Load() (Config, error) {
 			Password: os.Getenv("SMTP_PASSWORD"),
 			From:     strings.TrimSpace(os.Getenv("SMTP_FROM")),
 		},
+	}
+
+	cfg.Push = PushConfig{
+		Enabled:     strings.EqualFold(getenv("PUSH_ENABLED", "false"), "true"),
+		ExpoURL:     strings.TrimSpace(os.Getenv("EXPO_PUSH_URL")),
+		AccessToken: strings.TrimSpace(os.Getenv("EXPO_ACCESS_TOKEN")),
 	}
 
 	switch cfg.AppEnv {

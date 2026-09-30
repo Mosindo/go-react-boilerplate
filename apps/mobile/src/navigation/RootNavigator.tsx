@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { DarkTheme, DefaultTheme, NavigationContainer, type Theme as NavTheme } from "@react-navigation/native";
+import { createNavigationContainerRef, DarkTheme, DefaultTheme, NavigationContainer, type Theme as NavTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,9 +26,12 @@ import ModerationScreen from "../features/moderation/ModerationScreen";
 import PreferencesScreen from "../features/profile/PreferencesScreen";
 import SettingsScreen from "../features/profile/SettingsScreen";
 import { errorMessage } from "../lib/api/client";
+import { onPushOpened, registerForPush } from "../lib/push/push";
 import { RealtimeProvider } from "../lib/realtime/RealtimeProvider";
 import { useSession } from "../lib/session/SessionProvider";
 import type { AppStackParamList, AuthStackParamList, MainTabParamList } from "./types";
+
+export const navigationRef = createNavigationContainerRef<AppStackParamList>();
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -83,6 +86,19 @@ function MainTabs() {
   );
 }
 
+/** Registers the device for push and opens the right chat when one is tapped. */
+function PushBridge() {
+  useEffect(() => {
+    registerForPush().catch(() => undefined);
+    return onPushOpened((conversationId) => {
+      if (navigationRef.isReady()) {
+        navigationRef.navigate("Chat", { conversationId });
+      }
+    });
+  }, []);
+  return null;
+}
+
 /** Staff accounts without a dating profile only get the moderation space. */
 function ModeratorOnlyNavigator() {
   const { colors } = useTheme();
@@ -132,6 +148,7 @@ function SignedInNavigator({ userId }: { userId: string }) {
 
   return (
     <RealtimeProvider userId={userId}>
+      <PushBridge />
       <AppStack.Navigator
         screenOptions={{
           headerShadowVisible: false,
@@ -174,7 +191,7 @@ export function RootNavigator() {
   }, [theme]);
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       {status === "restoring" ? (
         <LoadingState />
       ) : status === "signedIn" && userId ? (

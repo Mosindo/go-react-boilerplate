@@ -17,6 +17,10 @@ type Repository interface {
 	MarkRead(ctx context.Context, userID, notificationID string) (Notification, error)
 	MarkAllRead(ctx context.Context, userID string) error
 	MarkReadByConversation(ctx context.Context, userID, conversationID string) error
+	SavePushToken(ctx context.Context, userID, token, platform string) error
+	DeletePushToken(ctx context.Context, userID, token string) error
+	PushTokens(ctx context.Context, userID string) ([]string, error)
+	ForgetPushTokens(ctx context.Context, tokens []string) error
 }
 
 type PGRepository struct {
@@ -114,5 +118,44 @@ func (r *PGRepository) MarkReadByConversation(ctx context.Context, userID, conve
 		UPDATE notifications SET is_read = TRUE, read_at = NOW()
 		WHERE user_id = $1 AND is_read = FALSE AND data->>'conversationId' = $2
 	`, userID, conversationID)
+	return err
+}
+
+// SavePushToken registers a device; a token moves to the latest account that
+// registered it (shared devices).
+func (r *PGRepository) SavePushToken(ctx context.Context, userID, token, platform string) error {
+	_, err := r.dbPool.Exec(ctx, `
+		INSERT INTO push_tokens (token, user_id, platform)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (token) DO UPDATE
+		SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, last_seen_at = NOW()
+	`, token, userID, platform)
+	return err
+}
+
+func (r *PGRepository) DeletePushToken(ctx context.Context, userID, token string) error {
+	_, err := r.dbPool.Exec(ctx, `DELETE FROM push_tokens WHERE token = $1 AND user_id = $2`, token, userID)
+	return err
+}
+
+func (r *PGRepository) PushTokens(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.dbPool.Query(ctx, `SELECT token FROM push_tokens WHERE user_id = $1 ORDER BY last_seen_at DESC LIMIT 10`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tokens := []string{}
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens, rows.Err()
+}
+
+func (r *PGRepository) ForgetPushTokens(ctx context.Context, tokens []string) error {
+	_, err := r.dbPool.Exec(ctx, `DELETE FROM push_tokens WHERE token = ANY($1)`, tokens)
 	return err
 }

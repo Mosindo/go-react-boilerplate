@@ -5,12 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"regexp"
+	"sync"
+	"time"
 
 	apperr "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/push"
 	"example.com/api/internal/platform/realtime"
 )
 
-var ErrNotificationNotFound = apperr.NotFound("notification not found")
+var (
+	ErrNotificationNotFound = apperr.NotFound("notification not found")
+	ErrInvalidPushToken     = apperr.Validation("invalid push token")
+	pushTokenPattern        = regexp.MustCompile(`^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,100}\]$`)
+)
+
+const pushTimeout = 15 * time.Second
 
 // Notifier is the dependency other features use to notify a user.
 type Notifier interface {
@@ -21,10 +31,73 @@ type Notifier interface {
 type Service struct {
 	repo      Repository
 	publisher realtime.Publisher
+	pusher    push.Sender
+	// pushWG lets tests wait for asynchronous push deliveries.
+	pushWG sync.WaitGroup
 }
 
-func NewService(repo Repository, publisher realtime.Publisher) *Service {
-	return &Service{repo: repo, publisher: publisher}
+func NewService(repo Repository, publisher realtime.Publisher, pusher push.Sender) *Service {
+	if pusher == nil {
+		pusher = push.NopSender{}
+	}
+	return &Service{repo: repo, publisher: publisher, pusher: pusher}
+}
+
+func (s *Service) RegisterPushToken(ctx context.Context, userID, token, platform string) error {
+	if !pushTokenPattern.MatchString(token) || (platform != "ios" && platform != "android") {
+		return ErrInvalidPushToken
+	}
+	return s.repo.SavePushToken(ctx, userID, token, platform)
+}
+
+func (s *Service) UnregisterPushToken(ctx context.Context, userID, token string) error {
+	return s.repo.DeletePushToken(ctx, userID, token)
+}
+
+// WaitForPushes blocks until in-flight push deliveries are done (tests).
+func (s *Service) WaitForPushes() {
+	s.pushWG.Wait()
+}
+
+// deliverPush sends a notification to the member's devices without blocking
+// the request that triggered it. Dead tokens are removed.
+func (s *Service) deliverPush(userID string, n Notification, data map[string]string) {
+	s.pushWG.Add(1)
+	go func() {
+		defer s.pushWG.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), pushTimeout)
+		defer cancel()
+		tokens, err := s.repo.PushTokens(ctx, userID)
+		if err != nil || len(tokens) == 0 {
+			return
+		}
+		payload := map[string]string{"notificationId": n.ID, "type": n.Type}
+		for _, key := range []string{"conversationId", "matchId"} {
+			if v := data[key]; v != "" {
+				payload[key] = v
+			}
+		}
+		messages := make([]push.Message, 0, len(tokens))
+		for _, token := range tokens {
+			messages = append(messages, push.Message{To: token, Title: n.Title, Body: n.Body, Data: payload, Sound: "default", ChannelID: "default"})
+		}
+		results, err := s.pusher.Send(ctx, messages)
+		if err != nil {
+			log.Printf(`{"event":"push_send_failed","error":%q}`, err.Error())
+			return
+		}
+		dead := []string{}
+		for _, r := range results {
+			if r.Unregistered {
+				dead = append(dead, r.Token)
+			}
+		}
+		if len(dead) > 0 {
+			if err := s.repo.ForgetPushTokens(ctx, dead); err != nil {
+				log.Printf(`{"event":"push_token_cleanup_failed","error":%q}`, err.Error())
+			}
+		}
+	}()
 }
 
 func (s *Service) List(ctx context.Context, userID string, limit, offset int) (ListResponse, error) {
@@ -77,6 +150,7 @@ func (s *Service) Notify(ctx context.Context, userID, kind, title, body string, 
 	}
 	if created {
 		s.publisher.Publish(ctx, []string{userID}, realtime.Event{Type: "notification.created", Data: n})
+		s.deliverPush(userID, n, data)
 	}
 }
 

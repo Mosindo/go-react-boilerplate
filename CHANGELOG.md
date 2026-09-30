@@ -15,6 +15,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Commande `cmd/seed` de données de démonstration (hors production, domaine `@demo.invalid`, drapeau `is_demo`).
 - Tests : unitaires Go et TypeScript, intégration Go sur PostgreSQL (dont likes simultanés et WebSocket), smoke API, E2E web Playwright, flux Maestro ; ESLint côté mobile ; CI réécrite.
 
+### Added (push)
+- Notifications push natives via Expo Push (`/push-tokens`, `PUSH_ENABLED`), ouverture de la conversation au tap, nettoyage des jetons invalides.
+
 ### Added (modération)
 - Rôle modérateur (CLI `cmd/admin`), file de signalements, suspension de comptes, écran de modération.
 

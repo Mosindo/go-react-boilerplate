@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { authApi } from "../api/endpoints";
 import { onSessionExpired } from "../api/client";
+import { unregisterPush } from "../push/push";
 import { session } from "../api/session";
 import type { AuthSession } from "../api/types";
 import { queryClient } from "../queryClient";
@@ -86,6 +87,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       signIn: async (email, password) => apply(await authApi.login(email.trim(), password)),
       signUp: async (email, password) => apply(await authApi.register(email.trim(), password)),
       signOut: async () => {
+        await unregisterPush();
         const refreshToken = session.get()?.refreshToken;
         if (refreshToken) {
           await authApi.logout(refreshToken).catch(() => undefined);
