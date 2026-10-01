@@ -1,89 +1,48 @@
 import React, { type ReactNode } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  View,
-  type PressableProps,
-  type StyleProp,
-  type ViewStyle
-} from "react-native";
-import { Card, type CardVariant } from "./Card";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { useTheme } from "./theme";
+import { spacing } from "./tokens";
 
-export type ListItemProps = Omit<PressableProps, "children" | "style"> & {
+type ListItemProps = {
   title: string;
   subtitle?: string;
-  leading?: ReactNode;
-  trailing?: ReactNode;
-  variant?: CardVariant;
-  disabled?: boolean;
-  style?: StyleProp<ViewStyle>;
+  left?: ReactNode;
+  right?: ReactNode;
+  onPress?: () => void;
+  emphasized?: boolean;
+  destructive?: boolean;
 };
 
-export function ListItem({
-  disabled = false,
-  leading,
-  onPress,
-  style,
-  subtitle,
-  title,
-  trailing,
-  variant = "default",
-  ...props
-}: ListItemProps) {
-  const content = (
-    <Card padding="md" style={[styles.card, disabled ? styles.disabled : null, style]} variant={variant}>
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
-      <View style={styles.copy}>
-        <Text style={styles.title} variant="label" weight="bold">
+export function ListItem({ title, subtitle, left, right, onPress, emphasized, destructive }: ListItemProps) {
+  const { colors } = useTheme();
+  const body = (
+    <View style={styles.row}>
+      {left}
+      <View style={styles.text}>
+        <Text numberOfLines={1} tone={destructive ? "danger" : "default"} weight={emphasized ? "bold" : "semibold"}>
           {title}
         </Text>
         {subtitle ? (
-          <Text numberOfLines={1} style={styles.subtitle} tone="muted">
+          <Text numberOfLines={1} tone={emphasized ? "default" : "muted"} variant="label" weight={emphasized ? "semibold" : "regular"}>
             {subtitle}
           </Text>
         ) : null}
       </View>
-      {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
-    </Card>
+      {right}
+    </View>
   );
-
   if (!onPress) {
-    return content;
+    return body;
   }
-
   return (
-    <Pressable disabled={disabled} onPress={onPress} {...props}>
-      {content}
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [pressed && { backgroundColor: colors.surfaceMuted }]}>
+      {body}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md
-  },
-  disabled: {
-    opacity: 0.7
-  },
-  leading: {
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  },
-  title: {
-    color: colors.text
-  },
-  subtitle: {
-    color: colors.textMuted
-  },
-  trailing: {
-    marginLeft: spacing.sm
-  }
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
+  text: { flex: 1, gap: 2 }
 });

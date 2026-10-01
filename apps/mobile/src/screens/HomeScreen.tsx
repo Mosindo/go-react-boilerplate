@@ -1,223 +1,166 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { createPost, listPosts, type Post } from "../api/platform";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Badge, Button, Card, Input, Notice, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "../api/client";
+import { discoverApi, profileApi } from "../api/platform";
+import { queryKeys } from "../api/queryClient";
+import type { MatchSummary, PublicProfile, SwipeAction } from "../api/types";
+import { MatchModal } from "../components/MatchModal";
+import { SwipeDeck } from "../components/SwipeDeck";
+import { useDeviceLocation } from "../hooks/useDeviceLocation";
+import type { RootStackParamList } from "../navigation/types";
+import { EmptyView, ErrorView, LoadingView, showToast } from "../shared/feedback";
+import { SafeAreaLayout } from "../shared/layout";
+import { Button, Notice, Text, spacing } from "../shared/ui";
+import { applyBatch, needsRefill } from "../utils/deck";
+import { subscribeSwiped } from "../utils/deckEvents";
 
-type HomeScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-function formatPostDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
-}
+/** Discovery: a queue of candidates fetched in small batches and refilled when it runs low. */
+export default function HomeScreen() {
+  const navigation = useNavigation<Nav>();
+  const queryClient = useQueryClient();
+  const [queue, setQueue] = useState<PublicProfile[]>([]);
+  const [fetching, setFetching] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [match, setMatch] = useState<MatchSummary | null>(null);
+  const swiped = useRef(new Set<string>());
+  const queueRef = useRef<PublicProfile[]>([]);
+  queueRef.current = queue;
+  const location = useDeviceLocation();
+  const profile = useQuery({ queryKey: queryKeys.profile, queryFn: profileApi.getOwn });
 
-export default function HomeScreen({ token, currentUserId }: HomeScreenProps) {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchBatch = useCallback(async () => {
+    setFetching(true);
     try {
-      const nextPosts = await listPosts(token);
-      setPosts(nextPosts);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load posts");
+      const incoming = await discoverApi.next(10);
+      const result = applyBatch(queueRef.current, incoming, swiped.current);
+      setLoadError(null);
+      setExhausted(result.exhausted);
+      setQueue(result.queue);
+    } catch (error) {
+      setLoadError(error instanceof ApiError ? error.message : "Impossible de charger les profils.");
+      setExhausted(true);
     } finally {
-      setLoading(false);
+      setFetching(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  async function onSubmit() {
-    const normalizedTitle = title.trim();
-    const normalizedBody = body.trim();
-    if (!normalizedTitle || !normalizedBody) {
-      setError("title and body are required");
-      return;
+    if (needsRefill(queue.length, fetching, exhausted)) {
+      void fetchBatch();
     }
+  }, [queue.length, fetching, exhausted, fetchBatch]);
 
-    setSubmitting(true);
-    setError(null);
-    setFeedback(null);
-    try {
-      const created = await createPost(token, normalizedTitle, normalizedBody);
-      setPosts((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
-      setTitle("");
-      setBody("");
-      setFeedback("Post published.");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "could not create post");
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  useEffect(
+    () =>
+      subscribeSwiped((userId) => {
+        swiped.current.add(userId);
+        setQueue((current) => current.filter((p) => p.id !== userId));
+      }),
+    []
+  );
 
-  const emptyState = useMemo(() => {
-    if (loading) {
-      return null;
-    }
-    return (
-      <EmptyView
-        message="Share progress, notes, or the first workspace announcement."
-        title="No posts yet"
-      />
-    );
-  }, [loading]);
+  const refresh = useCallback(() => {
+    setExhausted(false);
+    setLoadError(null);
+    setQueue([]);
+    void fetchBatch();
+  }, [fetchBatch]);
 
-  if (loading && posts.length === 0) {
-    return (
-      <ScreenContainer testID="home-screen">
-        <LoadingView fullScreen label="Loading workspace..." />
-      </ScreenContainer>
-    );
-  }
+  const handleSwipe = useCallback(
+    async (target: PublicProfile, action: SwipeAction) => {
+      swiped.current.add(target.id);
+      setQueue((current) => current.filter((p) => p.id !== target.id));
+      try {
+        const result = await discoverApi.swipe(target.id, action);
+        if (result.matched && result.match && !result.alreadySwiped) {
+          setMatch(result.match);
+          void queryClient.invalidateQueries({ queryKey: queryKeys.matches });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+        }
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          return; // profile became unavailable (blocked, hidden…): the card is simply gone
+        }
+        // the swipe did not reach the server: put the card back so nothing is lost silently
+        swiped.current.delete(target.id);
+        setQueue((current) => [target, ...current.filter((p) => p.id !== target.id)]);
+        showToast("Action non enregistrée. Réessayez.");
+      }
+    },
+    [queryClient]
+  );
+
+  const openMatch = (m: MatchSummary) => {
+    setMatch(null);
+    navigation.navigate("Conversation", { conversationId: m.conversationId, user: m.user });
+  };
+
+  const noLocation = profile.data && !profile.data.hasLocation && location.state !== "done";
 
   return (
-    <ScreenContainer testID="home-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || submitting}
-            label="Reload"
-            onPress={load}
-            size="sm"
-            testID="home-reload-button"
-            variant="outline"
-          />
-        }
-        eyebrow="Workspace"
-        style={styles.header}
-        subtitle="Team updates, product notes, and lightweight announcements."
-        title="Home"
-      />
+    <SafeAreaLayout edges={["top"]}>
+      <View style={styles.root} testID="discover-screen">
+        <View style={styles.header}>
+          <Text tone="primary" variant="eyebrow" weight="bold">
+            Lumen
+          </Text>
+          <Text accessibilityRole="header" variant="heading">
+            Découvrir
+          </Text>
+        </View>
 
-      <Card style={styles.composer} variant="accent">
-        <Text style={styles.sectionTitle} variant="heading" weight="bold">
-          Publish an update
-        </Text>
-        <Input
-          containerStyle={styles.field}
-          label="Title"
-          onChangeText={setTitle}
-          placeholder="Post title"
-          testID="home-post-title-input"
-          value={title}
-        />
-        <Input
-          containerStyle={styles.field}
-          label="Body"
-          multiline
-          numberOfLines={4}
-          onChangeText={setBody}
-          placeholder="Share progress, notes, or an announcement..."
-          style={styles.bodyInput}
-          testID="home-post-body-input"
-          value={body}
-        />
-        <Button
-          fullWidth
-          disabled={loading}
-          label="Publish"
-          loading={submitting}
-          onPress={onSubmit}
-          testID="home-post-submit-button"
-        />
-      </Card>
+        {noLocation ? (
+          <View style={styles.banner}>
+            <Notice message="Activez votre position pour voir des profils près de vous." tone="info" />
+            <Button
+              label="Activer la position"
+              loading={location.state === "working"}
+              onPress={() => void location.share().then(refresh)}
+              size="sm"
+              variant="secondary"
+            />
+          </View>
+        ) : null}
 
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-      {feedback ? (
-        <Notice description="Your update is now visible in the workspace feed." style={styles.feedback} title={feedback} tone="success" />
-      ) : null}
-
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={posts}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={emptyState}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle} variant="heading" weight="bold">
-                {item.title}
-              </Text>
-              <Badge label={item.authorUserId === currentUserId ? "You" : "Member"} size="sm" variant="primary" />
-            </View>
-            <Text style={styles.cardBody}>{item.body}</Text>
-            <Text style={styles.meta} tone="muted" variant="caption">
-              {formatPostDate(item.createdAt)}
-            </Text>
-          </Card>
-        )}
-      />
-    </ScreenContainer>
+        <View style={styles.deck}>
+          {queue.length > 0 ? (
+            <SwipeDeck
+              onOpenProfile={(p) => navigation.navigate("ProfileDetail", { userId: p.id, profile: p, canSwipe: true })}
+              onSwipe={(p, action) => void handleSwipe(p, action)}
+              profiles={queue}
+            />
+          ) : fetching ? (
+            <LoadingView label="Nous cherchons des profils…" />
+          ) : loadError ? (
+            <ErrorView message={loadError} onAction={refresh} />
+          ) : (
+            <EmptyView
+              actionLabel="Actualiser"
+              icon="sparkles-outline"
+              message="Vous avez vu tout le monde pour l'instant. Élargissez vos préférences ou revenez un peu plus tard."
+              onAction={refresh}
+              title="C'est tout pour le moment"
+            />
+          )}
+        </View>
+        {queue.length === 0 && !fetching && !loadError ? (
+          <Button label="Modifier mes préférences" onPress={() => navigation.navigate("Settings")} variant="ghost" />
+        ) : null}
+      </View>
+      <MatchModal match={match} onClose={() => setMatch(null)} onMessage={openMatch} />
+    </SafeAreaLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: spacing.lg
-  },
-  composer: {
-    marginBottom: spacing.md
-  },
-  sectionTitle: {
-    marginBottom: spacing.lg
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  bodyInput: {
-    minHeight: 120
-  },
-  error: {
-    marginBottom: spacing.sm
-  },
-  feedback: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  },
-  empty: {
-    marginTop: spacing.xxxl
-  },
-  card: {
-    marginBottom: spacing.md
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-    gap: spacing.sm
-  },
-  cardTitle: {
-    flex: 1,
-    color: colors.text
-  },
-  cardBody: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  root: { flex: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
+  header: { paddingTop: spacing.sm },
+  banner: { gap: spacing.sm },
+  deck: { flex: 1 }
 });

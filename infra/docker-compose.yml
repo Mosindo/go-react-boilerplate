@@ -1,3 +1,7 @@
+# Same stack as the root docker-compose.yml, kept for infra tooling that expects
+# this path. Prefer `docker compose up --build` from the repository root.
+name: lumen
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -23,11 +27,17 @@ services:
       PORT: "8080"
       DATABASE_URL: postgresql://app:app@postgres:5432/app?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      APP_ENV: ${APP_ENV:-development}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "18080:8080"
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  uploads_data:

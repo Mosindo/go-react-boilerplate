@@ -2,29 +2,47 @@ export const endpoints = {
   auth: {
     register: "/auth/register",
     login: "/auth/login",
+    refresh: "/auth/refresh",
+    logout: "/auth/logout",
+    forgot: "/auth/password/forgot",
+    reset: "/auth/password/reset",
+    changePassword: "/me/password",
     me: "/me"
   },
-  users: {
-    list: "/users",
-    detail: (userId: string) => `/users/${userId}`
+  profile: {
+    own: "/me/profile",
+    preferences: "/me/preferences",
+    location: "/me/location",
+    interests: "/interests",
+    public: (userId: string) => `/profiles/${userId}`
   },
-  posts: {
-    list: "/posts",
-    create: "/posts",
-    detail: (postId: string) => `/posts/${postId}`
+  photos: {
+    list: "/me/photos",
+    order: "/me/photos/order",
+    item: (photoId: string) => `/me/photos/${photoId}`
+  },
+  discover: {
+    list: "/discover",
+    swipe: "/swipes",
+    matches: "/matches",
+    unmatch: (matchId: string) => `/matches/${matchId}`
   },
   chat: {
-    chats: "/chats",
-    messages: (userId: string) => `/chats/${userId}/messages`
+    conversations: "/conversations",
+    messages: (conversationId: string) => `/conversations/${conversationId}/messages`,
+    read: (conversationId: string) => `/conversations/${conversationId}/read`,
+    clear: (conversationId: string) => `/conversations/${conversationId}`
   },
   notifications: {
     list: "/notifications",
-    create: "/notifications",
-    markRead: (notificationId: string) => `/notifications/${notificationId}/read`
+    markRead: (notificationId: string) => `/notifications/${notificationId}/read`,
+    readAll: "/notifications/read-all"
   },
-  billing: {
-    subscription: "/billing/subscription",
-    checkout: "/billing/checkout",
-    webhook: "/billing/webhook"
-  }
+  safety: {
+    blocks: "/blocks",
+    unblock: (userId: string) => `/blocks/${userId}`,
+    reports: "/reports"
+  },
+  account: { delete: "/me" },
+  realtime: { ticket: "/ws/ticket", socket: "/ws" }
 } as const;

@@ -1,10 +1,10 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lumen critical flow
 ---
+# Fixtures come from `npm run e2e:ui:setup`: an onboarded member already matched with "Contact".
 - launchApp:
     clearState: true
 
-- assertVisible: Login
 - tapOn:
     id: auth-email-input
 - inputText: ${TEST_EMAIL}
@@ -15,34 +15,25 @@ name: go-react-saas Critical Flow
     id: auth-submit-button
 
 - assertVisible:
-    id: home-screen
+    id: discover-screen
 
-- tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
-
-- tapOn: Chat
+- tapOn: Messages
 - assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
+    id: messages-screen
+- tapOn: ${CONTACT_NAME}
+- assertVisible: Bonjour depuis le setup E2E
 - tapOn:
     id: chat-message-input
-- inputText: maestro ui ping
+- inputText: Message envoyé par Maestro
 - tapOn:
     id: chat-send-button
-- assertVisible: maestro ui ping
+- assertVisible: Message envoyé par Maestro
 
+- back
 - tapOn: Notifications
 - assertVisible:
     id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
 
-- tapOn: Profile
+- tapOn: Profil
 - assertVisible:
     id: profile-screen

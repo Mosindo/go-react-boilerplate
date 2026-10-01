@@ -1,6 +1,6 @@
 import React, { type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, spacing } from "../ui";
+import { spacing } from "../ui";
 import { SafeAreaLayout } from "./SafeAreaLayout";
 
 type ScreenContainerProps = {
@@ -13,10 +13,11 @@ type ScreenContainerProps = {
   testID?: string;
 };
 
+/** Padded, width-capped page body (tablet / web friendly). */
 export function ScreenContainer({
   centered = false,
   children,
-  contentMaxWidth = 960,
+  contentMaxWidth = 640,
   contentStyle,
   edges,
   style,
@@ -24,11 +25,8 @@ export function ScreenContainer({
 }: ScreenContainerProps) {
   return (
     <SafeAreaLayout edges={edges} style={style}>
-      <View style={[styles.outer, centered ? styles.centered : null]}>
-        <View
-          style={[styles.content, centered ? styles.contentCentered : null, { maxWidth: contentMaxWidth }, contentStyle]}
-          testID={testID}
-        >
+      <View style={[styles.outer, centered && styles.centered]}>
+        <View style={[styles.content, centered && styles.contentCentered, { maxWidth: contentMaxWidth }, contentStyle]} testID={testID}>
           {children}
         </View>
       </View>
@@ -37,22 +35,8 @@ export function ScreenContainer({
 }
 
 const styles = StyleSheet.create({
-  outer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
-  },
-  centered: {
-    justifyContent: "center"
-  },
-  content: {
-    flex: 1,
-    width: "100%",
-    alignSelf: "center"
-  },
-  contentCentered: {
-    flex: 0
-  }
+  outer: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  centered: { justifyContent: "center" },
+  content: { flex: 1, width: "100%", alignSelf: "center" },
+  contentCentered: { flex: 0 }
 });

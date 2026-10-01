@@ -143,7 +143,7 @@ func newLimits(enabled bool) limits {
 		return limits{noop, noop, noop, noop, noop, noop, noop}
 	}
 	return limits{
-		global:    middleware.RateLimitByIP(middleware.NewLimiter(600, time.Minute)),
+		global:    middleware.RateLimitByIP(middleware.NewLimiter(1200, time.Minute)),
 		auth:      middleware.RateLimitByIP(middleware.NewLimiter(10, time.Minute)),
 		sensitive: middleware.RateLimitByUser(middleware.NewLimiter(5, time.Minute)),
 		swipe:     middleware.RateLimitByUser(middleware.NewLimiter(120, time.Minute)),

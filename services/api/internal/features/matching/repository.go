@@ -21,7 +21,6 @@ type Repository interface {
 	Eligible(ctx context.Context, userID, targetID string) (bool, error)
 	Swipe(ctx context.Context, userID, targetID, action string) (SwipeResult, error)
 	ListMatches(ctx context.Context, userID string, limit, offset int) ([]MatchRow, error)
-	GetMatchFor(ctx context.Context, userID, matchID string) (MatchRow, error)
 	Unmatch(ctx context.Context, userID, matchID string) (otherUserID string, err error)
 }
 
@@ -218,21 +217,6 @@ func (r *PGRepository) ListMatches(ctx context.Context, userID string, limit, of
 		return nil, err
 	}
 	return scanMatches(rows)
-}
-
-func (r *PGRepository) GetMatchFor(ctx context.Context, userID, matchID string) (MatchRow, error) {
-	rows, err := r.pool.Query(ctx, matchSelect+` AND m.id = $2`, userID, matchID)
-	if err != nil {
-		return MatchRow{}, err
-	}
-	list, err := scanMatches(rows)
-	if err != nil {
-		return MatchRow{}, err
-	}
-	if len(list) == 0 {
-		return MatchRow{}, ErrMatchNotFound
-	}
-	return list[0], nil
 }
 
 func (r *PGRepository) Unmatch(ctx context.Context, userID, matchID string) (string, error) {

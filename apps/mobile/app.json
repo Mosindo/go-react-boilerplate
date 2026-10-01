@@ -1,12 +1,35 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lumen",
+    "slug": "lumen",
+    "scheme": "lumen",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.lumen.dating",
+      "infoPlist": {
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
+      }
+    },
+    "android": {
+      "package": "app.lumen.dating",
+      "permissions": ["ACCESS_COARSE_LOCATION"]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        { "photosPermission": "Lumen accède à vos photos uniquement pour que vous puissiez les ajouter à votre profil." }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lumen utilise votre position approximative pour vous proposer des profils proches. Elle n'est jamais affichée telle quelle aux autres membres."
+        }
+      ]
     ]
   }
 }

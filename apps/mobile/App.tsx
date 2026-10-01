@@ -1,106 +1,55 @@
-import React, { useEffect } from "react";
+import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
-import AuthScreen from "./src/screens/AuthScreen";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createQueryClient } from "./src/api/queryClient";
 import { AuthProvider, useAuth } from "./src/hooks/useAuth";
-import { BottomNavigation, SafeAreaLayout } from "./src/shared/layout";
-import { clearGlobalError, ErrorView, LoadingView, useGlobalFeedback } from "./src/shared/feedback";
-import { colors, spacing } from "./src/shared/ui";
+import { RealtimeProvider } from "./src/hooks/useRealtime";
+import { RootNavigator } from "./src/navigation/RootNavigator";
+import AuthScreen from "./src/screens/AuthScreen";
+import OnboardingScreen from "./src/screens/OnboardingScreen";
+import { LoadingView, Toast } from "./src/shared/feedback";
+import { SafeAreaLayout } from "./src/shared/layout";
+import { ThemeProvider, useTheme } from "./src/shared/ui";
 
-function AppShell() {
-  const { accessToken, isAuthenticated, isBooting, user } = useAuth();
-  const globalFeedback = useGlobalFeedback();
+function Shell() {
+  const { isBooting, isAuthenticated, user } = useAuth();
+  const { scheme } = useTheme();
 
-  useEffect(() => {
-    if (!globalFeedback.error) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      clearGlobalError();
-    }, 5000);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [globalFeedback.error]);
-
+  let body: React.ReactNode;
   if (isBooting) {
-    return (
-      <SafeAreaLayout style={styles.bootContainer}>
-        <StatusBar style="dark" />
-        <LoadingView fullScreen label="Restoring session..." />
+    body = (
+      <SafeAreaLayout>
+        <LoadingView fullScreen label="Chargement…" />
       </SafeAreaLayout>
     );
-  }
-
-  if (!isAuthenticated || !accessToken || !user) {
-    return (
-      <>
-        <StatusBar style="dark" />
-        <AuthScreen />
-      </>
-    );
+  } else if (!isAuthenticated || !user) {
+    body = <AuthScreen />;
+  } else if (!user.profileComplete) {
+    body = <OnboardingScreen key={user.id} />;
+  } else {
+    body = <RootNavigator key={user.id} />;
   }
 
   return (
     <>
-      <StatusBar style="dark" />
-      <BottomNavigation accessToken={accessToken} key={user.id} user={user} />
-      {globalFeedback.error ? (
-        <View pointerEvents="box-none" style={styles.bannerWrap}>
-          <ErrorView
-            actionLabel="Dismiss"
-            compact
-            message={globalFeedback.error}
-            onAction={clearGlobalError}
-            style={styles.banner}
-            title="Request issue"
-          />
-        </View>
-      ) : null}
-      {globalFeedback.loadingCount > 0 && !isBooting ? (
-        <View style={styles.overlay}>
-          <LoadingView label={globalFeedback.loadingLabel ?? "Working..."} style={styles.overlayCard} />
-        </View>
-      ) : null}
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      {body}
+      <Toast />
     </>
   );
 }
 
 export default function App() {
+  const [queryClient] = useState(createQueryClient);
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RealtimeProvider>
+            <Shell />
+          </RealtimeProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  bootContainer: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  bannerWrap: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl
-  },
-  banner: {},
-  overlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xxl
-  },
-  overlayCard: {
-    width: "100%",
-    maxWidth: 320
-  }
-});

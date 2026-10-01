@@ -1,11 +1,9 @@
 import * as SecureStore from "expo-secure-store";
+import type { AuthTokens } from "../api/client";
 
-export type AuthTokens = {
-  accessToken: string;
-  refreshToken: string;
-};
+export type { AuthTokens };
 
-const TOKENS_KEY = "boilerplate.auth.tokens";
+const TOKENS_KEY = "lumen.auth.tokens";
 let memoryTokens: AuthTokens | null = null;
 
 export async function saveTokens(tokens: AuthTokens): Promise<void> {
@@ -13,32 +11,26 @@ export async function saveTokens(tokens: AuthTokens): Promise<void> {
   try {
     await SecureStore.setItemAsync(TOKENS_KEY, JSON.stringify(tokens));
   } catch {
-    // Fallback keeps the session in memory when secure storage is unavailable.
+    // Secure storage unavailable (e.g. web): the session lives in memory only.
   }
 }
 
 export async function getTokens(): Promise<AuthTokens | null> {
+  if (memoryTokens) {
+    return memoryTokens;
+  }
   try {
-    const serializedTokens = await SecureStore.getItemAsync(TOKENS_KEY);
-    if (serializedTokens) {
-      const parsedTokens = JSON.parse(serializedTokens) as Partial<AuthTokens>;
-      if (parsedTokens.accessToken && typeof parsedTokens.refreshToken === "string") {
-        memoryTokens = {
-          accessToken: parsedTokens.accessToken,
-          refreshToken: parsedTokens.refreshToken
-        };
-        return memoryTokens;
+    const raw = await SecureStore.getItemAsync(TOKENS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AuthTokens>;
+      if (typeof parsed.accessToken === "string" && typeof parsed.refreshToken === "string") {
+        memoryTokens = { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken };
       }
     }
   } catch {
-    // Ignore and fallback to memory.
+    // corrupted entry: treat as signed out
   }
   return memoryTokens;
-}
-
-export async function getAccessToken(): Promise<string | null> {
-  const tokens = await getTokens();
-  return tokens?.accessToken ?? null;
 }
 
 export async function clearTokens(): Promise<void> {
@@ -46,19 +38,6 @@ export async function clearTokens(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(TOKENS_KEY);
   } catch {
-    // Ignore cleanup errors on unsupported platforms.
+    // nothing to clean on unsupported platforms
   }
-}
-
-// Backward-compatible helpers for older call sites that still expect token-only storage.
-export async function saveToken(token: string): Promise<void> {
-  await saveTokens({ accessToken: token, refreshToken: "" });
-}
-
-export async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
-
-export async function clearToken(): Promise<void> {
-  await clearTokens();
 }

@@ -88,3 +88,6 @@ export function clearGlobalError() {
 export function useGlobalFeedback() {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
+
+/** Non-error toast (same banner as errors). */
+export const showToast = showGlobalError;

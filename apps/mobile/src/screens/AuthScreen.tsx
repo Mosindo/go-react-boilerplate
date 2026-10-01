@@ -1,161 +1,152 @@
-import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet } from "react-native";
-import { useAuth, useLogin, useRegister } from "../hooks/useAuth";
-import { ErrorView } from "../shared/feedback";
-import { Button, Card, Input, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useState } from "react";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useMutation } from "@tanstack/react-query";
+import { login, register } from "../api/auth";
+import { ApiError } from "../api/client";
+import { useAuth } from "../hooks/useAuth";
+import { SafeAreaLayout } from "../shared/layout";
+import { Button, FormField, Input, Notice, Text, spacing } from "../shared/ui";
+import { isValidEmail, passwordProblem } from "../utils/validation";
+import ForgotPasswordScreen from "./ForgotPasswordScreen";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "forgot";
 
 export default function AuthScreen() {
+  const { signIn, sessionNotice, clearSessionNotice } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const { authError, clearAuthError } = useAuth();
-  const loginMutation = useLogin();
-  const registerMutation = useRegister();
+  const [touched, setTouched] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const title = useMemo(() => (mode === "login" ? "Welcome back" : "Create your workspace"), [mode]);
-  const subtitle = useMemo(
-    () =>
-      mode === "login"
-        ? "Sign in to continue into your shared SaaS workspace."
-        : "Open a clean account experience with persistent team access.",
-    [mode]
-  );
-  const switchLabel = mode === "login" ? "Need an account? Register" : "Already have an account? Login";
-  const submitting = loginMutation.isPending || registerMutation.isPending;
-  const surfaceError = formError ?? authError;
+  const mutation = useMutation({
+    mutationFn: () => (mode === "register" ? register(email.trim(), password) : login(email.trim(), password)),
+    onSuccess: (session) => signIn(session),
+    onError: (error) => setServerError(error instanceof ApiError ? error.message : "Une erreur est survenue.")
+  });
 
-  async function onSubmit() {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
-      setFormError("email and password are required");
-      return;
-    }
-
-    setFormError(null);
-    clearAuthError();
-
-    try {
-      if (mode === "login") {
-        await loginMutation.mutateAsync({ email: normalizedEmail, password });
-      } else {
-        await registerMutation.mutateAsync({ email: normalizedEmail, password });
-      }
-    } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "authentication failed");
-    }
+  if (mode === "forgot") {
+    return <ForgotPasswordScreen initialEmail={email} onBack={() => setMode("login")} />;
   }
 
+  const emailError = touched && !isValidEmail(email) ? "Adresse e-mail invalide." : null;
+  const passwordError =
+    touched && mode === "register" ? passwordProblem(password) : touched && password.length === 0 ? "Mot de passe requis." : null;
+
+  const submit = () => {
+    setTouched(true);
+    setServerError(null);
+    clearSessionNotice();
+    if (!isValidEmail(email) || (mode === "register" ? passwordProblem(password) : password.length === 0)) {
+      return;
+    }
+    mutation.mutate();
+  };
+
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setServerError(null);
+    setTouched(false);
+  };
+
   return (
-    <ScreenContainer centered contentMaxWidth={440}>
-      <Card padding="xl" style={styles.card} variant="accent">
-        <Header
-          centered
-          eyebrow="Go React SaaS"
-          style={styles.header}
-          subtitle={subtitle}
-          title={title}
-        />
+    <SafeAreaLayout>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.brand}>
+            <Text tone="primary" variant="eyebrow" weight="bold">
+              Lumen
+            </Text>
+            <Text accessibilityRole="header" variant="title">
+              {mode === "login" ? "Content de vous revoir" : "Rejoignez Lumen"}
+            </Text>
+            <Text tone="muted">Des rencontres sincères. Gratuites, sans abonnement, sans limite de likes.</Text>
+          </View>
 
-        <Text style={styles.intro} tone="secondary">
-          Minimal, secure access for a premium team workspace.
-        </Text>
+          {sessionNotice ? <Notice message={sessionNotice} tone="warning" /> : null}
 
-        <Input
-          autoCapitalize="none"
-          autoComplete="email"
-          containerStyle={styles.field}
-          helperText="Use the email tied to your workspace."
-          keyboardType="email-address"
-          label="Email"
-          onChangeText={(value) => {
-            setEmail(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Email"
-          testID="auth-email-input"
-          value={email}
-        />
+          <View style={styles.form}>
+            <FormField error={emailError} label="Adresse e-mail">
+              <Input
+                accessibilityLabel="Adresse e-mail"
+                testID="auth-email-input"
+                autoCapitalize="none"
+                autoComplete="email"
+                autoCorrect={false}
+                invalid={!!emailError}
+                keyboardType="email-address"
+                onChangeText={setEmail}
+                placeholder="vous@exemple.fr"
+                textContentType="emailAddress"
+                value={email}
+              />
+            </FormField>
+            <FormField error={passwordError} hint={mode === "register" ? "8 caractères minimum." : undefined} label="Mot de passe">
+              <Input
+                accessibilityLabel="Mot de passe"
+                testID="auth-password-input"
+                autoCapitalize="none"
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                invalid={!!passwordError}
+                onChangeText={setPassword}
+                onSubmitEditing={submit}
+                secureTextEntry
+                textContentType={mode === "register" ? "newPassword" : "password"}
+                value={password}
+              />
+            </FormField>
+            {serverError ? <Notice message={serverError} tone="danger" /> : null}
+            <Button
+              label={mode === "login" ? "Se connecter" : "Créer mon compte"}
+              loading={mutation.isPending}
+              onPress={submit}
+              testID="auth-submit-button"
+            />
+            {mode === "login" ? (
+              <Pressable accessibilityRole="button" onPress={() => switchMode("forgot")} style={styles.link}>
+                <Text tone="muted" variant="label" weight="semibold">
+                  Mot de passe oublié ?
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
 
-        <Input
-          autoCapitalize="none"
-          containerStyle={styles.field}
-          error={formError?.toLowerCase().includes("password") ? formError : null}
-          helperText={mode === "login" ? "Enter your secure password." : "Create a password for future sessions."}
-          label="Password"
-          onChangeText={(value) => {
-            setPassword(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Password"
-          secureTextEntry
-          testID="auth-password-input"
-          value={password}
-        />
-
-        {surfaceError ? (
-          <ErrorView
-            compact
-            message={surfaceError}
-            style={styles.error}
-            title="Authentication issue"
-          />
-        ) : null}
-
-        <Button
-          fullWidth
-          label={mode === "login" ? "Login" : "Register"}
-          loading={submitting}
-          onPress={onSubmit}
-          testID="auth-submit-button"
-        />
-
-        <Pressable
-          disabled={submitting}
-          onPress={() => {
-            setMode((prev) => (prev === "login" ? "register" : "login"));
-            setFormError(null);
-            clearAuthError();
-          }}
-          testID="auth-switch-mode-button"
-        >
-          <Text style={styles.switchText} tone="secondary" variant="label" weight="semibold">
-            {switchLabel}
-          </Text>
-        </Pressable>
-      </Card>
-    </ScreenContainer>
+          <View style={styles.footer}>
+            <Text tone="muted" variant="label">
+              {mode === "login" ? "Pas encore de compte ?" : "Déjà inscrit ?"}
+            </Text>
+            <Button
+              fullWidth={false}
+              label={mode === "login" ? "Créer un compte" : "Se connecter"}
+              onPress={() => switchMode(mode === "login" ? "register" : "login")}
+              size="sm"
+              variant="outline"
+            />
+            {mode === "register" ? (
+              <Text align="center" tone="subtle" variant="caption">
+                En créant un compte, vous confirmez avoir 18 ans ou plus.
+              </Text>
+            ) : null}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: "100%"
+  flex: { flex: 1 },
+  content: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: spacing.xl,
+    gap: spacing.xl,
+    maxWidth: 520,
+    width: "100%",
+    alignSelf: "center"
   },
-  header: {
-    marginBottom: spacing.lg
-  },
-  intro: {
-    marginBottom: spacing.xl,
-    textAlign: "center"
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  switchText: {
-    marginTop: spacing.lg,
-    textAlign: "center"
-  },
-  error: {
-    marginBottom: spacing.sm
-  }
+  brand: { gap: spacing.sm },
+  form: { gap: spacing.md },
+  link: { alignSelf: "center", padding: spacing.sm },
+  footer: { alignItems: "center", gap: spacing.sm }
 });

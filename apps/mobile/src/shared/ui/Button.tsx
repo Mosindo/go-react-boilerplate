@@ -3,16 +3,16 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
-  View,
   type PressableProps,
   type StyleProp,
   type TextStyle,
   type ViewStyle
 } from "react-native";
 import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
+import { useTheme } from "./theme";
+import { controls, radii, spacing, type Palette } from "./tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
@@ -26,145 +26,78 @@ export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
   textStyle?: StyleProp<TextStyle>;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
+function variantStyles(colors: Palette, variant: ButtonVariant): { box: ViewStyle; text: string } {
+  switch (variant) {
+    case "primary":
+      return { box: { backgroundColor: colors.primary }, text: colors.primaryForeground };
+    case "secondary":
+      return { box: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryBorder }, text: colors.primary };
+    case "outline":
+      return { box: { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.borderStrong }, text: colors.text };
+    case "destructive":
+      return { box: { backgroundColor: colors.danger }, text: "#ffffff" };
+    default:
+      return { box: { backgroundColor: "transparent" }, text: colors.text };
   }
-});
-
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
-};
-
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
-
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
-  primary: "inverse",
-  secondary: "primary",
-  destructive: "inverse",
-  success: "inverse",
-  outline: "default",
-  ghost: "secondary"
-};
-
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
-};
+}
 
 export function Button({
   children,
-  disabled,
-  fullWidth = false,
   label,
   loading = false,
+  variant = "primary",
   size = "md",
+  fullWidth = true,
+  disabled,
   style,
   textStyle,
-  variant = "primary",
+  accessibilityLabel,
   ...props
 }: ButtonProps) {
-  const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
-  const labelNode = typeof children === "string" ? children : label;
+  const { colors } = useTheme();
+  const { box, text } = variantStyles(colors, variant);
+  const inactive = disabled || loading;
+  const content = label ?? children;
 
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={buttonDisabled}
+      accessibilityLabel={accessibilityLabel ?? (typeof content === "string" ? content : undefined)}
+      accessibilityState={{ disabled: !!inactive, busy: loading }}
+      disabled={inactive}
       style={({ pressed }) => [
         styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
-        fullWidth ? styles.fullWidth : null,
-        buttonDisabled ? styles.disabled : null,
-        pressed ? styles.pressed : null,
+        { minHeight: controls.button[size] },
+        fullWidth && styles.fullWidth,
+        box,
+        pressed && styles.pressed,
+        inactive && styles.disabled,
         style
       ]}
       {...props}
     >
-      <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
-        {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
-            {labelNode}
-          </Text>
-        ) : (
-          children
-        )}
-      </View>
+      {loading ? (
+        <ActivityIndicator color={text} />
+      ) : typeof content === "string" ? (
+        <Text variant="button" style={[{ color: text }, textStyle]}>
+          {content}
+        </Text>
+      ) : (
+        content
+      )}
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  base: {
+    borderRadius: radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+    flexDirection: "row"
+  },
+  fullWidth: { alignSelf: "stretch" },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
+  disabled: { opacity: 0.5 }
+});

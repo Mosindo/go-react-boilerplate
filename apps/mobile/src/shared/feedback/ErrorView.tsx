@@ -1,52 +1,31 @@
 import React from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { Ionicons } from "@expo/vector-icons";
+import { Button, Text, spacing, useTheme } from "../ui";
 
 type ErrorViewProps = {
-  actionLabel?: string;
+  title?: string;
   message: string;
+  actionLabel?: string;
   onAction?: () => void;
   style?: StyleProp<ViewStyle>;
-  testID?: string;
-  title?: string;
-  compact?: boolean;
 };
 
-export function ErrorView({
-  actionLabel = "Retry",
-  compact = false,
-  message,
-  onAction,
-  style,
-  testID,
-  title = "Something went wrong"
-}: ErrorViewProps) {
+/** Full-area error with a retry action. */
+export function ErrorView({ title = "Un problème est survenu", message, actionLabel = "Réessayer", onAction, style }: ErrorViewProps) {
+  const { colors } = useTheme();
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
-      <View style={styles.copy}>
-        <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
-          {title}
-        </Text>
-        <Text tone="muted" variant={compact ? "caption" : "body"}>
-          {message}
-        </Text>
-      </View>
-      {onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="outline" /> : null}
-    </Card>
+    <View accessibilityRole="alert" style={[styles.root, style]}>
+      <Ionicons color={colors.danger} name="cloud-offline-outline" size={36} />
+      <Text align="center" variant="heading">
+        {title}
+      </Text>
+      <Text align="center" tone="muted">
+        {message}
+      </Text>
+      {onAction ? <Button fullWidth={false} label={actionLabel} onPress={onAction} variant="outline" /> : null}
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    gap: spacing.md
-  },
-  cardCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  }
-});
+const styles = StyleSheet.create({ root: { alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl } });

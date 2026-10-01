@@ -60,8 +60,7 @@ func (e *ValidationError) Error() string { return e.Message }
 
 func Invalid(message string) error { return &ValidationError{Message: message} }
 
-// Fail maps an error to a response: validation errors become 400, anything
-// else is logged by the caller and hidden behind a generic message.
+// AsValidation reports whether err is a client-fixable ValidationError.
 func AsValidation(err error) (*ValidationError, bool) {
 	var v *ValidationError
 	if errors.As(err, &v) {
