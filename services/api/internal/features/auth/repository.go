@@ -21,7 +21,24 @@ type StoredUser struct {
 	ID             string
 	Email          string
 	OrganizationID string
+	Role           string
+	Status         string
+	HasProfile     bool
+	PhotoCount     int
 	CreatedAt      time.Time
+}
+
+// userColumns selects a StoredUser from a row aliased "u".
+const userColumns = `u.id, u.email, u.organization_id, u.role, u.status,
+	EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = u.id),
+	(SELECT COUNT(*)::int FROM photos ph WHERE ph.user_id = u.id),
+	u.created_at`
+
+func scanUser(row pgx.Row, extra ...any) (StoredUser, error) {
+	var u StoredUser
+	dest := append([]any{&u.ID, &u.Email, &u.OrganizationID, &u.Role, &u.Status, &u.HasProfile, &u.PhotoCount, &u.CreatedAt}, extra...)
+	err := row.Scan(dest...)
+	return u, err
 }
 
 type StoredUserWithPassword struct {
@@ -46,6 +63,12 @@ type Repository interface {
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	GetPasswordHash(ctx context.Context, userID string) (string, error)
+	// UpdatePassword stores a new hash and revokes every session except keepSessionID.
+	UpdatePassword(ctx context.Context, userID, passwordHash, keepSessionID string) error
+	CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	// ResetPassword consumes a valid reset token, sets the hash and revokes all sessions.
+	ResetPassword(ctx context.Context, tokenHash, passwordHash string) error
 }
 
 type PGRepository struct {
@@ -57,48 +80,37 @@ func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
 }
 
 func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash string) (StoredUser, error) {
-	var user StoredUser
+	var id string
 	err := r.dbPool.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash, organization_id)
-		VALUES (
-			$1,
-			$2,
-			(SELECT id FROM organizations WHERE slug = 'default')
-		)
-		RETURNING id, email, organization_id, created_at
-	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+		VALUES ($1, $2, (SELECT id FROM organizations WHERE slug = 'default'))
+		RETURNING id
+	`, email, passwordHash).Scan(&id)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return StoredUser{}, ErrRepositoryEmailExists
 		}
 		return StoredUser{}, err
 	}
-	return user, nil
+	return r.GetUserByID(ctx, id)
 }
 
 func (r *PGRepository) GetUserAuthByEmail(ctx context.Context, email string) (StoredUserWithPassword, error) {
-	var user StoredUserWithPassword
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, password_hash, created_at
-		FROM users
-		WHERE email = $1
-	`, email).Scan(&user.User.ID, &user.User.Email, &user.User.OrganizationID, &user.PasswordHash, &user.User.CreatedAt)
+	var hash string
+	user, err := scanUser(r.dbPool.QueryRow(ctx, `
+		SELECT `+userColumns+`, u.password_hash FROM users u WHERE lower(u.email) = lower($1)
+	`, email), &hash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUserWithPassword{}, ErrRepositoryNotFound
 		}
 		return StoredUserWithPassword{}, err
 	}
-	return user, nil
+	return StoredUserWithPassword{User: user, PasswordHash: hash}, nil
 }
 
 func (r *PGRepository) GetUserByID(ctx context.Context, userID string) (StoredUser, error) {
-	var user StoredUser
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, created_at
-		FROM users
-		WHERE id = $1
-	`, userID).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+	user, err := scanUser(r.dbPool.QueryRow(ctx, `SELECT `+userColumns+` FROM users u WHERE u.id = $1`, userID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUser{}, ErrRepositoryNotFound
@@ -213,6 +225,74 @@ func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash s
 		return ErrRepositorySessionGone
 	}
 	return nil
+}
+
+func (r *PGRepository) GetPasswordHash(ctx context.Context, userID string) (string, error) {
+	var hash string
+	err := r.dbPool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositoryNotFound
+	}
+	return hash, err
+}
+
+func (r *PGRepository) UpdatePassword(ctx context.Context, userID, passwordHash, keepSessionID string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL AND id <> $2::uuid`, userID, keepSessionID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// Only the latest code stays valid.
+	if _, err := tx.Exec(ctx, `UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`, userID, tokenHash, expiresAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *PGRepository) ResetPassword(ctx context.Context, tokenHash, passwordHash string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var userID string
+	err = tx.QueryRow(ctx, `
+		UPDATE password_reset_tokens SET used_at = NOW()
+		WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+		RETURNING user_id`, tokenHash).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrRepositoryNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func isUniqueViolation(err error) bool {

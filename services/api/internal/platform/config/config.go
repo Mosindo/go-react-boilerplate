@@ -10,41 +10,59 @@ import (
 const minJWTSecretLength = 32
 
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripePriceID       string
-	AppBaseURL          string
-	AllowedOrigins      []string
+	Env            string // "development" (default) or "production"
+	Port           string
+	DatabaseURL    string
+	JWTSecret      string
+	AllowedOrigins []string
+	TrustedProxies []string
+	UploadDir      string
+	AppName        string
+	RateLimit      bool
+	SMTPHost       string
+	SMTPPort       string
+	SMTPUsername   string
+	SMTPPassword   string
+	SMTPFrom       string
 }
+
+func (c Config) IsProduction() bool { return c.Env == "production" }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                getenv("PORT", "8080"),
-		DatabaseURL:         strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		StripeSecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		StripePriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		AppBaseURL:          strings.TrimSpace(os.Getenv("APP_BASE_URL")),
-		AllowedOrigins:      splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		Env:            strings.ToLower(getenv("APP_ENV", "development")),
+		Port:           getenv("PORT", "8080"),
+		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
+		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
+		AppName:        getenv("APP_NAME", "Lumen"),
+		RateLimit:      strings.ToLower(getenv("RATE_LIMIT", "on")) != "off",
+		SMTPHost:       strings.TrimSpace(os.Getenv("SMTP_HOST")),
+		SMTPPort:       getenv("SMTP_PORT", "587"),
+		SMTPUsername:   strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+		SMTPPassword:   os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:       strings.TrimSpace(os.Getenv("SMTP_FROM")),
 	}
 
+	if cfg.Env != "development" && cfg.Env != "production" {
+		return Config{}, errors.New("APP_ENV must be \"development\" or \"production\"")
+	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required (for Docker/CI use postgres://postgres:postgres@postgres:5432/app?sslmode=disable)")
 	}
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return Config{}, err
 	}
-	if cfg.StripeSecretKey != "" {
-		if cfg.StripePriceID == "" {
-			return Config{}, errors.New("STRIPE_PRICE_ID is required when STRIPE_SECRET_KEY is set")
-		}
-		if cfg.AppBaseURL == "" {
-			return Config{}, errors.New("APP_BASE_URL is required when STRIPE_SECRET_KEY is set")
-		}
+	if cfg.SMTPHost != "" && cfg.SMTPFrom == "" {
+		return Config{}, errors.New("SMTP_FROM is required when SMTP_HOST is set")
+	}
+	if cfg.IsProduction() && cfg.SMTPHost == "" {
+		return Config{}, errors.New("SMTP_HOST is required in production (password recovery needs email)")
+	}
+	if cfg.IsProduction() && !cfg.RateLimit {
+		return Config{}, errors.New("RATE_LIMIT=off is not allowed in production")
 	}
 
 	return cfg, nil

@@ -1,59 +1,57 @@
 package chat
 
-import "time"
+import (
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+	"example.com/api/internal/features/profiles"
+)
+
+const (
+	MaxMessageRunes     = 2000
+	DefaultMessagesPage = 30
+	MaxMessagesPage     = 100
+)
+
+type Message struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversationId"`
+	SenderID       string     `json:"senderId"`
+	Body           string     `json:"body"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ReadAt         *time.Time `json:"readAt"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
-}
-
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
-}
-
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type ConversationSummary struct {
+	ID          string                 `json:"id"`
+	MatchID     string                 `json:"matchId"`
+	User        profiles.PublicProfile `json:"user"`
+	LastMessage Message                `json:"lastMessage"`
+	UnreadCount int                    `json:"unreadCount"`
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Body string `json:"body"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+type ConversationsResponse struct {
+	Conversations []ConversationSummary `json:"conversations"`
+	TotalUnread   int                   `json:"totalUnread"`
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+type MessagesResponse struct {
+	Messages []Message `json:"messages"`
+	HasMore  bool      `json:"hasMore"`
+}
+
+type ReadResponse struct {
+	Marked int `json:"marked"`
+}
+
+// convoRow is the repository shape of a conversation list entry.
+type convoRow struct {
+	ID          string
+	MatchID     string
+	OtherUserID string
+	Last        Message
+	Unread      int
 }

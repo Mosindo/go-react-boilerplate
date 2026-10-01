@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"net/mail"
 	"strings"
 	"time"
 
+	"example.com/api/internal/platform/mailer"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -19,6 +21,9 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrUserNotFound        = errors.New("user not found")
+	ErrAccountSuspended    = errors.New("account suspended")
+	ErrInvalidResetCode    = errors.New("invalid or expired reset code")
+	ErrInvalidEmail        = errors.New("invalid email address")
 )
 
 const (
@@ -26,9 +31,16 @@ const (
 	refreshTokenTTL = 30 * 24 * time.Hour
 )
 
+const resetCodeTTL = 15 * time.Minute
+
+// resetAlphabet avoids look-alike characters (0/O, 1/I/L) so codes survive typing.
+const resetAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
 type Service struct {
 	repo      Repository
 	jwtSecret []byte
+	mailer    mailer.Mailer
+	appName   string
 }
 
 func NewService(repo Repository, jwtSecret []byte) *Service {
@@ -38,8 +50,17 @@ func NewService(repo Repository, jwtSecret []byte) *Service {
 	}
 }
 
+// SetMailer enables password recovery emails.
+func (s *Service) SetMailer(m mailer.Mailer, appName string) {
+	s.mailer = m
+	s.appName = appName
+}
+
 func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
 	normalizedEmail := normalizeEmail(email)
+	if !validEmail(normalizedEmail) {
+		return Tokens{}, User{}, ErrInvalidEmail
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return Tokens{}, User{}, err
@@ -77,6 +98,10 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 		return Tokens{}, User{}, ErrInvalidCredentials
 	}
 
+	if stored.User.Status != "active" {
+		return Tokens{}, User{}, ErrAccountSuspended
+	}
+
 	user := toUser(stored.User)
 	tokens, err := s.issueSessionTokens(ctx, user, userAgent, ipAddress)
 	if err != nil {
@@ -102,6 +127,10 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 			return Tokens{}, User{}, ErrUserNotFound
 		}
 		return Tokens{}, User{}, err
+	}
+
+	if userRecord.Status != "active" {
+		return Tokens{}, User{}, ErrAccountSuspended
 	}
 
 	refreshSecret, err := generateRefreshToken()
@@ -221,6 +250,16 @@ func hashRefreshToken(refreshToken string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// validEmail accepts a bare address with a dotted domain (no display names).
+func validEmail(email string) bool {
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || parsed.Address != email {
+		return false
+	}
+	at := strings.LastIndexByte(email, '@')
+	return at > 0 && strings.Contains(email[at+1:], ".") && !strings.HasSuffix(email, ".")
+}
+
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
@@ -230,6 +269,73 @@ func toUser(stored StoredUser) User {
 		ID:             stored.ID,
 		Email:          stored.Email,
 		OrganizationID: stored.OrganizationID,
+		Role:           stored.Role,
+		HasProfile:     stored.HasProfile,
+		PhotoCount:     stored.PhotoCount,
 		CreatedAt:      stored.CreatedAt,
 	}
+}
+
+// ForgotPassword emails a short-lived recovery code. It never reveals whether
+// the address is registered and never returns an error to the caller.
+func (s *Service) ForgotPassword(ctx context.Context, email string) {
+	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizeEmail(email))
+	if err != nil || stored.User.Status != "active" || s.mailer == nil {
+		return
+	}
+	code, err := generateResetCode()
+	if err != nil {
+		return
+	}
+	if err := s.repo.CreatePasswordReset(ctx, stored.User.ID, hashRefreshToken(code), time.Now().Add(resetCodeTTL)); err != nil {
+		return
+	}
+	body := "Votre code de récupération " + s.appName + " : " + code +
+		"\n\nIl est valable 15 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
+	to := stored.User.Email
+	// Sent asynchronously so response time does not betray whether the account exists.
+	go func() {
+		sendCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		_ = s.mailer.Send(sendCtx, to, "Récupération de votre compte "+s.appName, body+"\n")
+	}()
+}
+
+func (s *Service) ResetPassword(ctx context.Context, code, newPassword string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	err = s.repo.ResetPassword(ctx, hashRefreshToken(strings.ToUpper(strings.TrimSpace(code))), string(hash))
+	if errors.Is(err, ErrRepositoryNotFound) {
+		return ErrInvalidResetCode
+	}
+	return err
+}
+
+func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current, next string) error {
+	stored, err := s.repo.GetPasswordHash(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(current)); err != nil {
+		return ErrInvalidCredentials
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(next), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdatePassword(ctx, userID, string(hash), sessionID)
+}
+
+func generateResetCode() (string, error) {
+	buf := make([]byte, 10)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	out := make([]byte, len(buf))
+	for i, b := range buf {
+		out[i] = resetAlphabet[int(b)%len(resetAlphabet)]
+	}
+	return string(out), nil
 }

@@ -70,3 +70,14 @@ func requestIsHTTPS(c *gin.Context) bool {
 	}
 	return strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")), "https")
 }
+
+// LimitJSONBody caps non-multipart request bodies (multipart uploads enforce
+// their own, larger limit in the photos handler).
+func LimitJSONBody(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/") && c.Request.Body != nil {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		}
+		c.Next()
+	}
+}

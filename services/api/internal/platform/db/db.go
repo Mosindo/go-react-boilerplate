@@ -76,12 +76,23 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	sort.Strings(files)
 
+	// Serialize concurrent boots: only one instance applies migrations at a time.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock(727274)"); err != nil {
+		return fmt.Errorf("lock migrations: %w", err)
+	}
+	defer func() { _, _ = conn.Exec(context.Background(), "SELECT pg_advisory_unlock(727274)") }()
+
 	for _, file := range files {
 		sqlBytes, err := migrationsFS.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read embedded migration %s: %w", file, err)
 		}
-		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
+		if _, err := conn.Exec(ctx, string(sqlBytes)); err != nil {
 			return fmt.Errorf("exec migration %s: %w", file, err)
 		}
 	}

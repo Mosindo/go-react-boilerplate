@@ -3,73 +3,58 @@ package users
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type StoredUser struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
-}
+var ErrUserNotFound = errors.New("user not found")
 
 type Repository interface {
-	ListUsers(ctx context.Context, organizationID string, limit, offset int) ([]StoredUser, error)
-	GetUserByID(ctx context.Context, organizationID, userID string) (StoredUser, error)
+	PasswordHash(ctx context.Context, userID string) (string, error)
+	PhotoKeys(ctx context.Context, userID string) ([]string, error)
+	// Delete removes the account; foreign keys cascade to every owned row
+	// (profile, photos, swipes, matches, conversations, messages, blocks, notifications, sessions).
+	Delete(ctx context.Context, userID string) error
 }
 
-type PGRepository struct {
-	dbPool *pgxpool.Pool
+type PGRepository struct{ pool *pgxpool.Pool }
+
+func NewPGRepository(pool *pgxpool.Pool) *PGRepository { return &PGRepository{pool: pool} }
+
+func (r *PGRepository) PasswordHash(ctx context.Context, userID string) (string, error) {
+	var hash string
+	err := r.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrUserNotFound
+	}
+	return hash, err
 }
 
-func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
-	return &PGRepository{dbPool: dbPool}
-}
-
-func (r *PGRepository) ListUsers(ctx context.Context, organizationID string, limit, offset int) ([]StoredUser, error) {
-	rows, err := r.dbPool.Query(ctx, `
-		SELECT u.id, u.email, u.organization_id, u.created_at
-		FROM users u
-		WHERE u.organization_id = $1
-		ORDER BY u.created_at DESC, u.id DESC
-		LIMIT $2 OFFSET $3
-	`, organizationID, limit, offset)
+func (r *PGRepository) PhotoKeys(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `SELECT storage_key FROM photos WHERE user_id = $1`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	users := make([]StoredUser, 0)
+	var keys []string
 	for rows.Next() {
-		var user StoredUser
-		if err := rows.Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt); err != nil {
+		var k string
+		if err := rows.Scan(&k); err != nil {
 			return nil, err
 		}
-		users = append(users, user)
+		keys = append(keys, k)
 	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return users, nil
+	return keys, rows.Err()
 }
 
-func (r *PGRepository) GetUserByID(ctx context.Context, organizationID, userID string) (StoredUser, error) {
-	var user StoredUser
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, created_at
-		FROM users
-		WHERE organization_id = $1
-		  AND id = $2
-	`, organizationID, userID).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+func (r *PGRepository) Delete(ctx context.Context, userID string) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return StoredUser{}, ErrUserNotFound
-		}
-		return StoredUser{}, err
+		return err
 	}
-	return user, nil
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
 }
