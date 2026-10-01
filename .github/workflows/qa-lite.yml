@@ -3,10 +3,9 @@ name: E2E
 # Real-browser run of the critical path (signup → onboarding → discover → like → match → chat →
 # account deletion) against the Docker stack.
 on:
-  pull_request:
-    branches: ["main"]
   push:
-    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   e2e:
