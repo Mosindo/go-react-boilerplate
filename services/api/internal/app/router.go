@@ -57,10 +57,10 @@ func NewRouter(d Deps) (*Services, error) {
 	profilesRepo := profilesfeature.NewRepository(d.Pool)
 	profilesSvc := profilesfeature.NewService(profilesRepo)
 	photosSvc := photosfeature.NewService(photosfeature.NewRepository(d.Pool), d.Store)
-	notificationsSvc := notificationsfeature.NewService(d.Pool, hub)
+	notificationsSvc := notificationsfeature.NewService(notificationsfeature.NewRepository(d.Pool), hub)
 	discoverySvc := discoveryfeature.NewService(discoveryfeature.NewRepository(d.Pool), profilesSvc, notificationsSvc, hub)
 	chatSvc := chatfeature.NewService(chatfeature.NewRepository(d.Pool), profilesSvc, notificationsSvc, hub)
-	moderationSvc := moderationfeature.NewService(d.Pool, hub)
+	moderationSvc := moderationfeature.NewService(moderationfeature.NewRepository(d.Pool), hub)
 	authSvc := authfeature.NewService(authfeature.NewPGRepository(d.Pool), d.JWTSecret, d.Mailer).
 		WithAccountDeletion(photosSvc, hub)
 

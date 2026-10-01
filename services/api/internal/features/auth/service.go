@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -139,6 +140,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 		}
 		return Tokens{}, User{}, err
 	}
+	_ = s.repo.TouchUser(ctx, userRecord.ID)
 
 	refreshSecret, err := generateRefreshToken()
 	if err != nil {
@@ -184,6 +186,18 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return err
 	}
 	return nil
+}
+
+// RequestResetAsync answers immediately and does the lookup + mail delivery in the background, so
+// response time cannot reveal whether an email is registered.
+func (s *Service) RequestResetAsync(email string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.RequestReset(ctx, email); err != nil {
+			log.Printf("auth: recovery request failed: %v", err)
+		}
+	}()
 }
 
 // RequestReset emails a short-lived recovery code. It never reveals whether the email exists.

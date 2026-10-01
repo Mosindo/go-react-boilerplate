@@ -111,9 +111,7 @@ func (h *Handler) Forgot(c *gin.Context) {
 		httpx.BadRequest(c, "email invalide")
 		return
 	}
-	if err := h.service.RequestReset(c.Request.Context(), string(req.Email)); err != nil {
-		logger.LogHandlerError(c, "auth.forgot", http.StatusAccepted, err)
-	}
+	h.service.RequestResetAsync(string(req.Email))
 	c.Status(http.StatusAccepted)
 }
 

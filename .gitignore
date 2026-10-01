@@ -57,3 +57,6 @@ apps/mobile/.e2e/
 # Local uploads (private photos)
 data/
 services/api/data/
+
+apps/*/e2e/artifacts/
+apps/*/dist/

@@ -77,20 +77,28 @@ Run these checks before pushing changes:
 
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+gofmt -l .          # must print nothing (use gofmt -w . to fix)
+go vet ./...
+DATABASE_URL_TEST="postgres://postgres:postgres@localhost:5432/app_test?sslmode=disable" go test ./...
+go build ./cmd/api ./cmd/seed
 ```
+
+`DATABASE_URL_TEST` must point to a throwaway database: the integration tests drop and recreate its `public` schema.
 
 ```bash
-cd apps/mobile
+cd apps/aurore
 npx tsc --noEmit
+npm run lint
+npm test
 ```
 
-If the change touches integrated flows, also run:
+If the change touches user flows, also run the browser E2E (API running with the demo seed and
+`ALLOWED_ORIGINS=http://localhost:8081`):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+cd apps/aurore
+EXPO_PUBLIC_API_URL=http://localhost:18080 npm run build:web
+npm run e2e
 ```
 
 ## Documentation Expectations

@@ -1,30 +1,26 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Aurore
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Aurore**, a free dating application (originally the `go-react-saas` boilerplate).
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Aurore is a 100% free dating app: accounts, profiles, photos, discovery, likes, matches,
+real-time chat, notifications, blocking, reporting and account deletion.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Hard product rules: no subscription, no paywall, no paid boost, no artificially limited likes,
+no mandatory ads, no payment integration.
 
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- discovery (swipes, matches, recommendations)
 - chat
 - notifications
-- files
+- moderation (blocks, reports)
 
 ---
 
@@ -57,20 +53,22 @@ Target structure:
 
 `cmd/api/main.go`  
 `internal/`
+- `app/` (router wiring + integration tests)
 - `platform/`
   - `config/`
-  - `db/`
+  - `db/` (versioned migrations)
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `httpx/`, `storage/`, `mailer/`, `realtime/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `moderation/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,14 +126,14 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+Required indexes (see `internal/platform/db/migrations/`):
+- `users.email` (unique)
+- `swipes (from_user_id, to_user_id)` unique, `swipes (to_user_id)` for likes
+- `matches (user_a_id, user_b_id)` unique, `matches (user_b_id)`
+- `conversation_participants (conversation_id, user_id)` and `(user_id, conversation_id)`
+- `messages (conversation_id, created_at, id)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` unique, `profiles` partial indexes for discovery
 
 ---
 
@@ -143,20 +141,20 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `DATABASE_URL_TEST=... go test ./...` (integration tests DROP the public schema of that database)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint` and `npm test` healthy in `apps/aurore`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/internal/app`):
+- Health, auth (register/login/refresh/recovery/JWT), profiles, photos
+- Discovery eligibility, swipes/matches (including concurrency), chat permissions
+- Blocking, reports, notifications, account deletion, realtime, rate limiting
+
+Critical path E2E (real browser): `apps/aurore/e2e/run.mjs`.
 
 ---
 
@@ -172,16 +170,15 @@ Mandatory rules to avoid recurring environment issues:
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
   - `infra/docker-compose.yml`
-  - mobile API fallback
+  - mobile API fallback (`apps/aurore/src/api/client.ts`)
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
-  - notifications read flow
+- A frontend is only "ready" after a real smoke test (`npm run e2e` in `apps/aurore`):
+  - register and onboarding
+  - discover, like, match
+  - chat send/receive in real time
+  - notifications
+  - account deletion
 
 ---
 
@@ -207,7 +204,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Any payment, subscription or paywall feature
 
 ---
 

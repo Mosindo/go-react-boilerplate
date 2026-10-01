@@ -43,15 +43,18 @@ func (m *captureMailer) Send(_ context.Context, to, _, body string) error {
 	return nil
 }
 
+// code waits for the recovery email, which is sent in the background by design.
 func (m *captureMailer) code(to string) string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	body := m.last[to]
-	i := strings.Index(body, ": ")
-	if i < 0 || len(body) < i+10 {
-		return ""
+	for i := 0; i < 100; i++ {
+		m.mu.Lock()
+		body := m.last[to]
+		m.mu.Unlock()
+		if j := strings.Index(body, ": "); j >= 0 && len(body) >= j+10 {
+			return body[j+2 : j+10]
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	return body[i+2 : i+10]
+	return ""
 }
 
 type env struct {

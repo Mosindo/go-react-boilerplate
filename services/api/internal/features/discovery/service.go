@@ -125,8 +125,10 @@ func (s *Service) announceMatch(ctx context.Context, userID, otherID string, res
 			continue
 		}
 		if recipient == userID {
+			// The swiper learns about the match from the HTTP response itself.
 			c := card
 			res.Match = &c
+			continue
 		}
 		s.pub.Publish(recipient, realtime.Event{Type: "match.new", Data: Match{
 			ID: res.MatchID, ConversationID: res.ConversationID, User: card,

@@ -1,289 +1,217 @@
-# go-react-saas
+# Aurore — application de rencontre 100 % gratuite
 
-`go-react-saas` is a reusable fullstack monorepo for building social networks, forums, SaaS products, marketplaces, and community apps with a shared Go API, PostgreSQL database, Docker-based infrastructure, and React / React Native clients.
+Aurore est une application de rencontre complète : créer un compte, composer son profil et ses photos, découvrir des personnes proches, liker ou passer, matcher en cas d'intérêt réciproque, discuter en temps réel, recevoir des notifications, bloquer, signaler et supprimer son compte.
 
-## Project Overview
+**Gratuite pour de vrai** : aucun abonnement, aucun paywall, aucun « boost » payant, aucun like limité artificiellement, aucune publicité. Le code ne contient d'ailleurs aucune intégration de paiement.
 
-This repository provides a production-minded starting point for fullstack products that need:
-- a typed mobile frontend
-- a modular Go API
-- explicit PostgreSQL persistence
-- session-based authentication with refresh-token rotation
-- multi-tenant SaaS foundations with organizations and subscriptions
-- containerized local development
-- predictable smoke and QA scripts
+> Ce dépôt est issu du boilerplate `go-react-saas`. Les modules génériques (billing Stripe, posts, commentaires, organisations multi-tenant) ont été remplacés par les modules de rencontre.
 
-The codebase is intentionally generic. Core modules can be composed and extended without assuming a single business vertical.
+## Sommaire
 
-The default Docker Compose project name is `go-react-saas`, which keeps generated container, network, and volume names stable across environments.
+1. [Stack](#stack)
+2. [Architecture](#architecture)
+3. [Démarrage rapide](#démarrage-rapide)
+4. [Variables d'environnement](#variables-denvironnement)
+5. [Base de données, migrations, seed](#base-de-données-migrations-seed)
+6. [Lancer en local (sans Docker)](#lancer-en-local-sans-docker)
+7. [Application mobile / web](#application-mobile--web)
+8. [Tests et qualité](#tests-et-qualité)
+9. [Déploiement](#déploiement)
+10. [API](#api)
+11. [Sécurité et vie privée](#sécurité-et-vie-privée)
+12. [Décisions techniques](#décisions-techniques)
+13. [Limites connues](#limites-connues)
 
-## Stack Description
+## Stack
 
-### Backend
-- Go
-- Gin
-- PostgreSQL
-- `pgxpool`
-- JWT authentication with access tokens + refresh tokens
-- explicit SQL queries without an ORM
+| Couche | Technologies |
+| --- | --- |
+| App | Expo 54 / React Native 0.81 / React 19, TypeScript strict, React Navigation 7, TanStack Query 5, fonctionne sur iOS, Android et web |
+| API | Go 1.24, Gin, pgx/pgxpool (sans ORM), JWT HS256, bcrypt, WebSocket (gorilla/websocket) |
+| Données | PostgreSQL 16, migrations SQL versionnées embarquées dans le binaire |
+| Photos | Stockage disque privé (interface `Store` remplaçable), recompression JPEG via `golang.org/x/image` |
+| Infra | Docker, Docker Compose, GitHub Actions |
 
-### Frontend
-- React Native with Expo
-- React-compatible structure for additional clients
-- TypeScript
-- React Navigation
-- React Query for auth/session orchestration
+## Architecture
 
-### Infrastructure
-- Docker
-- Docker Compose
-- GitHub Actions for QA automation
-
-## Monorepo Structure
-
-```text
-.
-├─ apps/
-│  └─ mobile/
-│     ├─ App.tsx
-│     ├─ babel.config.js
-│     ├─ e2e/
-│     ├─ scripts/
-│     └─ src/
-│        ├─ api/
-│        ├─ components/
-│        ├─ screens/
-│        ├─ store/
-│        ├─ theme/
-│        └─ utils/
-├─ docs/
-│  └─ ARCHITECTURE.md
-├─ infra/
-│  └─ docker-compose.yml
-├─ scripts/
-│  ├─ qa-lite.ps1
-│  ├─ smoke-all.ps1
-│  └─ smoke-api.ps1
-├─ services/
-│  └─ api/
-│     ├─ cmd/api/
-│     └─ internal/
-│        ├─ features/
-│        └─ platform/
-├─ AGENTS.md
-├─ CHANGELOG.md
-├─ CODE_OF_CONDUCT.md
-├─ CONTRIBUTING.md
-└─ README.md
+```
+services/api/
+  cmd/api/            point d'entrée du serveur HTTP (un seul serveur, Gin)
+  cmd/seed/           comptes de démonstration (désactivé en production)
+  internal/
+    app/              assemblage : config → services → routes (+ tests d'intégration)
+    platform/         config, db (migrations), middleware (auth JWT, rate limit, CORS…),
+                      httpx (erreurs/pagination), storage, mailer, realtime (WebSocket), logger
+    features/         auth · profiles · photos · discovery · chat · notifications · moderation
+                      chaque feature : handler.go → service.go → repository.go (+ model.go, routes.go)
+apps/aurore/          application Expo (iOS / Android / web)
+  src/api/            client HTTP (refresh de session single-flight), endpoints typés
+  src/auth/           session (SecureStore / localStorage)
+  src/realtime/       WebSocket + synchronisation du cache
+  src/components/     design system (thème clair/sombre), formulaires partagés
+  src/screens/        écrans ; src/navigation/ navigation
+  e2e/run.mjs         parcours critique dans un vrai navigateur
+infra/docker-compose.yml   PostgreSQL + API (le docker-compose.yml racine l'inclut)
 ```
 
-## Backend Architecture Overview
+Règles : handlers fins, logique métier dans les services, SQL uniquement dans les repositories, aucune requête réseau directe depuis l'UI (tout passe par `src/api`).
 
-The API uses a feature-first structure with a small shared platform layer.
+### Modèle de données
 
-- `services/api/cmd/api/main.go` is the composition root
-- `services/api/internal/platform` contains cross-cutting concerns such as config, database setup, middleware, logging, and shared errors
-- `services/api/internal/features` contains domain modules such as `auth`, `users`, `chat`, `posts`, `comments`, `notifications`, `files`, and `billing`
+`users`, `sessions`, `password_resets`, `profiles`, `preferences`, `interests` / `user_interests`, `photos`, `swipes` (like/pass), `matches`, `conversations` / `conversation_participants`, `messages`, `blocks`, `reports`, `notifications`. Contraintes d'unicité (un swipe par paire, un match par paire ordonnée), `CHECK` (âge ≥ 18, genres, bornes), clés étrangères en `ON DELETE CASCADE`, index sur les chemins chauds (voir `internal/platform/db/migrations/`).
 
-Each feature follows the same shape:
-- `handler.go`
-- `service.go`
-- `repository.go`
-- `model.go`
-- `routes.go`
+## Démarrage rapide
 
-This keeps routing, business logic, and SQL separated while making new modules easy to add.
-
-For a deeper breakdown, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Frontend Architecture Overview
-
-The mobile app is organized around generic product surfaces:
-- authentication
-- home feed
-- chat
-- notifications
-- profile
-- session restoration and refresh-token aware auth state
-
-Within `apps/mobile/src`:
-- `api` contains REST clients
-- `hooks` contains React Query-powered auth/session hooks
-- `screens` contains route-level UI
-- `shared/ui` contains reusable UI primitives and tokens
-- `shared/layout` contains global layout and navigation shells
-- `shared/feedback` contains reusable loading, error, and empty states
-- `store` contains token/session persistence
-- `theme` contains shared design tokens
-- `utils` contains shared helpers
-
-The current frontend shell is designed to be reused and extended rather than tied to a single product concept.
-
-## How To Run Locally
-
-## Prerequisites
-
-- Node.js 20+
-- npm
-- Go 1.23+ with toolchain support
-- Docker Desktop or Docker Engine
-
-## 1. Prepare environment
-
-Copy .env.example to .env and provide a strong JWT_SECRET before starting the stack.
-
-## 2. Start PostgreSQL and the API with Docker
-
-PowerShell:
-
-```powershell
-$env:JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-$env:APP_BASE_URL='http://localhost:18080'
-docker compose up --build -d
-```
-
-Bash:
+Prérequis : Docker, Node 20+ (22 recommandé).
 
 ```bash
-export JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-export APP_BASE_URL='http://localhost:18080'
-docker compose up --build -d
+cp .env.example .env
+# éditez .env : JWT_SECRET=$(openssl rand -base64 48)
+docker compose up --build -d          # PostgreSQL + API sur http://localhost:18080
+docker compose run --rm api ./seed    # (optionnel) 10 comptes de démonstration
+
+cd apps/aurore
+cp .env.example .env                  # EXPO_PUBLIC_API_URL
+npm ci
+npm run web                           # ou: npm start puis i / a / scan du QR code
 ```
 
-The API is exposed on `http://localhost:18080`.
+Comptes de démonstration : `camille@demo.invalid`, `hugo@demo.invalid`, … mot de passe `DemoPassword123` (domaine réservé `.invalid`, jamais routable ; marqués `is_demo` en base).
 
-Optional Stripe billing variables:
+**Sur un téléphone physique**, n'utilisez jamais `localhost` : mettez l'IP LAN de votre machine dans `apps/aurore/.env` (`EXPO_PUBLIC_API_URL=http://192.168.1.20:18080`). Vérifiez qu'aucun autre service n'occupe le port (`docker compose ps`, `curl http://<IP>:18080/health`). Si le port 18080 est pris, changez le port hôte dans `infra/docker-compose.yml` et la variable de l'app.
 
-```powershell
-$env:STRIPE_SECRET_KEY='sk_test_...'
-$env:STRIPE_WEBHOOK_SECRET='whsec_...'
-$env:STRIPE_PRICE_ID='price_...'
-```
+## Variables d'environnement
 
-Health check:
+Voir [`.env.example`](.env.example) (API / compose) et [`apps/aurore/.env.example`](apps/aurore/.env.example) (app).
+
+| Variable | Requis | Description |
+| --- | --- | --- |
+| `JWT_SECRET` | oui | ≥ 32 caractères, aléatoire. Les valeurs de type « change-me » sont refusées. |
+| `DATABASE_URL` | oui | URL PostgreSQL (compose la construit lui-même). |
+| `PORT` | non | Défaut `8080`. |
+| `APP_ENV` | non | `development` (défaut) ou `production`. En production, `SMTP_HOST` est obligatoire et le seed refuse de s'exécuter. |
+| `UPLOAD_DIR` | non | Dossier privé des photos (défaut `./data/uploads`, volume Docker en compose). |
+| `ALLOWED_ORIGINS` | non | Origines web autorisées par CORS et par le WebSocket (inutile pour iOS/Android natifs). |
+| `TRUSTED_PROXIES` | non | IP/CIDR des reverse proxies dont `X-Forwarded-For` est cru (sinon ignoré : le rate limiting voit l'IP réelle). |
+| `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM` | prod | Envoi des codes de récupération. Sans `SMTP_HOST`, le code est écrit dans les logs (développement uniquement). |
+| `EXPO_PUBLIC_API_URL` | app | URL de l'API **joignable depuis l'appareil**. Aucun secret ne doit jamais être mis dans une variable `EXPO_PUBLIC_*`. |
+
+## Base de données, migrations, seed
+
+- Les migrations sont dans `services/api/internal/platform/db/migrations/*.sql`, embarquées dans le binaire et **appliquées au démarrage**, une fois chacune, dans une transaction, avec un verrou consultatif (plusieurs réplicas peuvent démarrer ensemble). L'état est suivi dans `schema_migrations`.
+- Pour ajouter une évolution : créer `005_xxx.sql` (ne jamais modifier une migration déjà publiée).
+- Seed : `go run ./cmd/seed` (ou `docker compose run --rm api ./seed`) crée 10 profils fictifs avec des photos générées (dégradés). `go run ./cmd/seed -purge` les supprime tous (comptes `is_demo`, fichiers inclus). Refuse de tourner avec `APP_ENV=production`.
+- ⚠️ Si vous aviez une base issue de l'ancien boilerplate, repartez d'une base vide : le schéma a été entièrement remplacé.
+
+## Lancer en local (sans Docker)
 
 ```bash
-curl http://localhost:18080/health
-```
-
-## 3. Run the API directly
-
-PowerShell:
-
-```powershell
+# PostgreSQL local (ex. base « app »)
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/app?sslmode=disable"
+export JWT_SECRET="$(openssl rand -base64 48)"
+export ALLOWED_ORIGINS=http://localhost:8081   # si vous utilisez l'app web
 cd services/api
-$env:DATABASE_URL='postgresql://app:app@localhost:5432/app?sslmode=disable'
-$env:JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-go run ./cmd/api
+go run ./cmd/seed        # optionnel
+go run ./cmd/api         # http://localhost:8080
 ```
 
-Bash:
+## Application mobile / web
+
+```bash
+cd apps/aurore
+npm ci
+npm start            # Expo : touche i (iOS), a (Android), w (web)
+npm run build:web    # export statique dans dist/
+```
+
+Fonctionnalités : onboarding en 5 étapes (identité 18+, préférences, photos, bio/centres d'intérêt, position), découverte avec **swipe** *et* boutons (accessibles), profil complet consultable, match avec écran dédié, messagerie temps réel (heure, lu/non lu, suppression locale), notifications avec badges, réglages de confidentialité (pause du profil, masquage de la distance), blocage/signalement, suppression de compte, thème clair/sombre, états de chargement/vides/erreurs, retour d'action par toasts.
+
+## Tests et qualité
+
+Avant toute livraison :
 
 ```bash
 cd services/api
-export DATABASE_URL='postgresql://app:app@localhost:5432/app?sslmode=disable'
-export JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-go run ./cmd/api
+gofmt -l .                         # doit être vide
+go vet ./...
+DATABASE_URL_TEST="postgres://postgres:postgres@localhost:5432/app_test?sslmode=disable" go test ./...
+go build ./cmd/api ./cmd/seed
+
+cd ../../apps/aurore
+npx tsc --noEmit && npm run lint && npm test
 ```
 
-## 4. Start the mobile app
+> ⚠️ Les tests d'intégration **suppriment et recréent le schéma `public`** de `DATABASE_URL_TEST` (ce qui prouve que les migrations s'appliquent depuis zéro). Sans cette variable, ils sont ignorés. Ne la pointez jamais vers une base qui vous importe.
+
+Couverture :
+- **Unitaires** (Go) : âge à la date près, 18+, arrondi des coordonnées, paliers de distance, validation des préférences, pipeline photo (types, bombes de décompression, métadonnées), anti-traversée de chemin du stockage, rate limiter, config. (App) : dates, validation, client API (refresh unique partagé, déconnexion, réseau coupé), cache temps réel, composants et écrans d'auth.
+- **Intégration** (Go, API réelle + PostgreSQL) : auth (bcrypt, rotation du refresh, récupération, JWT `none`/HS512/expiré/sans `exp`), profils, photos (upload malveillant, limites, ordre, remplacement, accès), éligibilité de la découverte, swipes/matchs (doublons, **courses concurrentes**), chat et permissions (404 pour les non-membres), blocage, signalements, notifications, suppression de compte (données + fichiers), WebSocket, rate limiting.
+- **E2E** (vrai navigateur + vraie API) : `apps/aurore/e2e/run.mjs` — inscription → onboarding → découverte → like → match → conversation temps réel → notifications → suppression de compte.
 
 ```bash
-cd apps/mobile
-npm install
-npm run start
+# API démarrée avec le seed et ALLOWED_ORIGINS=http://localhost:8081
+cd apps/aurore
+EXPO_PUBLIC_API_URL=http://localhost:18080 npm run build:web
+npm run e2e          # captures dans e2e/artifacts/
 ```
 
-Other launch targets:
+La CI (`.github/workflows/`) exécute tout cela sur chaque push (Go + PostgreSQL, app, build Docker, E2E).
 
-```bash
-npm run android
-npm run ios
-npm run web
-```
+## Déploiement
 
-For physical devices, set:
+1. Construisez l'image : `docker build -t aurore-api services/api` (binaire statique, utilisateur non-root, `HEALTHCHECK`).
+2. Fournissez PostgreSQL 16+ (managé de préférence), `JWT_SECRET` fort, `APP_ENV=production`, **SMTP** (obligatoire), `UPLOAD_DIR` sur un **volume persistant et sauvegardé**.
+3. Placez l'API derrière un reverse proxy TLS (HSTS est émis quand `X-Forwarded-Proto: https`) et renseignez `TRUSTED_PROXIES`. Le WebSocket (`/ws`) doit être relayé (`Upgrade`).
+4. Web : servez `apps/aurore/dist/` (export statique, `EXPO_PUBLIC_API_URL` fixé au build) et ajoutez son origine à `ALLOWED_ORIGINS`.
+5. Mobile : `eas build` (ou build natif) avec `EXPO_PUBLIC_API_URL` pointant sur l'API HTTPS.
 
-```bash
-EXPO_PUBLIC_API_URL=http://<LAN_IP>:18080
-```
+Scalabilité : le hub temps réel, le rate limiter et les tickets WebSocket sont **en mémoire** (une instance). Pour plusieurs instances, ajoutez un pub/sub (Redis) derrière `realtime.Hub.Publish`, un limiter partagé (ou au niveau du proxy) et un stockage objet derrière `storage.Store`.
 
-## 5. Run checks
+## API
 
-Backend:
+Réponses d'erreur uniformes : `{"error": "message lisible", "code": "slug"}`. Toutes les routes (sauf `/health`, `/auth/*`) exigent `Authorization: Bearer <accessToken>` (15 min ; refresh rotatif 30 j).
 
-```bash
-cd services/api
-go test ./...
-go build ./cmd/api
-```
+| Domaine | Routes |
+| --- | --- |
+| Santé | `GET /health` |
+| Auth | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot`, `/auth/reset` · `GET /me` · `DELETE /me` (mot de passe requis) |
+| Profil | `GET\|PUT /me/profile`, `PUT /me/preferences`, `PUT /me/location`, `PUT /me/interests`, `GET /interests` |
+| Photos | `GET\|POST /me/photos`, `PUT /me/photos/order`, `PUT\|DELETE /me/photos/:id`, `GET /photos/:id/image\|thumb` (authentifié) |
+| Découverte | `GET /discover?limit=`, `POST /discover/swipes {userId, action}`, `DELETE /discover/swipes/:userId` (annuler), `GET /profiles/:userId` |
+| Matchs | `GET /matches`, `DELETE /matches/:id` |
+| Chat | `GET /conversations`, `GET\|POST /conversations/:id/messages` (`?before=` curseur), `POST /conversations/:id/read`, `DELETE /conversations/:id` (suppression locale) |
+| Notifications | `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/:id/read`, `POST /notifications/read-all` |
+| Modération | `GET\|POST /blocks`, `DELETE /blocks/:userId`, `POST /reports` |
+| Temps réel | `POST /realtime/ticket` puis `GET /ws?ticket=` → événements `message.new`, `message.read`, `match.new`, `match.removed`, `notification.new` |
 
-Mobile:
+## Sécurité et vie privée
 
-```bash
-cd apps/mobile
-npx tsc --noEmit
-npx expo export --platform android --output-dir .expo-audit
-```
+- **Auth** : bcrypt, JWT HS256 uniquement (méthode et `exp` vérifiés), refresh rotatif à usage unique stocké haché, révocation globale après réinitialisation du mot de passe, comparaison à temps constant, faux hachage pour les emails inconnus, `/auth/forgot` répond toujours 202 (envoi en arrière-plan : pas d'oracle de timing).
+- **Autorisations côté serveur partout** : un non-membre d'une conversation reçoit `404` (rien ne fuite) ; un swipe n'est accepté que si la cible figurait légitimement dans la découverte (même requête SQL d'éligibilité) ; blocage bidirectionnel appliqué à la découverte, aux profils, aux photos, aux notifications et au chat.
+- **Géolocalisation** : seule une position **arrondie à ~1 km** est stockée ; les autres voient une distance **arrondie par paliers de 5 km** (anti-triangulation) ; jamais de coordonnées dans l'API publique.
+- **Âge** : 18 ans minimum contrôlé à la date près côté serveur (et par `CHECK` en base) ; seul l'âge est exposé, jamais la date de naissance.
+- **Photos** : type vérifié par contenu (JPEG/PNG/WebP), taille ≤ 8 Mo, dimensions bornées (anti « bombe de décompression »), ré-encodage JPEG (EXIF/GPS et charges cachées supprimés), noms aléatoires, dossier non servi statiquement, accès par l'API uniquement après contrôle d'autorisation, `Cache-Control: private`.
+- **Abus** : rate limiting par IP (auth, récupération) et par utilisateur (messages, uploads, signalements, swipes), plafonds de corps de requête, 5 essais max par code de récupération (valable 30 min).
+- **Données** : suppression de compte (mot de passe requis) = cascade SQL complète + fichiers + coupure des WebSockets ; les signalements sont conservés sans lien vers les comptes supprimés (historique de modération).
+- Les secrets ne sont jamais dans le dépôt ni dans l'app ; les logs masquent jetons et mots de passe.
 
-Repository-wide QA:
+## Décisions techniques
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+- **Garder** Gin / pgx / JWT / sessions / logger / structure `handler → service → repository` ; **remplacer** le schéma et les features génériques ; Tamagui retiré (non utilisé).
+- **Migrations versionnées** (table `schema_migrations`) plutôt que ré-exécuter tous les fichiers à chaque démarrage.
+- **Un swipe par paire** (`swipes`, action `like|pass`) ; match créé dans la même transaction que le like réciproque, sous verrou consultatif de la paire → jamais de doublon ni de like « raté » en cas de simultanéité (testé). Un pass peut être annulé (retour de la carte) ; un match se supprime via « supprimer le match ».
+- **Recommandation** isolée dans un seul `ORDER BY` (`discovery/repository.go`) : d'abord ceux qui m'ont liké, puis intérêts communs, proximité, activité récente. L'éligibilité (`candidateSQL`) est séparée du classement pour pouvoir brancher plus tard un autre algorithme sans toucher aux règles.
+- **Profil « complet »** = profil + préférences + au moins une photo ; la position est facultative (sans position, pas de filtre ni d'affichage de distance).
+- **Temps réel par WebSocket** authentifié par ticket à usage unique (le jeton d'accès ne transite jamais dans une URL) ; les écritures passent par REST ; reconnexion avec backoff et resynchronisation des caches.
+- **Photos protégées** : sur le web, `<img>` ne peut pas envoyer d'en-tête d'auth → les images sont récupérées avec le jeton puis affichées via une URL objet mise en cache.
+- **Pas de push natif** (APNs/FCM) : notifications in-app + temps réel tant que l'app est ouverte (voir limites).
+- **Récupération de compte** par code à 8 caractères envoyé par email (SMTP standard, sans dépendance) plutôt que par lien profond.
+- **Modération** : signalements stockés (`reports`, statut `open`) ; la revue se fait en SQL ou via un futur outil d'administration.
 
-## Stripe Billing And MCP
+## Limites connues
 
-Backend billing is already wired for:
-- `POST /billing/checkout`
-- `GET /billing/subscription`
-- `POST /billing/webhook`
-
-Required environment variables for a live Stripe flow:
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_ID`
-- `APP_BASE_URL`
-
-`APP_BASE_URL` should be the public URL that Stripe redirects back to after checkout. In local Docker runs, `http://localhost:18080` is fine for backend verification. For device testing or hosted environments, use a reachable public or LAN URL instead.
-
-Codex MCP Stripe reference config is stored in [config.toml](.codex/config.toml). The shared Codex config on this machine now also includes:
-
-```toml
-[mcp_servers.stripe]
-url = "https://mcp.stripe.com"
-```
-
-## How To Add New Features
-
-Use the existing vertical-slice pattern and keep naming generic.
-
-### Backend
-1. Add or update a migration in `services/api/internal/platform/db/migrations`.
-2. Create a new feature folder under `services/api/internal/features/<feature>`.
-3. Implement `model.go`, `repository.go`, `service.go`, `handler.go`, and `routes.go`.
-4. Keep SQL in repositories and HTTP concerns in handlers.
-5. Register the feature in `services/api/cmd/api/main.go`.
-6. Add tests before expanding the public API surface.
-
-Current SaaS-oriented backend foundations include:
-- organizations for tenant identity
-- sessions for refresh-token lifecycle
-- subscriptions for billing state
-- billing endpoints for Stripe checkout and webhook flows
-
-### Frontend
-1. Add API client functions in `apps/mobile/src/api`.
-2. Add or extend screens in `apps/mobile/src/screens`.
-3. Extract reusable UI into `apps/mobile/src/shared/ui`.
-4. Keep layout concerns in `shared/layout` and stateful feedback in `shared/feedback`.
-5. Keep tokens and storage concerns centralized in `theme` and `store`.
-6. Re-run TypeScript and smoke checks after changes.
-
-## Additional Documentation
-
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- [CHANGELOG.md](CHANGELOG.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-
+- Pas de notifications push hors application (nécessite des comptes Apple/Google).
+- Pas d'interface d'administration pour traiter les signalements (table `reports`).
+- Hub temps réel / rate limiter / tickets en mémoire (une instance) ; stockage photos sur disque local.
+- L'orientation EXIF des photos est gérée par la recompression du sélecteur d'images natif (`quality < 1`).
+- Les tests Docker/Compose ne s'exécutent qu'en CI (pas de démon Docker dans l'environnement de développement de cette livraison).

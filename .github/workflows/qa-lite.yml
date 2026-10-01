@@ -1,5 +1,7 @@
-name: QA Lite
+name: E2E
 
+# Real-browser run of the critical path (signup → onboarding → discover → like → match → chat →
+# account deletion) against the Docker stack.
 on:
   pull_request:
     branches: ["main"]
@@ -7,71 +9,42 @@ on:
     branches: ["main"]
 
 jobs:
-  qa-lite:
+  e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       JWT_SECRET: ci-jwt-secret-32-chars-minimum-value
-
+      ALLOWED_ORIGINS: http://localhost:8081
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "20.19.4"
-          cache: "npm"
-          cache-dependency-path: apps/mobile/package-lock.json
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: services/api/go.mod
-          cache: true
-          cache-dependency-path: services/api/go.sum
-
-      - name: Install mobile deps
-        working-directory: apps/mobile
-        run: npm ci
-
-      - name: Start Docker stack
-        shell: bash
-        run: docker compose up --build -d
-
-      - name: Wait API health
-        shell: bash
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/aurore/package-lock.json
+      - name: Start the stack and seed demo accounts
         run: |
-          for i in {1..60}; do
-            if curl -fsS http://localhost:18080/health >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "API healthcheck timeout"
-          docker compose logs api || true
-          exit 1
-
-      - name: Run QA lite
-        shell: pwsh
-        run: ./scripts/qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-
-      - name: Upload QA reports
+          docker compose up --build -d --wait --wait-timeout 120
+          docker compose run --rm api ./seed
+      - name: Install app dependencies and browser
+        working-directory: apps/aurore
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Build the web app
+        working-directory: apps/aurore
+        run: npm run build:web
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18080
+      - name: Run the critical path
+        working-directory: apps/aurore
+        run: npm run e2e
+      - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-lite-reports
-          path: |
-            .smoke/qa-lite-report.txt
-            .smoke/report.txt
-          if-no-files-found: warn
-
-      - name: API logs on failure
+          name: e2e-screenshots
+          path: apps/aurore/e2e/artifacts
+      - name: Logs on failure
         if: failure()
-        shell: bash
-        run: docker compose logs api || true
-
-      - name: Shutdown Docker stack
-        if: always()
-        shell: bash
-        run: docker compose down -v
-
+        run: docker compose logs api

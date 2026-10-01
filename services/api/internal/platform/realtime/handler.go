@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"example.com/api/internal/platform/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -69,7 +70,7 @@ func RegisterRoutes(r gin.IRouter, hub *Hub, tickets *Tickets, requireUser gin.H
 		WriteBufferSize: 1024,
 		CheckOrigin:     originChecker(allowedOrigins),
 	}
-	r.POST("/realtime/ticket", requireUser, func(c *gin.Context) {
+	r.POST("/realtime/ticket", requireUser, middleware.NewLimiter(60, time.Minute).ByUser(), func(c *gin.Context) {
 		id, err := tickets.Issue(c.GetString("userID"))
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "une erreur interne est survenue", "code": "internal"})

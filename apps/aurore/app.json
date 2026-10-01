@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Aurore",
+    "slug": "aurore",
+    "scheme": "aurore",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Aurore utilise votre position approximative pour vous proposer des personnes près de chez vous. Elle n'est jamais affichée avec précision.",
+        "NSPhotoLibraryUsageDescription": "Aurore a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil."
+      }
+    },
+    "android": {
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      ["expo-location", { "locationWhenInUsePermission": "Aurore utilise votre position approximative pour vous proposer des personnes près de chez vous." }],
+      ["expo-image-picker", { "photosPermission": "Aurore a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil." }]
+    ]
+  }
+}
