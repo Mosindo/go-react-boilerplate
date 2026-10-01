@@ -26,3 +26,24 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadProductionRequiresMailer(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "production")
+	if _, err := Load(); err == nil {
+		t.Fatal("production without SMTP must be refused: recovery codes would only be logged")
+	}
+	t.Setenv("SMTP_HOST", "smtp.example.org")
+	if _, err := Load(); err == nil {
+		t.Fatal("SMTP_FROM is required with SMTP_HOST")
+	}
+	t.Setenv("SMTP_FROM", "Aurore <no-reply@example.org>")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !cfg.IsProduction() || cfg.UploadDir == "" || cfg.Port != "8080" {
+		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+}
