@@ -1,66 +1,107 @@
 package middleware
 
 import (
-	"errors"
+	"context"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
+	"example.com/api/internal/platform/token"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker tells whether a session is still active (not revoked, not expired, user exists).
+type SessionChecker interface {
+	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+// CachedSessions memoizes positive checks for a short time so that authenticated
+// requests do not each cost a DB round trip. Revocation takes effect within ttl
+// (immediately on this instance through Forget).
+type cacheEntry struct {
+	userID string
+	exp    time.Time
+}
+
+type CachedSessions struct {
+	inner SessionChecker
+	ttl   time.Duration
+	mu    sync.Mutex
+	seen  map[string]cacheEntry
+}
+
+func NewCachedSessions(inner SessionChecker, ttl time.Duration) *CachedSessions {
+	return &CachedSessions{inner: inner, ttl: ttl, seen: make(map[string]cacheEntry)}
+}
+
+func (s *CachedSessions) SessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
+	s.mu.Lock()
+	if e, ok := s.seen[sessionID]; ok && time.Now().Before(e.exp) {
+		s.mu.Unlock()
+		return true, nil
+	}
+	s.mu.Unlock()
+
+	ok, err := s.inner.SessionActive(ctx, sessionID, userID)
+	if err != nil || !ok {
+		return false, err
+	}
+	s.mu.Lock()
+	if len(s.seen) > 50000 {
+		s.seen = make(map[string]cacheEntry)
+	}
+	s.seen[sessionID] = cacheEntry{userID: userID, exp: time.Now().Add(s.ttl)}
+	s.mu.Unlock()
+	return true, nil
+}
+
+func (s *CachedSessions) ForgetSession(sessionID string) {
+	s.mu.Lock()
+	delete(s.seen, sessionID)
+	s.mu.Unlock()
+}
+
+// ForgetUser drops every cached session of a user (password change, account deletion).
+func (s *CachedSessions) ForgetUser(userID string) {
+	s.mu.Lock()
+	for id, e := range s.seen {
+		if e.userID == userID {
+			delete(s.seen, id)
+		}
+	}
+	s.mu.Unlock()
+}
+
+func RequireUser(secret []byte, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tokenString := bearerToken(c.GetHeader("Authorization"))
-		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+		raw := bearerToken(c.GetHeader("Authorization"))
+		if raw == "" {
+			unauthorized(c, "missing token")
 			return
 		}
-
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, errors.New("unexpected signing method")
-			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method type")
-			}
-			return secret, nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		claims, err := token.Parse(secret, raw, token.TypeAccess)
+		if err != nil {
+			unauthorized(c, "invalid token")
 			return
 		}
-
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		active, err := sessions.SessionActive(c.Request.Context(), claims.SessionID, claims.UserID)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "something went wrong", "code": "internal"})
 			return
 		}
-
-		userID, ok := stringClaim(claims, "uid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		if !active {
+			unauthorized(c, "session ended")
 			return
 		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		sessionID, ok := stringClaim(claims, "sid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
-		c.Set("sessionID", sessionID)
+		c.Set("userID", claims.UserID)
+		c.Set("sessionID", claims.SessionID)
 		c.Next()
 	}
+}
+
+func unauthorized(c *gin.Context, msg string) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": msg, "code": "unauthorized"})
 }
 
 func bearerToken(header string) string {
@@ -69,12 +110,4 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
-}
-
-func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
-	value, ok := claims[key].(string)
-	if !ok || strings.TrimSpace(value) == "" {
-		return "", false
-	}
-	return value, true
 }

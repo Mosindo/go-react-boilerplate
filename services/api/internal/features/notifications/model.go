@@ -1,35 +1,36 @@
 package notifications
 
-import "time"
+import (
+	"time"
 
-type Notification struct {
+	"example.com/api/internal/features/profiles"
+)
+
+type Item struct {
+	ID        string         `json:"id"`
+	Type      string         `json:"type"`
+	MatchID   string         `json:"matchId"`
+	Actor     *profiles.Card `json:"actor,omitempty"`
+	CreatedAt time.Time      `json:"createdAt"`
+	ReadAt    *time.Time     `json:"readAt,omitempty"`
+}
+
+type Page struct {
+	Notifications []Item `json:"notifications"`
+	Unread        int    `json:"unread"`
+	NextCursor    string `json:"nextCursor,omitempty"`
+}
+
+type Summary struct {
+	UnreadNotifications int `json:"unreadNotifications"`
+	UnreadMessages      int `json:"unreadMessages"`
+}
+
+type Row struct {
 	ID        string
-	UserID    string
 	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
+	MatchID   string
+	ActorID   string
 	CreatedAt time.Time
 	ReadAt    *time.Time
-}
-
-type NotificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
-}
-
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
-}
-
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
 }
