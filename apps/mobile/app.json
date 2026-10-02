@@ -1,12 +1,37 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Alba",
+    "slug": "alba",
+    "scheme": "alba",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.alba.dating"
+    },
+    "android": {
+      "package": "app.alba.dating"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Alba acc\u00e8de \u00e0 vos photos uniquement pour que vous puissiez les ajouter \u00e0 votre profil."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Alba utilise votre position approximative pour vous montrer des profils proches. Elle n'est jamais partag\u00e9e pr\u00e9cis\u00e9ment."
+        }
+      ]
     ]
   }
 }

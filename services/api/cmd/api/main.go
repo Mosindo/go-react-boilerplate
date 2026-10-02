@@ -51,7 +51,7 @@ func main() {
 	}
 
 	router, _ := app.New(app.Deps{
-		DB: pool, JWTSecret: []byte(cfg.JWTSecret), Store: store, Mailer: m, AllowedOrigins: cfg.AllowedOrigins,
+		DB: pool, JWTSecret: []byte(cfg.JWTSecret), Store: store, Mailer: m, AllowedOrigins: cfg.AllowedOrigins, TrustedProxies: cfg.TrustedProxies,
 	})
 
 	srv := &http.Server{

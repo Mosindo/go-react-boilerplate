@@ -1,4 +1,6 @@
 services/api/*.exe
+services/api/data/
+data/
 .cache/
 .expo/
 .expo-audit/
@@ -51,5 +53,7 @@ pnpm-debug.log*
 docker-data/
 
 # Mobile e2e runtime artifacts
-apps/mobile/.e2e/
+apps/mobile/test-results/
+apps/mobile/playwright-report/
+
 

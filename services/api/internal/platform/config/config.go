@@ -25,6 +25,7 @@ type Config struct {
 	JWTSecret      string
 	UploadDir      string
 	AllowedOrigins []string
+	TrustedProxies []string
 	SMTP           SMTP
 }
 
@@ -39,6 +40,7 @@ func Load() (Config, error) {
 		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
 		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
 		SMTP: SMTP{
 			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
 			Port:     smtpPort,

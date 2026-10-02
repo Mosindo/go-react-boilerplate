@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Alba Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -8,7 +8,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Turned the boilerplate into Alba, a free dating app: profiles, photos, preferences, discovery, likes, matches, real-time chat, notifications, blocks, reports, account deletion, password recovery.
+- Versioned SQL migrations (`schema_migrations`), demo seed command, Playwright browser journey, CI with Postgres.
+
+### Removed
+- Stripe billing, posts, comments, organizations, Tamagui and the PowerShell smoke scripts.
 
 ## [0.1.0] - 2026-03-17
 

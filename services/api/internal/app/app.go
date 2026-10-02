@@ -28,6 +28,8 @@ type Deps struct {
 	Store          storage.Store
 	Mailer         mailer.Mailer
 	AllowedOrigins []string
+	// TrustedProxies lists reverse proxies whose X-Forwarded-For is believed (rate limits key on client IP).
+	TrustedProxies []string
 	// BcryptCost lowers the password hashing cost; tests only (0 keeps the default).
 	BcryptCost int
 }
@@ -41,6 +43,7 @@ type Services struct {
 
 func New(d Deps) (*gin.Engine, Services) {
 	r := gin.New()
+	_ = r.SetTrustedProxies(d.TrustedProxies) // nil: ignore forwarded headers, use the socket address
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(d.AllowedOrigins))

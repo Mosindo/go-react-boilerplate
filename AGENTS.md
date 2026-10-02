@@ -1,30 +1,15 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Alba
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
+This repository is `Alba`, a free dating app (Go API + Expo app) built from the former go-react-saas boilerplate.
 The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+A 100 % free dating app: no subscription, paywall, paid boost, artificial like cap or mandatory ads.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Modules: auth, profiles, photos, discovery, matches, chat, notifications, safety (blocks/reports), realtime.
 
 ---
 
@@ -65,12 +50,14 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matches/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
+  - `realtime/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,14 +115,7 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+Indexes are defined in the migrations (users.email, messages(match_id, created_at), notifications(user_id, created_at), photos(user_id, position), swipes likes, matches per user).
 
 ---
 
@@ -146,17 +126,11 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests live in `services/api/internal/app` (need `DATABASE_URL_TEST`). The browser journey lives in `apps/mobile/e2e`.
 
 ---
 

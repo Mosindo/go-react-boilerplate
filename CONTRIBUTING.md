@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to `Alba`.
 
 ## Ground Rules
 
@@ -84,14 +84,10 @@ go build ./cmd/api
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npx tsc --noEmit && npm run lint && npm test
 ```
 
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+For integrated flows also run the browser journey (`npm run export:web && npm run e2e` in `apps/mobile`, API running).
 
 ## Documentation Expectations
 

@@ -1,169 +1,132 @@
-import { Platform } from "react-native";
-import { getAccessToken } from "../store/tokenStore";
-import { showGlobalError } from "../shared/feedback";
-
-export type ApiErrorPayload = {
-  error?: string;
-};
-
-function normalizeBaseUrl(value: string): string {
-  return value.replace(/\/+$/, "");
-}
-
-function developmentFallbackBaseUrl(): string {
-  return Platform.OS === "android" ? "http://10.0.2.2:18080" : "http://localhost:18080";
-}
-
-function resolveApiBaseUrl(): string {
-  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (explicitBaseUrl) {
-    return normalizeBaseUrl(explicitBaseUrl);
-  }
-
-  if (__DEV__) {
-    return developmentFallbackBaseUrl();
-  }
-
-  return "";
-}
-
-export const API_BASE_URL = resolveApiBaseUrl();
+import { API_URL } from "../config";
 
 export class ApiError extends Error {
-  public status: number;
-  public data: unknown;
-
-  constructor(status: number, data: unknown, message?: string) {
-    super(message ?? `API request failed (${status})`);
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
     this.name = "ApiError";
-    this.status = status;
-    this.data = data;
+  }
+
+  get isNetwork(): boolean {
+    return this.status === 0;
   }
 }
 
-async function getToken(): Promise<string | null> {
-  return getAccessToken();
+export interface Tokens {
+  accessToken: string;
+  refreshToken: string;
 }
 
-function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, string>): Headers {
-  const headers = new Headers();
-
-  headers.set("Accept", "application/json");
-
-  if (base) {
-    new Headers(base).forEach((value, key) => {
-      headers.set(key, value);
-    });
-  }
-
-  if (injected) {
-    for (const [k, v] of Object.entries(injected)) {
-      if (!headers.has(k)) {
-        headers.set(k, v);
-      }
-    }
-  }
-
-  return headers;
+/** The auth layer plugs itself in here so the client stays free of UI/storage concerns. */
+export interface SessionBridge {
+  getTokens(): Tokens | null;
+  setTokens(tokens: Tokens): void;
+  onAuthLost(): void;
 }
 
-function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
-  return body !== undefined && body !== null && !(body instanceof FormData);
+let bridge: SessionBridge | null = null;
+let refreshing: Promise<Tokens | null> | null = null;
+
+export function configureSession(b: SessionBridge | null): void {
+  bridge = b;
 }
 
-function formatNetworkHint(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return "Network error. Check your connection and API availability, then try again.";
-  }
+type Body = Record<string, unknown> | unknown[] | FormData | undefined;
 
-  if (!__DEV__) {
-    return "API base URL is not configured for this build. Set EXPO_PUBLIC_API_URL and try again.";
-  }
-
-  if (Platform.OS === "android") {
-    return "Network error. Android emulators usually need 10.0.2.2, and physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  if (Platform.OS === "ios") {
-    return "Network error. iOS simulators can use localhost, but physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  return "Network error. Check your connection and try again.";
+export interface RequestOptions {
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  body?: Body;
+  /** false for login/register/refresh: no bearer token, no refresh-and-retry. */
+  auth?: boolean;
+  signal?: AbortSignal;
 }
 
-function requireApiBaseUrl(): string {
-  if (API_BASE_URL) {
-    return API_BASE_URL;
-  }
-
-  const message = "API base URL is not configured. Set EXPO_PUBLIC_API_URL for this build.";
-  showGlobalError(message);
-  throw new Error(message);
+export function absoluteUrl(path: string): string {
+  return /^https?:\/\//.test(path) ? path : `${API_URL}${path}`;
 }
 
-export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
-
-  const token = await getToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
-
+async function rawFetch(
+  path: string,
+  opts: RequestOptions,
+  token: string | null,
+): Promise<Response> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  let body: BodyInit | undefined;
+  if (opts.body instanceof FormData) {
+    body = opts.body; // fetch sets the multipart boundary itself
+  } else if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(opts.body);
+  }
+  if (token) headers.Authorization = `Bearer ${token}`;
   try {
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        controller.abort();
-      } else {
-        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
-      }
-    }
-
-    const headers = mergeHeaders(options?.headers, authHeader);
-    if (!headers.has("Content-Type") && shouldSetJsonContentType(options?.body)) {
-      headers.set("Content-Type", "application/json");
-    }
-    const response = await fetch(`${requireApiBaseUrl()}${path}`, {
-      ...options,
+    return await fetch(absoluteUrl(path), {
+      method: opts.method ?? "GET",
       headers,
-      signal: controller.signal
+      body,
+      signal: opts.signal,
     });
-
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type") ?? "";
-      let data: unknown = null;
-      try {
-        data = contentType.includes("application/json") ? await response.json() : await response.text();
-      } catch {
-        data = null;
-      }
-
-      const apiPayload = data as ApiErrorPayload | null;
-      let message = apiPayload?.error ?? `API request failed (${response.status})`;
-      if (response.status === 401) {
-        message = apiPayload?.error ?? "Your session is no longer valid. Please sign in again.";
-      }
-      if (response.status >= 500 || response.status === 401) {
-        showGlobalError(message);
-      }
-      throw new ApiError(response.status, data, message);
-    }
-
-    const text = await response.text();
-    if (!text) {
-      return undefined as T;
-    }
-    return JSON.parse(text) as T;
   } catch (err) {
-    const name = (err as { name?: string }).name;
-    if (name === "AbortError") {
-      showGlobalError("The request timed out. Please try again.");
-      throw new Error("API request timeout (10s)");
-    }
-
-    if (err instanceof TypeError) {
-      showGlobalError(formatNetworkHint());
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === "AbortError") throw err;
+    throw new ApiError(0, "network", "Connexion impossible. Vérifiez votre réseau.");
   }
+}
+
+async function toError(res: Response): Promise<ApiError> {
+  let code = "error";
+  let message = "Une erreur est survenue.";
+  try {
+    const data = (await res.json()) as { error?: string; code?: string };
+    if (data.code) code = data.code;
+    if (data.error) message = data.error;
+  } catch {
+    // non-JSON error body: keep defaults
+  }
+  return new ApiError(res.status, code, message);
+}
+
+async function refreshTokens(): Promise<Tokens | null> {
+  const current = bridge?.getTokens();
+  if (!bridge || !current) return null;
+  if (!refreshing) {
+    refreshing = (async () => {
+      try {
+        const res = await rawFetch(
+          "/auth/refresh",
+          { method: "POST", body: { refreshToken: current.refreshToken }, auth: false },
+          null,
+        );
+        if (res.status === 401) return null;
+        if (!res.ok) throw await toError(res);
+        const data = (await res.json()) as Tokens;
+        const next = { accessToken: data.accessToken, refreshToken: data.refreshToken };
+        bridge?.setTokens(next);
+        return next;
+      } finally {
+        refreshing = null;
+      }
+    })();
+  }
+  return refreshing;
+}
+
+export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const useAuth = opts.auth !== false;
+  let res = await rawFetch(path, opts, useAuth ? (bridge?.getTokens()?.accessToken ?? null) : null);
+
+  if (res.status === 401 && useAuth && bridge?.getTokens()) {
+    const next = await refreshTokens();
+    if (!next) {
+      bridge.onAuthLost();
+      throw await toError(res);
+    }
+    res = await rawFetch(path, opts, next.accessToken);
+  }
+  if (!res.ok) throw await toError(res);
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
