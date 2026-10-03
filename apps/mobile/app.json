@@ -1,12 +1,39 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Amora",
+    "slug": "amora",
+    "scheme": "amora",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.amora.mobile"
+    },
+    "android": {
+      "package": "app.amora.mobile"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Amora needs access to your photos so you can add pictures to your profile."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Amora uses your approximate location once to show people nearby. Exact coordinates are never shown to others."
+        }
+      ]
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
   }
 }

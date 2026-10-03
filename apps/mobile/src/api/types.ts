@@ -1,52 +1,85 @@
-export type User = {
+export type Gender = "man" | "woman" | "nonbinary";
+
+export type Interest = { slug: string; label: string };
+
+export type Photo = { id: string; url: string; position: number };
+
+export type PublicProfile = {
   id: string;
-  email: string;
-  createdAt: string;
+  firstName: string;
+  age: number;
+  gender: Gender;
+  bio: string;
+  city: string;
+  interests: Interest[];
+  photos: Photo[];
+  distanceKm?: number;
 };
 
-export type Post = {
+export type Preferences = {
+  interestedIn: Gender[];
+  minAge: number;
+  maxAge: number;
+  maxDistanceKm: number | null;
+};
+
+export type OwnProfile = PublicProfile & {
+  birthDate: string;
+  isVisible: boolean;
+  showDistance: boolean;
+  hasLocation: boolean;
+  discoverable: boolean;
+  preferences: Preferences;
+};
+
+export type ProfileInput = {
+  firstName: string;
+  birthDate: string;
+  gender: Gender;
+  bio: string;
+  city: string;
+  interests: string[];
+  latitude?: number;
+  longitude?: number;
+};
+
+export type SwipeAction = "like" | "pass";
+
+export type SwipeResult = {
+  matched: boolean;
+  matchId?: string;
+  profile?: PublicProfile;
+};
+
+export type ChatMessage = {
   id: string;
-  authorUserId: string;
-  title: string;
+  matchId: string;
+  senderId: string;
   body: string;
   createdAt: string;
+  readAt: string | null;
+};
+
+export type Conversation = {
+  matchId: string;
+  user: { id: string; firstName: string; photoUrl?: string };
+  lastMessage: { body: string; senderId: string; createdAt: string } | null;
+  unreadCount: number;
+  matchedAt: string;
   updatedAt: string;
 };
 
-export type Comment = {
+export type AppNotification = {
   id: string;
-  postId: string;
-  authorUserId: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type Notification = {
-  id: string;
-  userId: string;
   type: string;
   title: string;
   body: string;
+  data: Record<string, string>;
   isRead: boolean;
   createdAt: string;
-  readAt?: string;
+  readAt: string | null;
 };
 
-// Matches GET /chats response items (direct conversation summaries).
-export type Conversation = {
-  user: User;
-  lastMessage?: {
-    content: string;
-    createdAt: string;
-  };
-};
+export type BlockedUser = { id: string; firstName: string };
 
-export type Message = {
-  id: string;
-  senderUserId: string;
-  recipientUserId: string;
-  content: string;
-  createdAt: string;
-};
-
+export type ReportReason = "spam" | "fake" | "harassment" | "inappropriate" | "underage" | "other";

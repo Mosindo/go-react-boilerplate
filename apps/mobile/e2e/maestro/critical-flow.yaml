@@ -1,48 +1,34 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Amora critical flow (sign in → like → match → chat)
 ---
+# Fixtures come from `npm run e2e:ui:setup`: the contact has already liked the primary member.
 - launchApp:
     clearState: true
 
-- assertVisible: Login
+- assertVisible:
+    id: auth-screen
 - tapOn:
-    id: auth-email-input
+    id: auth-email
 - inputText: ${TEST_EMAIL}
 - tapOn:
-    id: auth-password-input
+    id: auth-password
 - inputText: ${TEST_PASSWORD}
 - tapOn:
-    id: auth-submit-button
+    id: auth-submit
 
 - assertVisible:
-    id: home-screen
-
+    id: discover-screen
+- assertVisible: ${CONTACT_NAME}, 30
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
-
-- tapOn: Chat
+    id: discover-like
 - assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
+    id: match-modal
 - tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
+    id: match-message
+
 - tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
-
-- tapOn: Notifications
-- assertVisible:
-    id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
-- assertVisible:
-    id: profile-screen
+    id: chat-input
+- inputText: Hello from Maestro
+- tapOn:
+    id: chat-send
+- assertVisible: Hello from Maestro

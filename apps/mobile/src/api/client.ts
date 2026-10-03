@@ -1,9 +1,11 @@
 import { Platform } from "react-native";
 import { getAccessToken } from "../store/tokenStore";
 import { showGlobalError } from "../shared/feedback";
+import { refreshAccessToken } from "./session";
 
 export type ApiErrorPayload = {
   error?: string;
+  code?: string;
 };
 
 function normalizeBaseUrl(value: string): string {
@@ -29,25 +31,33 @@ function resolveApiBaseUrl(): string {
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
+const DEFAULT_TIMEOUT_MS = 10_000;
+
 export class ApiError extends Error {
   public status: number;
   public data: unknown;
+  public code?: string;
 
   constructor(status: number, data: unknown, message?: string) {
     super(message ?? `API request failed (${status})`);
     this.name = "ApiError";
     this.status = status;
     this.data = data;
+    this.code = (data as ApiErrorPayload | null)?.code;
   }
 }
 
-async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
+export type RequestOptions = RequestInit & {
+  /** Overrides the 10s default (uploads need longer). */
+  timeoutMs?: number;
+  /** Set on the calls that must not trigger a session refresh. */
+  skipRefresh?: boolean;
+  /** Suppresses the global error banner; the caller renders its own message. */
+  silent?: boolean;
+};
 
-function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, string>): Headers {
+function mergeHeaders(base: HeadersInit | undefined, token: string | null): Headers {
   const headers = new Headers();
-
   headers.set("Accept", "application/json");
 
   if (base) {
@@ -55,15 +65,9 @@ function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, s
       headers.set(key, value);
     });
   }
-
-  if (injected) {
-    for (const [k, v] of Object.entries(injected)) {
-      if (!headers.has(k)) {
-        headers.set(k, v);
-      }
-    }
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
-
   return headers;
 }
 
@@ -101,15 +105,25 @@ function requireApiBaseUrl(): string {
   throw new Error(message);
 }
 
-export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+/** Absolute URL for a server-relative asset path such as a photo. */
+export function assetUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
 
-  const token = await getToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
-
+async function readErrorPayload(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
   try {
-    if (options?.signal) {
+    return contentType.includes("application/json") ? await response.json() : await response.text();
+  } catch {
+    return null;
+  }
+}
+
+async function send(path: string, options: RequestOptions): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    if (options.signal) {
       if (options.signal.aborted) {
         controller.abort();
       } else {
@@ -117,31 +131,33 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
       }
     }
 
-    const headers = mergeHeaders(options?.headers, authHeader);
-    if (!headers.has("Content-Type") && shouldSetJsonContentType(options?.body)) {
+    const headers = mergeHeaders(options.headers, await getAccessToken());
+    if (!headers.has("Content-Type") && shouldSetJsonContentType(options.body)) {
       headers.set("Content-Type", "application/json");
     }
-    const response = await fetch(`${requireApiBaseUrl()}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal
-    });
+    return await fetch(`${requireApiBaseUrl()}${path}`, { ...options, headers, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function apiRequest<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
+  try {
+    let response = await send(path, options);
+
+    if (response.status === 401 && !options.skipRefresh && !path.startsWith("/auth/")) {
+      if (await refreshAccessToken()) {
+        response = await send(path, options);
+      }
+    }
 
     if (!response.ok) {
-      const contentType = response.headers.get("content-type") ?? "";
-      let data: unknown = null;
-      try {
-        data = contentType.includes("application/json") ? await response.json() : await response.text();
-      } catch {
-        data = null;
-      }
-
+      const data = await readErrorPayload(response);
       const apiPayload = data as ApiErrorPayload | null;
-      let message = apiPayload?.error ?? `API request failed (${response.status})`;
-      if (response.status === 401) {
-        message = apiPayload?.error ?? "Your session is no longer valid. Please sign in again.";
-      }
-      if (response.status >= 500 || response.status === 401) {
+      const message =
+        (typeof apiPayload === "object" && apiPayload?.error) ||
+        (response.status === 401 ? "Your session is no longer valid. Please sign in again." : `Request failed (${response.status})`);
+      if (response.status >= 500 && !options.silent) {
         showGlobalError(message);
       }
       throw new ApiError(response.status, data, message);
@@ -153,17 +169,26 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
     }
     return JSON.parse(text) as T;
   } catch (err) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
     const name = (err as { name?: string }).name;
     if (name === "AbortError") {
-      showGlobalError("The request timed out. Please try again.");
-      throw new Error("API request timeout (10s)");
+      if (!options.silent) {
+        showGlobalError("The request timed out. Please try again.");
+      }
+      throw new Error("The request timed out.", { cause: err });
     }
-
-    if (err instanceof TypeError) {
+    if (err instanceof TypeError && !options.silent) {
       showGlobalError(formatNetworkHint());
     }
     throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
+}
+
+export function errorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
 }

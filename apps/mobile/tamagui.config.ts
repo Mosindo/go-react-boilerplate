@@ -82,6 +82,8 @@ const config = createTamagui({
 export type AppTamaguiConfig = typeof config;
 
 declare module "tamagui" {
+  // Required module-augmentation pattern from the Tamagui docs.
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   interface TamaguiCustomConfig extends AppTamaguiConfig {}
 }
 
