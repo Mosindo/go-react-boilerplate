@@ -100,7 +100,7 @@ func (s *Service) Send(ctx context.Context, userID, matchID, body string) (Messa
 			name = n
 		}
 		_ = s.notifier.Notify(ctx, access.OtherID, "message", "New message from "+name, "You have unread messages.",
-			map[string]string{"matchId": matchID, "userId": userID})
+			map[string]string{"matchId": matchID, "userId": userID, "name": name})
 	}
 	return msg, nil
 }

@@ -106,7 +106,7 @@ func setupRouter(a *app) (*gin.Engine, error) {
 		return middleware.RateLimit(perSecond, burst, key)
 	}
 	if a.rateLimits {
-		r.Use(middleware.RateLimit(20, 100, middleware.ByIP))
+		r.Use(middleware.RateLimit(50, 200, middleware.ByIP))
 	}
 	authLimiter := limiter(0.2, 10, middleware.ByIP)
 	swipeLimiter := limiter(5, 30, middleware.ByUser)

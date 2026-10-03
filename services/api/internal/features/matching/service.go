@@ -84,7 +84,7 @@ func (s *Service) announceMatch(ctx context.Context, userA, userB, matchID strin
 		}
 		_ = s.notifier.Notify(ctx, me, "match", "It's a match!",
 			fmt.Sprintf("You and %s liked each other. Say hello!", name),
-			map[string]string{"matchId": matchID, "userId": other})
+			map[string]string{"matchId": matchID, "userId": other, "name": name})
 		s.events.Publish(me, realtime.Event{Type: "match.new", Data: map[string]string{"matchId": matchID, "userId": other}})
 	}
 }
