@@ -14,12 +14,12 @@ type User struct {
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,min=8,max=128"`
+	Email    string `json:"email" binding:"required,max=320"`
+	Password string `json:"password" binding:"required,max=128"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    string `json:"email" binding:"required,max=320"`
 	Password string `json:"password" binding:"required,max=128"`
 }
 
@@ -29,6 +29,19 @@ type RefreshRequest struct {
 
 type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
+}
+
+type PasswordResetRequest struct {
+	Email string `json:"email" binding:"required,max=320"`
+}
+
+type PasswordResetConfirm struct {
+	Token       string `json:"token" binding:"required,max=512"`
+	NewPassword string `json:"newPassword" binding:"required,max=128"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=128"`
 }
 
 type MeResponse struct {

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -136,4 +137,15 @@ func generateRequestID() string {
 		return time.Now().UTC().Format("20060102150405.000000000")
 	}
 	return hex.EncodeToString(buf)
+}
+
+// BodyLimit caps request bodies. Paths for which skip returns true (uploads) are left alone
+// and must enforce their own, larger limit.
+func BodyLimit(maxBytes int64, skip func(*gin.Context) bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body != nil && (skip == nil || !skip(c)) {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		}
+		c.Next()
+	}
 }
