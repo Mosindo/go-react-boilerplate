@@ -53,3 +53,8 @@ docker-data/
 # Mobile e2e runtime artifacts
 apps/mobile/.e2e/
 
+
+# Amora runtime artifacts
+services/api/data/
+services/api/api
+services/api/seed

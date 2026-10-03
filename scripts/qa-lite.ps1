@@ -83,6 +83,30 @@ try {
     }
   }
 
+  Run-Step "Backend vet (go vet ./...)" {
+    Push-Location ".\services\api"
+    try {
+      go vet ./...
+      if ($LASTEXITCODE -ne 0) { throw "go vet exited with code $LASTEXITCODE" }
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
+  Run-Step "Mobile lint + unit tests" {
+    Push-Location ".\apps\mobile"
+    try {
+      npm run lint | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "eslint exited with code $LASTEXITCODE" }
+      npm test | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "vitest exited with code $LASTEXITCODE" }
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
   Run-Step "Smoke API + mobile critique" {
     & (Join-Path $repoRoot "scripts/smoke-all.ps1") -ApiBaseUrl $ApiBaseUrl
     if ($LASTEXITCODE -ne 0) { throw "smoke-all exited with code $LASTEXITCODE" }
@@ -94,7 +118,7 @@ finally {
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $header = @(
-  "go-react-saas QA Lite Report",
+  "Amora QA Lite Report",
   "Generated: $stamp",
   "API Base URL: $ApiBaseUrl",
   ""

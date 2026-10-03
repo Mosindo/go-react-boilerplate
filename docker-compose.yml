@@ -1,14 +1,14 @@
-name: go-react-boilerplate
+name: amora
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: app
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,19 +21,25 @@ services:
     build:
       context: ./services/api
     environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/app?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value (32+ characters)}
+      UPLOADS_DIR: /data/uploads
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@localhost}
     ports:
       - "18080:8080"
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
-
-
+  uploads_data:

@@ -70,7 +70,7 @@ finally {
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $header = @(
-  "go-react-saas Smoke Report",
+  "Amora Smoke Report",
   "Generated: $stamp",
   "API Base URL: $ApiBaseUrl",
   ""

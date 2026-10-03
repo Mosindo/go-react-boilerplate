@@ -1,30 +1,25 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Amora
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Amora`, a free dating app built from the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Amora is a 100% free dating app: no subscription, no paywall, no paid boost, no artificial like limit, no mandatory ads.
+Privacy is a feature: never expose exact coordinates, birth dates, emails or private photos.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules (`services/api/internal/features`):
 - auth
-- users
-- posts
-- comments
-- chat
+- profiles
+- photos
+- matching
+- conversations
 - notifications
-- files
+- safety (blocks, reports)
+
+Legacy generic modules (billing, posts, comments, users, files, chat) are no longer mounted and are pending deletion.
 
 ---
 
@@ -65,12 +60,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
-  - `chat/`
-  - `posts/`
-  - `comments/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
+  - `conversations/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +125,12 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `profiles` discovery indexes (gender/birth date, location)
+- `swipes (target_id, action, created_at)`
+- `matches (user_a, created_at)` and `(user_b, created_at)`
+- `chat_messages (match_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
 
 ---
 
@@ -150,13 +145,13 @@ Before any backend delivery:
 
 If tests fail: fix them before continuing.
 
+Run the Go integration tests with `DATABASE_URL_TEST` set (they are skipped otherwise). Also keep healthy: `npm run lint`, `npm test` and `npm run e2e:smoke` / `npm run e2e:web` in `apps/mobile`.
+
 Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Health, auth (register/login/refresh/recovery/delete)
+- Profiles and photos (validation, privacy, access control)
+- Discovery, swipes and matches (filters, duplicates, races)
+- Conversations (permissions, pagination, realtime), notifications, blocks and reports
 
 ---
 
@@ -176,11 +171,10 @@ Mandatory rules to avoid recurring environment issues:
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
+  - register and onboarding (profile, preferences, photo)
   - login
-  - users load
-  - posts load
-  - chat send/read
+  - discovery loads, like produces a match
+  - chat send/read, live delivery
   - notifications read flow
 
 ---
