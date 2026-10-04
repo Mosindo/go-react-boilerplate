@@ -37,9 +37,10 @@ func RequestMetrics() gin.HandlerFunc {
 		start := time.Now()
 		c.Next()
 
+		// Unmatched routes share one label: raw paths from scanners would grow this map without bound.
 		path := c.FullPath()
 		if path == "" {
-			path = c.Request.URL.Path
+			path = "unmatched"
 		}
 		latency := time.Since(start).Milliseconds()
 		status := c.Writer.Status()

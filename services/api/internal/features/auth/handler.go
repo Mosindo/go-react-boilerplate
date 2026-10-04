@@ -1,184 +1,139 @@
 package auth
 
 import (
-	"errors"
 	"net/http"
+	"strings"
 
-	"example.com/api/internal/platform/logger"
+	platformerrors "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/httpx"
+	"example.com/api/internal/platform/middleware"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	service *Service
+	service      *Service
+	loginLimiter *middleware.RateLimiter // per email, slows credential stuffing
 }
 
 func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{service: service, loginLimiter: middleware.NewRateLimiter(10, 5)}
+}
+
+func (h *Handler) respondAuth(c *gin.Context, status int, tokens Tokens, user User) {
+	c.Header("Cache-Control", "no-store")
+	c.JSON(status, AuthResponse{AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken, User: toMe(user)})
 }
 
 func (h *Handler) Register(c *gin.Context) {
-	var req RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.register.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	var req Credentials
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
 	tokens, user, err := h.service.Register(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrEmailExists):
-			status = http.StatusConflict
-			c.JSON(status, gin.H{"error": "email already exists"})
-		default:
-			c.JSON(status, gin.H{"error": "could not create user"})
-		}
-		logger.LogHandlerError(c, "auth.register", status, err)
+		httpx.Fail(c, "auth.register", err)
 		return
 	}
-
-	status := http.StatusCreated
-	c.Header("Cache-Control", "no-store")
-	c.JSON(status, AuthResponse{
-		Token:        tokens.AccessToken,
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		},
-	})
-	logger.LogHandlerEvent(c, "auth.register.success", status, map[string]string{"created_user_id": user.ID})
+	h.respondAuth(c, http.StatusCreated, tokens, user)
 }
 
 func (h *Handler) Login(c *gin.Context) {
-	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.login.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	var req Credentials
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
+	if ok, _ := h.loginLimiter.Allow(strings.ToLower(strings.TrimSpace(req.Email))); !ok {
+		c.Header("Retry-After", "60")
+		httpx.Fail(c, "auth.login", &platformerrors.Error{Kind: platformerrors.KindRateLimited, Code: "rate_limited", Message: "Too many attempts, try again in a minute"})
+		return
+	}
 	tokens, user, err := h.service.Login(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrInvalidCredentials):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "invalid credentials"})
-		default:
-			c.JSON(status, gin.H{"error": "could not login"})
-		}
-		logger.LogHandlerError(c, "auth.login", status, err)
+		httpx.Fail(c, "auth.login", err)
 		return
 	}
-
-	status := http.StatusOK
-	c.Header("Cache-Control", "no-store")
-	c.JSON(status, AuthResponse{
-		Token:        tokens.AccessToken,
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		},
-	})
-	logger.LogHandlerEvent(c, "auth.login.success", status, map[string]string{"authenticated_user_id": user.ID})
+	h.respondAuth(c, http.StatusOK, tokens, user)
 }
 
 func (h *Handler) Refresh(c *gin.Context) {
 	var req RefreshRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.refresh.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
 	tokens, user, err := h.service.Refresh(c.Request.Context(), req.RefreshToken, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrInvalidRefreshToken):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "invalid refresh token"})
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not refresh session"})
-		}
-		logger.LogHandlerError(c, "auth.refresh", status, err)
+		httpx.Fail(c, "auth.refresh", err)
 		return
 	}
-
-	status := http.StatusOK
-	c.Header("Cache-Control", "no-store")
-	c.JSON(status, AuthResponse{
-		Token:        tokens.AccessToken,
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		},
-	})
-	logger.LogHandlerEvent(c, "auth.refresh.success", status, map[string]string{"authenticated_user_id": user.ID})
+	h.respondAuth(c, http.StatusOK, tokens, user)
 }
 
 func (h *Handler) Logout(c *gin.Context) {
-	var req LogoutRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.logout.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	var req RefreshRequest
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
 	if err := h.service.Logout(c.Request.Context(), req.RefreshToken); err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrInvalidRefreshToken):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "invalid refresh token"})
-		default:
-			c.JSON(status, gin.H{"error": "could not logout"})
-		}
-		logger.LogHandlerError(c, "auth.logout", status, err)
+		httpx.Fail(c, "auth.logout", err)
 		return
 	}
+	httpx.NoContent(c)
+}
 
-	c.Header("Cache-Control", "no-store")
-	c.Status(http.StatusNoContent)
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	if err := h.service.ForgotPassword(c.Request.Context(), req.Email); err != nil {
+		httpx.Fail(c, "auth.forgot", err)
+		return
+	}
+	c.Status(http.StatusAccepted)
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.Password); err != nil {
+		httpx.Fail(c, "auth.reset", err)
+		return
+	}
+	httpx.NoContent(c)
 }
 
 func (h *Handler) Me(c *gin.Context) {
-	userID := c.GetString("userID")
-	user, err := h.service.Me(c.Request.Context(), userID)
+	user, err := h.service.Me(c.Request.Context(), httpx.UserID(c))
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not fetch user"})
-		}
-		logger.LogHandlerError(c, "auth.me", status, err)
+		httpx.Fail(c, "auth.me", err)
 		return
 	}
-
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, MeResponse{
-		ID:             user.ID,
-		Email:          user.Email,
-		OrganizationID: user.OrganizationID,
-		CreatedAt:      user.CreatedAt,
-	})
+	c.JSON(http.StatusOK, toMe(user))
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	var req ChangePasswordRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	if err := h.service.ChangePassword(c.Request.Context(), httpx.UserID(c), c.GetString("sessionID"), req.CurrentPassword, req.NewPassword); err != nil {
+		httpx.Fail(c, "auth.change_password", err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	var req DeleteAccountRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	if err := h.service.DeleteAccount(c.Request.Context(), httpx.UserID(c), req.Password); err != nil {
+		httpx.Fail(c, "auth.delete_account", err)
+		return
+	}
+	httpx.NoContent(c)
 }

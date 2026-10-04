@@ -26,3 +26,31 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestProductionRequiresMailAndBaseURL(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@db:5432/app")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "production")
+	if _, err := Load(); err == nil {
+		t.Fatal("production without SMTP must fail")
+	}
+	t.Setenv("SMTP_HOST", "smtp.mail.local")
+	t.Setenv("SMTP_FROM", "no-reply@lumen.local")
+	t.Setenv("APP_BASE_URL", "https://lumen.local/")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("valid production config rejected: %v", err)
+	}
+	if cfg.AppBaseURL != "https://lumen.local" || !cfg.IsProduction() {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestInvalidEnvIsRejected(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@db:5432/app")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "staging")
+	if _, err := Load(); err == nil {
+		t.Fatal("unknown APP_ENV accepted")
+	}
+}
