@@ -1,0 +1,11 @@
+dist
+.expo
+node_modules
+package-lock.json
+tamagui.config.ts
+src/screens
+src/shared
+src/api/platform.ts
+src/api/endpoints.ts
+scripts/e2e-ui-setup.js
+scripts/run-maestro.ps1

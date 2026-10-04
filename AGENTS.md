@@ -1,30 +1,24 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lumen
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
+This repository is `Lumen`, a free dating app built on the former go-react-saas boilerplate.
 The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is now **Lumen**, a 100 % free dating app (no subscription, paywall, paid boost or like limit).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
-- chat
+- profiles (profile, preferences, interests)
+- photos
+- discovery (deck, swipes, matches)
+- chat (conversations, messages, realtime)
+- safety (blocks, reports)
 - notifications
-- files
+
+API contract: `docs/API.md`.
 
 ---
 
@@ -65,11 +59,11 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -135,7 +129,7 @@ Required indexes:
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
 
 ---
 
@@ -146,17 +140,13 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm test` and `npm run build` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Everything in `services/api/cmd/api/main_integration_test.go` (needs `DATABASE_URL_TEST`, a disposable database)
+- `npm run e2e:smoke` in `apps/mobile` against a running API
 
 ---
 

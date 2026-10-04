@@ -88,7 +88,7 @@ Auth endpoints are rate limited (per IP).
 
 | Method & path | Body | Response |
 |---|---|---|
-| `GET /discover?limit=10` | – | `200 {profiles: PublicProfile[]}` (never returns already-swiped, matched, blocked or non-compatible profiles) |
+| `GET /discover?limit=10` (max 20) | – | `200 {profiles: PublicProfile[]}` (never returns already-swiped, matched, blocked or non-compatible profiles) |
 | `GET /profiles/:userId` | – | `200 PublicProfile` (full profile; 404 if blocked/not visible) |
 | `POST /swipes` | `{targetId, action: "like"\|"pass"}` | `200 {action, matched: boolean, match: MatchSummary \| null}`. Idempotent: repeating returns the stored result, never duplicates |
 | `GET /matches?limit&cursor` | – | `200 {matches: MatchSummary[], nextCursor}` (newest first) |

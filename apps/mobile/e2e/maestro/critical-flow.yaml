@@ -1,48 +1,49 @@
+# Lumen critical flow: register -> onboarding -> discover -> like -> (match) -> chat.
+# Requires a running API and a device/emulator with at least one compatible profile available
+# (run `npm run e2e:smoke` first or seed a user), plus a photo in the device gallery.
+# Run: maestro test -e APP_ID=host.exp.exponent -e TEST_EMAIL=maestro1@test.invalid -e TEST_PASSWORD='Maestro-pass-1' e2e/maestro/critical-flow.yaml
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lumen critical flow
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: Login
-- tapOn:
-    id: auth-email-input
+- assertVisible: Welcome back
+- tapOn: Create an account
+- tapOn: Email
 - inputText: ${TEST_EMAIL}
-- tapOn:
-    id: auth-password-input
+- tapOn: Password
 - inputText: ${TEST_PASSWORD}
-- tapOn:
-    id: auth-submit-button
+- tapOn: Confirm password
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Create account
 
-- assertVisible:
-    id: home-screen
+# Onboarding
+- assertVisible: Let's start with you
+- tapOn: First name
+- inputText: Maestro
+- tapOn: Birth date (DD/MM/YYYY)
+- inputText: 17051994
+- hideKeyboard
+- tapOn: Man
+- tapOn: Continue
+- tapOn: Women
+- tapOn: Continue
+- tapOn: City
+- inputText: Lisbon
+- hideKeyboard
+- tapOn: Continue
+- tapOn: Save and continue
+- tapOn: Add a photo
+- tapOn:
+    text: ".*(jpg|jpeg|png|Photo).*"
+    optional: true
+- assertVisible: Finish and start meeting people
+- tapOn: Finish and start meeting people
 
-- tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
-
-- tapOn: Chat
-- assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
-- tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
-- tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
-
-- tapOn: Notifications
-- assertVisible:
-    id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
-- assertVisible:
-    id: profile-screen
+# Discover -> like -> matches
+- assertVisible: Discover
+- tapOn: Like
+- tapOn: Matches
+- assertVisible: Matches

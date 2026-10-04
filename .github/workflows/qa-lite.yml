@@ -3,75 +3,26 @@ name: QA Lite
 on:
   pull_request:
     branches: ["main"]
-  push:
-    branches: ["main"]
 
 jobs:
-  qa-lite:
+  smoke:
     runs-on: ubuntu-latest
     env:
-      JWT_SECRET: ci-jwt-secret-32-chars-minimum-value
-
+      JWT_SECRET: ci-only-0123456789abcdef0123456789abcdef-not-a-real-secret
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20.19.4"
-          cache: "npm"
-          cache-dependency-path: apps/mobile/package-lock.json
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: services/api/go.mod
-          cache: true
-          cache-dependency-path: services/api/go.sum
-
-      - name: Install mobile deps
-        working-directory: apps/mobile
-        run: npm ci
-
-      - name: Start Docker stack
-        shell: bash
-        run: docker compose up --build -d
-
-      - name: Wait API health
-        shell: bash
+      - run: docker compose up --build -d
+      - name: Wait for API
         run: |
-          for i in {1..60}; do
-            if curl -fsS http://localhost:18080/health >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "API healthcheck timeout"
-          docker compose logs api || true
-          exit 1
-
-      - name: Run QA lite
-        shell: pwsh
-        run: ./scripts/qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-
-      - name: Upload QA reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-lite-reports
-          path: |
-            .smoke/qa-lite-report.txt
-            .smoke/report.txt
-          if-no-files-found: warn
-
-      - name: API logs on failure
-        if: failure()
-        shell: bash
-        run: docker compose logs api || true
-
-      - name: Shutdown Docker stack
-        if: always()
-        shell: bash
+          for i in {1..60}; do curl -fsS http://localhost:18080/health >/dev/null && exit 0; sleep 1; done
+          docker compose logs api; exit 1
+      - name: Smoke test
+        working-directory: apps/mobile
+        env:
+          API_BASE_URL: http://localhost:18080
+        run: node ./scripts/e2e-smoke.js
+      - if: always()
         run: docker compose down -v
-

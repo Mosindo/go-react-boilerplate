@@ -8,7 +8,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Lumen free dating app: profiles, photos, discovery, swipes/matches, realtime chat, notifications, block/report, account deletion, versioned migrations, seed command, new Expo client.
+
+### Removed
+- Organizations, Stripe billing, posts/comments/votes are no longer wired (source files pending deletion approval).
 
 ## [0.1.0] - 2026-03-17
 

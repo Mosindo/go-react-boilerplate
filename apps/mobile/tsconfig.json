@@ -4,5 +4,13 @@
     "strict": true,
     "noEmit": true,
     "moduleResolution": "bundler"
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "tamagui.config.ts",
+    "src/screens",
+    "src/shared",
+    "src/api/platform.ts",
+    "src/api/endpoints.ts"
+  ]
 }

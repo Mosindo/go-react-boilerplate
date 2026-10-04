@@ -1,12 +1,49 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lumen",
+    "slug": "lumen",
+    "scheme": "lumen",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#FBF6F0",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.lumen.mobile",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Lumen uses your photo library so you can choose pictures for your profile.",
+        "NSLocationWhenInUseUsageDescription": "Lumen uses your approximate location, only if you choose to share it, to show you people nearby."
+      }
+    },
+    "android": {
+      "package": "app.lumen.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "Lumen",
+      "shortName": "Lumen",
+      "themeColor": "#B8472F",
+      "backgroundColor": "#FBF6F0"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lumen uses your photo library so you can choose pictures for your profile.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lumen uses your approximate location, only if you choose to share it, to show you people nearby."
+        }
+      ]
     ]
   }
 }
