@@ -15,13 +15,13 @@ var (
 	ErrRepositoryEmailExists = errors.New("auth email already exists")
 	ErrRepositoryNotFound    = errors.New("auth user not found")
 	ErrRepositorySessionGone = errors.New("auth session not found")
+	ErrRepositoryTokenGone   = errors.New("auth reset token not found")
 )
 
 type StoredUser struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string
+	Email     string
+	CreatedAt time.Time
 }
 
 type StoredUserWithPassword struct {
@@ -30,22 +30,27 @@ type StoredUserWithPassword struct {
 }
 
 type StoredSession struct {
-	ID             string
-	UserID         string
-	OrganizationID string
-	ExpiresAt      time.Time
-	CreatedAt      time.Time
-	LastUsedAt     *time.Time
+	ID         string
+	UserID     string
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
 }
 
 type Repository interface {
 	CreateUser(ctx context.Context, email, passwordHash string) (StoredUser, error)
 	GetUserAuthByEmail(ctx context.Context, email string) (StoredUserWithPassword, error)
+	GetUserAuthByID(ctx context.Context, userID string) (StoredUserWithPassword, error)
 	GetUserByID(ctx context.Context, userID string) (StoredUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
-	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
+	RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+	CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	ConsumePasswordReset(ctx context.Context, tokenHash, newPasswordHash string) (string, error)
+	UpdatePassword(ctx context.Context, userID, passwordHash, keepSessionID string) error
+	DeleteUser(ctx context.Context, userID string) error
 }
 
 type PGRepository struct {
@@ -59,14 +64,10 @@ func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
 func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash string) (StoredUser, error) {
 	var user StoredUser
 	err := r.dbPool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, organization_id)
-		VALUES (
-			$1,
-			$2,
-			(SELECT id FROM organizations WHERE slug = 'default')
-		)
-		RETURNING id, email, organization_id, created_at
-	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+		INSERT INTO users (email, password_hash)
+		VALUES ($1, $2)
+		RETURNING id, email, created_at
+	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return StoredUser{}, ErrRepositoryEmailExists
@@ -77,12 +78,21 @@ func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash strin
 }
 
 func (r *PGRepository) GetUserAuthByEmail(ctx context.Context, email string) (StoredUserWithPassword, error) {
+	return r.getUserAuth(ctx, "email", email)
+}
+
+func (r *PGRepository) GetUserAuthByID(ctx context.Context, userID string) (StoredUserWithPassword, error) {
+	return r.getUserAuth(ctx, "id", userID)
+}
+
+func (r *PGRepository) getUserAuth(ctx context.Context, column, value string) (StoredUserWithPassword, error) {
 	var user StoredUserWithPassword
+	// column is a fixed internal literal ("email" or "id"), never user input.
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, password_hash, created_at
+		SELECT id, email, password_hash, created_at
 		FROM users
-		WHERE email = $1
-	`, email).Scan(&user.User.ID, &user.User.Email, &user.User.OrganizationID, &user.PasswordHash, &user.User.CreatedAt)
+		WHERE `+column+` = $1
+	`, value).Scan(&user.User.ID, &user.User.Email, &user.PasswordHash, &user.User.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUserWithPassword{}, ErrRepositoryNotFound
@@ -95,10 +105,8 @@ func (r *PGRepository) GetUserAuthByEmail(ctx context.Context, email string) (St
 func (r *PGRepository) GetUserByID(ctx context.Context, userID string) (StoredUser, error) {
 	var user StoredUser
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, created_at
-		FROM users
-		WHERE id = $1
-	`, userID).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+		SELECT id, email, created_at FROM users WHERE id = $1
+	`, userID).Scan(&user.ID, &user.Email, &user.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUser{}, ErrRepositoryNotFound
@@ -117,11 +125,7 @@ func (r *PGRepository) CreateSession(ctx context.Context, userID, tokenHash, use
 		WHERE u.id = $1
 		RETURNING id, user_id, expires_at, created_at, last_used_at
 	`, userID, tokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt).Scan(
-		&session.ID,
-		&session.UserID,
-		&session.ExpiresAt,
-		&session.CreatedAt,
-		&session.LastUsedAt,
+		&session.ID, &session.UserID, &session.ExpiresAt, &session.CreatedAt, &session.LastUsedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -129,32 +133,18 @@ func (r *PGRepository) CreateSession(ctx context.Context, userID, tokenHash, use
 		}
 		return StoredSession{}, err
 	}
-
-	user, err := r.GetUserByID(ctx, session.UserID)
-	if err != nil {
-		return StoredSession{}, err
-	}
-	session.OrganizationID = user.OrganizationID
 	return session, nil
 }
 
 func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error) {
 	var session StoredSession
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT s.id, s.user_id, u.organization_id, s.expires_at, s.created_at, s.last_used_at
-		FROM sessions s
-		INNER JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = $1
-		  AND s.revoked_at IS NULL
-		  AND s.expires_at > NOW()
-	`, tokenHash).Scan(
-		&session.ID,
-		&session.UserID,
-		&session.OrganizationID,
-		&session.ExpiresAt,
-		&session.CreatedAt,
-		&session.LastUsedAt,
-	)
+		SELECT id, user_id, expires_at, created_at, last_used_at
+		FROM sessions
+		WHERE token_hash = $1
+		  AND revoked_at IS NULL
+		  AND expires_at > NOW()
+	`, tokenHash).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &session.CreatedAt, &session.LastUsedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredSession{}, ErrRepositorySessionGone
@@ -164,7 +154,9 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 	return session, nil
 }
 
-func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
+// RotateSessionToken swaps the refresh token hash only if the presented hash is still the current one,
+// so a refresh token can be used exactly once even under concurrent requests.
+func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
 	var session StoredSession
 	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
@@ -174,14 +166,12 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 		    expires_at = $5,
 		    last_used_at = $6
 		WHERE id = $1
+		  AND token_hash = $7
 		  AND revoked_at IS NULL
+		  AND expires_at > NOW()
 		RETURNING id, user_id, expires_at, created_at, last_used_at
-	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt).Scan(
-		&session.ID,
-		&session.UserID,
-		&session.ExpiresAt,
-		&session.CreatedAt,
-		&session.LastUsedAt,
+	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt, currentTokenHash).Scan(
+		&session.ID, &session.UserID, &session.ExpiresAt, &session.CreatedAt, &session.LastUsedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -189,28 +179,114 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 		}
 		return StoredSession{}, err
 	}
-
-	user, err := r.GetUserByID(ctx, session.UserID)
-	if err != nil {
-		return StoredSession{}, err
-	}
-	session.OrganizationID = user.OrganizationID
 	return session, nil
 }
 
 func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error {
 	tag, err := r.dbPool.Exec(ctx, `
-		UPDATE sessions
-		SET revoked_at = $2,
-		    last_used_at = $2
-		WHERE token_hash = $1
-		  AND revoked_at IS NULL
+		UPDATE sessions SET revoked_at = $2, last_used_at = $2
+		WHERE token_hash = $1 AND revoked_at IS NULL
 	`, tokenHash, revokedAt)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrRepositorySessionGone
+	}
+	return nil
+}
+
+func (r *PGRepository) IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
+	var active bool
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM sessions
+			WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > NOW()
+		)
+	`, sessionID, userID).Scan(&active)
+	return active, err
+}
+
+// CreatePasswordReset stores a new token and invalidates the user's previous unused tokens.
+func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)
+	`, userID, tokenHash, expiresAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// ConsumePasswordReset marks a valid token as used, sets the new password and revokes all sessions atomically.
+func (r *PGRepository) ConsumePasswordReset(ctx context.Context, tokenHash, newPasswordHash string) (string, error) {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var userID string
+	err = tx.QueryRow(ctx, `
+		UPDATE password_reset_tokens
+		SET used_at = NOW()
+		WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+		RETURNING user_id
+	`, tokenHash).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrRepositoryTokenGone
+		}
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, newPasswordHash); err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return userID, nil
+}
+
+// UpdatePassword changes the password and revokes every other session of the user.
+func (r *PGRepository) UpdatePassword(ctx context.Context, userID, passwordHash, keepSessionID string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE sessions SET revoked_at = NOW()
+		WHERE user_id = $1 AND revoked_at IS NULL AND id::text <> $2
+	`, userID, keepSessionID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// DeleteUser removes the account; foreign keys cascade to every dependent table.
+func (r *PGRepository) DeleteUser(ctx context.Context, userID string) error {
+	tag, err := r.dbPool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRepositoryNotFound
 	}
 	return nil
 }
