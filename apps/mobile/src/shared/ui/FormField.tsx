@@ -1,64 +1,27 @@
-import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import type { ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
 
-export type FormFieldProps = {
-  children: ReactNode;
-  containerStyle?: StyleProp<ViewStyle>;
-  error?: string | null;
-  helperText?: string;
-  label?: string;
-  required?: boolean;
-};
-
-export function FormField({
-  children,
-  containerStyle,
-  error,
-  helperText,
-  label,
-  required = false
-}: FormFieldProps) {
+/** Label + control + error wrapper for custom (non text-input) controls. */
+export function FormField({ label, error, hint, children }: { label: string; error?: string | null; hint?: string; children: ReactNode }) {
   return (
-    <View style={[styles.container, containerStyle]}>
-      {label ? (
-        <View style={styles.labelRow}>
-          <Text tone="secondary" variant="label" weight="semibold">
-            {label}
-          </Text>
-          {required ? (
-            <Text style={styles.required} tone="danger" variant="label" weight="bold">
-              *
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
+    <View style={styles.wrapper}>
+      <Text variant="label" tone="muted">
+        {label}
+      </Text>
       {children}
       {error ? (
-        <Text tone="danger" variant="caption" weight="medium">
+        <Text variant="caption" tone="danger" accessibilityLiveRegion="polite">
           {error}
         </Text>
-      ) : helperText ? (
-        <Text tone="muted" variant="caption">
-          {helperText}
+      ) : hint ? (
+        <Text variant="caption" tone="muted">
+          {hint}
         </Text>
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    width: "100%",
-    gap: spacing.sm
-  },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  required: {
-    color: colors.danger
-  }
-});
+const styles = StyleSheet.create({ wrapper: { gap: spacing.xs } });

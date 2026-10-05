@@ -1,69 +1,51 @@
-import { apiRequest } from "./client";
+import { api } from "./client";
+import { endpoints } from "./endpoints";
+import type { AuthResponse, AuthUser } from "./types";
+import { tokenStore } from "../store/tokenStore";
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  organizationId: string;
-  createdAt: string;
-};
+export async function register(email: string, password: string): Promise<AuthResponse> {
+  const session = await api.request<AuthResponse>(endpoints.register, { method: "POST", body: { email, password }, auth: false });
+  await tokenStore.save({ accessToken: session.accessToken, refreshToken: session.refreshToken });
+  return session;
+}
 
-export type AuthResponse = {
-  token?: string;
-  accessToken?: string;
-  refreshToken: string;
-  user: AuthUser;
-};
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  const session = await api.request<AuthResponse>(endpoints.login, { method: "POST", body: { email, password }, auth: false });
+  await tokenStore.save({ accessToken: session.accessToken, refreshToken: session.refreshToken });
+  return session;
+}
 
-export type AuthSession = {
-  accessToken: string;
-  refreshToken: string;
-  user: AuthUser;
-};
+export function fetchMe(signal?: AbortSignal): Promise<AuthUser> {
+  return api.request<AuthUser>(endpoints.me, { signal });
+}
 
-function normalizeSession(response: AuthResponse): AuthSession {
-  const accessToken = response.accessToken ?? response.token;
-  if (!accessToken) {
-    throw new Error("authentication response did not include an access token");
+/** Revokes the server session, then forgets the tokens locally even if the network call fails. */
+export async function logout(): Promise<void> {
+  const tokens = await tokenStore.load();
+  try {
+    if (tokens) {
+      await api.request<void>(endpoints.logout, { method: "POST", body: { refreshToken: tokens.refreshToken }, auth: false });
+    }
+  } catch {
+    // Offline logout still signs out locally; the server session expires on its own.
+  } finally {
+    await tokenStore.clear();
   }
-
-  return {
-    accessToken,
-    refreshToken: response.refreshToken,
-    user: response.user
-  };
 }
 
-export async function register(email: string, password: string): Promise<AuthSession> {
-  const response = await apiRequest<AuthResponse>("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password })
-  });
-  return normalizeSession(response);
+export function forgotPassword(email: string): Promise<void> {
+  return api.request<void>(endpoints.forgotPassword, { method: "POST", body: { email }, auth: false });
 }
 
-export async function login(email: string, password: string): Promise<AuthSession> {
-  const response = await apiRequest<AuthResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password })
-  });
-  return normalizeSession(response);
+export function resetPassword(token: string, password: string): Promise<void> {
+  return api.request<void>(endpoints.resetPassword, { method: "POST", body: { token, password }, auth: false });
 }
 
-export async function refreshSession(refreshToken: string): Promise<AuthSession> {
-  const response = await apiRequest<AuthResponse>("/auth/refresh", {
-    method: "POST",
-    body: JSON.stringify({ refreshToken })
-  });
-  return normalizeSession(response);
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return api.request<void>(endpoints.changePassword, { method: "POST", body: { currentPassword, newPassword } });
 }
 
-export async function logout(refreshToken: string): Promise<void> {
-  await apiRequest("/auth/logout", {
-    method: "POST",
-    body: JSON.stringify({ refreshToken })
-  });
-}
-
-export async function me(): Promise<AuthUser> {
-  return apiRequest<AuthUser>("/me", { method: "GET" });
+export async function deleteAccount(password: string): Promise<void> {
+  await api.request<void>(endpoints.me, { method: "DELETE", body: { password } });
+  await tokenStore.clear();
 }

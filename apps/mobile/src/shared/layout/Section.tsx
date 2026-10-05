@@ -1,57 +1,20 @@
-import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, spacing } from "../ui";
+import type { ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
+import { Text } from "../ui/Text";
 
-export type SectionProps = {
-  action?: ReactNode;
-  children?: ReactNode;
-  eyebrow?: string;
-  style?: StyleProp<ViewStyle>;
-  subtitle?: string;
-  title: string;
-};
-
-export function Section({ action, children, eyebrow, style, subtitle, title }: SectionProps) {
+export function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
-    <View style={[styles.root, style]}>
-      <View style={styles.header}>
-        <View style={styles.copy}>
-          {eyebrow ? (
-            <Text style={styles.eyebrow} tone="secondary" variant="eyebrow" weight="bold">
-              {eyebrow}
-            </Text>
-          ) : null}
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
-        </View>
-        {action ? <View>{action}</View> : null}
-      </View>
-      {children}
+    <View style={styles.section}>
+      <Text variant="heading">{title}</Text>
+      {description ? (
+        <Text variant="caption" tone="muted">
+          {description}
+        </Text>
+      ) : null}
+      <View style={styles.body}>{children}</View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    marginBottom: spacing.xxl
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    marginBottom: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  },
-  eyebrow: {
-    marginBottom: spacing.xs
-  },
-  title: {
-    marginBottom: spacing.xs
-  }
-});
+const styles = StyleSheet.create({ section: { gap: spacing.xs }, body: { gap: spacing.md, marginTop: spacing.sm } });

@@ -1,30 +1,37 @@
+// Every path the app calls, in one place. Dynamic segments are encoded here so callers cannot forget.
+const id = encodeURIComponent;
+
 export const endpoints = {
-  auth: {
-    register: "/auth/register",
-    login: "/auth/login",
-    me: "/me"
-  },
-  users: {
-    list: "/users",
-    detail: (userId: string) => `/users/${userId}`
-  },
-  posts: {
-    list: "/posts",
-    create: "/posts",
-    detail: (postId: string) => `/posts/${postId}`
-  },
-  chat: {
-    chats: "/chats",
-    messages: (userId: string) => `/chats/${userId}/messages`
-  },
-  notifications: {
-    list: "/notifications",
-    create: "/notifications",
-    markRead: (notificationId: string) => `/notifications/${notificationId}/read`
-  },
-  billing: {
-    subscription: "/billing/subscription",
-    checkout: "/billing/checkout",
-    webhook: "/billing/webhook"
-  }
+  health: "/health",
+  register: "/auth/register",
+  login: "/auth/login",
+  refresh: "/auth/refresh",
+  logout: "/auth/logout",
+  forgotPassword: "/auth/password/forgot",
+  resetPassword: "/auth/password/reset",
+  changePassword: "/auth/password/change",
+  me: "/me",
+  myProfile: "/profile/me",
+  preferences: "/profile/preferences",
+  location: "/profile/location",
+  privacy: "/profile/privacy",
+  interests: "/interests",
+  profile: (userId: string) => `/profiles/${id(userId)}`,
+  photos: "/photos",
+  photo: (photoId: string) => `/photos/${id(photoId)}`,
+  photosOrder: "/photos/order",
+  discover: "/discover",
+  swipes: "/swipes",
+  matches: "/matches",
+  match: (matchId: string) => `/matches/${id(matchId)}`,
+  conversations: "/conversations",
+  conversation: (conversationId: string) => `/conversations/${id(conversationId)}`,
+  messages: (conversationId: string) => `/conversations/${id(conversationId)}/messages`,
+  markRead: (conversationId: string) => `/conversations/${id(conversationId)}/read`,
+  notifications: "/notifications",
+  notificationsReadAll: "/notifications/read-all",
+  notificationRead: (notificationId: string) => `/notifications/${id(notificationId)}/read`,
+  blocks: "/blocks",
+  block: (userId: string) => `/blocks/${id(userId)}`,
+  reports: "/reports"
 } as const;

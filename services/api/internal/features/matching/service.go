@@ -98,7 +98,10 @@ func (s *Service) Swipe(ctx context.Context, userID, targetID, action string) (S
 		if self == userID {
 			resp.Match = &preview
 		}
-		s.events.Publish(self, realtime.Event{Type: "match.new", Data: preview})
+		// The swiper learns about the match from the HTTP response; only the other person needs a push.
+		if self != userID {
+			s.events.Publish(self, realtime.Event{Type: "match.new", Data: preview})
+		}
 		if n, ok := match.Notifications[self]; ok {
 			s.events.Publish(self, realtime.Event{Type: "notification.new", Data: n})
 		}

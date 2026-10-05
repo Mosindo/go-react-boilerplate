@@ -60,13 +60,14 @@ func TestRealtimeEvents(t *testing.T) {
 	wa.next("ready")
 	wb.next("ready")
 
-	// A match is pushed to both people.
+	// The person who liked first is told of the match in real time; the one who completes it learns it from
+	// the HTTP response (and both get a notification).
 	env.swipe(a, b.ID, "like").expect(t, http.StatusOK)
 	var r swipeBody
 	env.swipe(b, a.ID, "like").expect(t, http.StatusOK).json(t, &r)
 	wa.next("match.new")
-	wb.next("match.new")
 	wa.next("notification.new")
+	wb.next("notification.new")
 
 	// Messages and read receipts arrive in real time, for the recipient (and the sender's other devices).
 	conv := "/conversations/" + r.Match.ConversationID

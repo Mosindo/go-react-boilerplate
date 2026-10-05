@@ -1,73 +1,39 @@
-import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
-import { Card } from "./Card";
+import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, View } from "react-native";
+import type { AppNotification } from "../../api/types";
+import { formatRelative } from "../../lib/dates";
+import { useTheme } from "../../theme";
+import { ListItem } from "./ListItem";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
 
-export type NotificationItemProps = {
-  body: string;
-  createdAtLabel: string;
-  isRead: boolean;
-  onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
-  title: string;
-  type: string;
-};
-
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ notification, onPress }: { notification: AppNotification; onPress: () => void }) {
+  const { colors } = useTheme();
+  const icon = notification.type === "match" ? "heart" : "chatbubble-ellipses";
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
+    <ListItem
+      onPress={onPress}
+      title={notification.title}
+      subtitle={notification.body}
+      subtitleStrong={!notification.isRead}
+      accessibilityLabel={`${notification.isRead ? "" : "Non lue. "}${notification.title}. ${notification.body}`}
+      leading={
+        <View style={[styles.icon, { backgroundColor: colors.primarySoft }]}>
+          <Ionicons name={icon} size={20} color={colors.primary} />
         </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
-        </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
-        </Text>
-      </Card>
-    </Pressable>
+      }
+      trailing={
+        <>
+          <Text variant="caption" tone="muted">
+            {formatRelative(notification.createdAt)}
+          </Text>
+          {!notification.isRead ? <View style={[styles.dot, { backgroundColor: colors.primary }]} /> : null}
+        </>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.sm
-  },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  icon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  dot: { width: 10, height: 10, borderRadius: 5 }
 });

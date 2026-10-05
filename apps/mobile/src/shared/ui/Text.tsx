@@ -1,96 +1,47 @@
-import React from "react";
-import { StyleSheet, Text as RNText, type StyleProp, type TextProps as RNTextProps, type TextStyle } from "react-native";
-import { colors, fontWeights, typography } from "./tokens";
+import { Text as RNText, type TextProps as RNTextProps } from "react-native";
+import { useTheme, fontSizes, type Colors } from "../../theme";
 
-export type TextVariant = "body" | "label" | "title" | "heading" | "caption" | "eyebrow" | "button";
-export type TextTone = "default" | "muted" | "primary" | "secondary" | "danger" | "success" | "inverse";
-export type TextWeight = "regular" | "medium" | "semibold" | "bold";
+export type TextVariant = "hero" | "title" | "heading" | "body" | "bodyStrong" | "caption" | "label";
+export type TextTone = "default" | "muted" | "primary" | "danger" | "success" | "onPrimary" | "onImage";
 
-export type TextProps = RNTextProps & {
-  variant?: TextVariant;
-  tone?: TextTone;
-  weight?: TextWeight;
-  style?: StyleProp<TextStyle>;
-};
+const variants = {
+  hero: { fontSize: fontSizes.hero, lineHeight: 44, fontWeight: "800", letterSpacing: -1 },
+  title: { fontSize: fontSizes.xxl, lineHeight: 34, fontWeight: "800", letterSpacing: -0.5 },
+  heading: { fontSize: fontSizes.xl, lineHeight: 28, fontWeight: "700", letterSpacing: -0.3 },
+  body: { fontSize: fontSizes.md, lineHeight: 23, fontWeight: "400" },
+  bodyStrong: { fontSize: fontSizes.md, lineHeight: 23, fontWeight: "600" },
+  caption: { fontSize: fontSizes.sm, lineHeight: 19, fontWeight: "400" },
+  label: { fontSize: fontSizes.sm, lineHeight: 18, fontWeight: "600", letterSpacing: 0.2 }
+} as const;
 
-const styles = StyleSheet.create({
-  base: {
-    color: colors.text,
-    ...typography.body
-  },
-  regular: {
-    fontWeight: fontWeights.regular
-  },
-  medium: {
-    fontWeight: fontWeights.medium
-  },
-  semibold: {
-    fontWeight: fontWeights.semibold
-  },
-  bold: {
-    fontWeight: fontWeights.bold
-  },
-  defaultTone: {
-    color: colors.text
-  },
-  mutedTone: {
-    color: colors.textMuted
-  },
-  primaryTone: {
-    color: colors.primary
-  },
-  secondaryTone: {
-    color: colors.secondary
-  },
-  dangerTone: {
-    color: colors.danger
-  },
-  successTone: {
-    color: colors.success
-  },
-  inverseTone: {
-    color: colors.inverse
+function toneColor(tone: TextTone, colors: Colors): string {
+  switch (tone) {
+    case "muted":
+      return colors.textMuted;
+    case "primary":
+      return colors.primary;
+    case "danger":
+      return colors.danger;
+    case "success":
+      return colors.success;
+    case "onPrimary":
+      return colors.onPrimary;
+    case "onImage":
+      return colors.onImage;
+    default:
+      return colors.text;
   }
-});
+}
 
-const variantStyles: Record<TextVariant, TextStyle> = {
-  body: typography.body,
-  label: typography.label,
-  title: typography.title,
-  heading: typography.heading,
-  caption: typography.caption,
-  eyebrow: typography.eyebrow,
-  button: typography.button
-};
+export type TextProps = RNTextProps & { variant?: TextVariant; tone?: TextTone; center?: boolean };
 
-const weightStyles: Record<TextWeight, TextStyle> = {
-  regular: styles.regular,
-  medium: styles.medium,
-  semibold: styles.semibold,
-  bold: styles.bold
-};
-
-const toneStyles: Record<TextTone, TextStyle> = {
-  default: styles.defaultTone,
-  muted: styles.mutedTone,
-  primary: styles.primaryTone,
-  secondary: styles.secondaryTone,
-  danger: styles.dangerTone,
-  success: styles.successTone,
-  inverse: styles.inverseTone
-};
-
-export function Text({
-  children,
-  style,
-  tone = "default",
-  variant = "body",
-  weight = "regular",
-  ...props
-}: TextProps) {
+export function Text({ variant = "body", tone = "default", center, style, ...props }: TextProps) {
+  const { colors } = useTheme();
   return (
-    <RNText style={[styles.base, variantStyles[variant], weightStyles[weight], toneStyles[tone], style]} {...props}>
-      {children}
-    </RNText>
+    <RNText
+      accessibilityRole={variant === "hero" || variant === "title" || variant === "heading" ? "header" : undefined}
+      {...props}
+      style={[variants[variant], { color: toneColor(tone, colors) }, center && { textAlign: "center" }, style]}
+    />
   );
 }

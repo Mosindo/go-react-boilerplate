@@ -1,64 +1,75 @@
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 export type AuthTokens = {
   accessToken: string;
   refreshToken: string;
 };
 
-const TOKENS_KEY = "boilerplate.auth.tokens";
-let memoryTokens: AuthTokens | null = null;
+const TOKENS_KEY = "lueur.auth.tokens";
 
-export async function saveTokens(tokens: AuthTokens): Promise<void> {
-  memoryTokens = tokens;
-  try {
-    await SecureStore.setItemAsync(TOKENS_KEY, JSON.stringify(tokens));
-  } catch {
-    // Fallback keeps the session in memory when secure storage is unavailable.
-  }
+/** Where tokens live between launches: Keychain/Keystore on devices, localStorage on web. */
+export type TokenBackend = {
+  get(): Promise<string | null>;
+  set(value: string): Promise<void>;
+  remove(): Promise<void>;
+};
+
+const nativeBackend: TokenBackend = {
+  get: () => SecureStore.getItemAsync(TOKENS_KEY),
+  set: (value) => SecureStore.setItemAsync(TOKENS_KEY, value),
+  remove: () => SecureStore.deleteItemAsync(TOKENS_KEY)
+};
+
+const webBackend: TokenBackend = {
+  get: async () => globalThis.localStorage?.getItem(TOKENS_KEY) ?? null,
+  set: async (value) => globalThis.localStorage?.setItem(TOKENS_KEY, value),
+  remove: async () => globalThis.localStorage?.removeItem(TOKENS_KEY)
+};
+
+function isTokens(value: unknown): value is AuthTokens {
+  const v = value as Partial<AuthTokens> | null;
+  return typeof v?.accessToken === "string" && v.accessToken !== "" && typeof v.refreshToken === "string" && v.refreshToken !== "";
 }
 
-export async function getTokens(): Promise<AuthTokens | null> {
-  try {
-    const serializedTokens = await SecureStore.getItemAsync(TOKENS_KEY);
-    if (serializedTokens) {
-      const parsedTokens = JSON.parse(serializedTokens) as Partial<AuthTokens>;
-      if (parsedTokens.accessToken && typeof parsedTokens.refreshToken === "string") {
-        memoryTokens = {
-          accessToken: parsedTokens.accessToken,
-          refreshToken: parsedTokens.refreshToken
-        };
-        return memoryTokens;
-      }
+export class TokenStore {
+  private memory: AuthTokens | null = null;
+
+  constructor(private readonly backend: TokenBackend) {}
+
+  async save(tokens: AuthTokens): Promise<void> {
+    this.memory = tokens;
+    try {
+      await this.backend.set(JSON.stringify(tokens));
+    } catch {
+      // Secure storage can be unavailable (private mode, locked keychain): keep the session in memory.
     }
-  } catch {
-    // Ignore and fallback to memory.
   }
-  return memoryTokens;
-}
 
-export async function getAccessToken(): Promise<string | null> {
-  const tokens = await getTokens();
-  return tokens?.accessToken ?? null;
-}
+  async load(): Promise<AuthTokens | null> {
+    if (this.memory) return this.memory;
+    try {
+      const raw = await this.backend.get();
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        if (isTokens(parsed)) {
+          this.memory = { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken };
+        }
+      }
+    } catch {
+      // Corrupted or unreadable entry: treated as signed out.
+    }
+    return this.memory;
+  }
 
-export async function clearTokens(): Promise<void> {
-  memoryTokens = null;
-  try {
-    await SecureStore.deleteItemAsync(TOKENS_KEY);
-  } catch {
-    // Ignore cleanup errors on unsupported platforms.
+  async clear(): Promise<void> {
+    this.memory = null;
+    try {
+      await this.backend.remove();
+    } catch {
+      // Nothing else to clean up.
+    }
   }
 }
 
-// Backward-compatible helpers for older call sites that still expect token-only storage.
-export async function saveToken(token: string): Promise<void> {
-  await saveTokens({ accessToken: token, refreshToken: "" });
-}
-
-export async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
-
-export async function clearToken(): Promise<void> {
-  await clearTokens();
-}
+export const tokenStore = new TokenStore(Platform.OS === "web" ? webBackend : nativeBackend);

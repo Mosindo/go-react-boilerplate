@@ -1,179 +1,106 @@
-import { type AuthUser } from "./auth";
-import { apiRequest } from "./client";
+import { api } from "./client";
 import { endpoints } from "./endpoints";
+import type {
+  AppNotification,
+  BlockedUser,
+  ConversationPreview,
+  Interest,
+  MatchPreview,
+  Message,
+  MessagesPage,
+  MyProfile,
+  NotificationsPage,
+  Photo,
+  Preferences,
+  ProfileCard,
+  ProfileInput,
+  ReportReason,
+  SwipeAction,
+  SwipeResult
+} from "./types";
+import { buildPhotoForm, type PickedImage } from "../lib/upload";
 
-export type PlatformUser = AuthUser;
+/** Typed facade over the REST API. UI code goes through these functions (or the hooks built on them). */
 
-export type Post = {
-  id: string;
-  authorUserId: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
-};
+// ── Profile ──────────────────────────────────────────────────────────────────
+export const getMyProfile = (signal?: AbortSignal) => api.request<MyProfile>(endpoints.myProfile, { signal });
 
-export type ChatMessage = {
-  id: string;
-  senderUserId: string;
-  recipientUserId: string;
-  content: string;
-  createdAt: string;
-};
+export const saveProfile = (input: ProfileInput) => api.request<MyProfile>(endpoints.myProfile, { method: "PUT", body: input });
 
-export type ChatSummary = {
-  user: PlatformUser;
-  lastMessage?: {
-    content: string;
-    createdAt: string;
-  };
-};
+export const savePreferences = (preferences: Preferences) =>
+  api.request<MyProfile>(endpoints.preferences, { method: "PUT", body: preferences });
 
-export type Notification = {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  body: string;
-  isRead: boolean;
-  createdAt: string;
-  readAt?: string;
-};
+export const saveLocation = (latitude: number, longitude: number, city: string) =>
+  api.request<MyProfile>(endpoints.location, { method: "PUT", body: { latitude, longitude, city } });
 
-export type BillingSubscription = {
-  id?: string;
-  organizationId: string;
-  provider: string;
-  status: string;
-  stripeCustomerId?: string;
-  stripeSubscriptionId?: string;
-  stripeCheckoutSessionId?: string;
-  currentPeriodStart?: string;
-  currentPeriodEnd?: string;
-  cancelAtPeriodEnd: boolean;
-  canceledAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
+export const savePrivacy = (isDiscoverable: boolean, showDistance: boolean) =>
+  api.request<MyProfile>(endpoints.privacy, { method: "PUT", body: { isDiscoverable, showDistance } });
 
-export type BillingCheckoutSession = {
-  sessionId: string;
-  checkoutUrl: string;
-  organizationId: string;
-  status: string;
-};
+export const getInterests = async (): Promise<Interest[]> =>
+  (await api.request<{ interests: Interest[] }>(endpoints.interests)).interests;
 
-type UsersResponse = {
-  users: PlatformUser[];
-};
+export const getProfile = (userId: string) => api.request<ProfileCard>(endpoints.profile(userId));
 
-type PostsResponse = {
-  posts: Post[];
-};
+// ── Photos ───────────────────────────────────────────────────────────────────
+export const uploadPhoto = async (image: PickedImage) =>
+  api.request<Photo>(endpoints.photos, { method: "POST", form: await buildPhotoForm(image) });
 
-type ChatsResponse = {
-  chats: ChatSummary[];
-};
+export const replacePhoto = async (photoId: string, image: PickedImage) =>
+  api.request<Photo>(endpoints.photo(photoId), { method: "PUT", form: await buildPhotoForm(image) });
 
-type ChatMessagesResponse = {
-  messages: ChatMessage[];
-};
+export const deletePhoto = (photoId: string) => api.request<void>(endpoints.photo(photoId), { method: "DELETE" });
 
-type NotificationsResponse = {
-  notifications: Notification[];
-};
+export const reorderPhotos = async (photoIds: string[]): Promise<Photo[]> =>
+  (await api.request<{ photos: Photo[] }>(endpoints.photosOrder, { method: "PUT", body: { photoIds } })).photos;
 
-export type CreateNotificationInput = {
-  type: string;
-  title: string;
-  body: string;
-};
+// ── Discovery & matches ──────────────────────────────────────────────────────
+export const getDiscover = async (limit: number, signal?: AbortSignal): Promise<ProfileCard[]> =>
+  (await api.request<{ profiles: ProfileCard[] }>(`${endpoints.discover}?limit=${limit}`, { signal })).profiles;
 
-function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `Bearer ${token}` };
-}
+export const swipe = (targetUserId: string, action: SwipeAction) =>
+  api.request<SwipeResult>(endpoints.swipes, { method: "POST", body: { targetUserId, action } });
 
-export async function listUsers(token: string): Promise<PlatformUser[]> {
-  const payload = await apiRequest<UsersResponse>(endpoints.users.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.users;
-}
+export const getMatches = async (signal?: AbortSignal): Promise<MatchPreview[]> =>
+  (await api.request<{ matches: MatchPreview[] }>(`${endpoints.matches}?limit=100`, { signal })).matches;
 
-export async function listPosts(token: string): Promise<Post[]> {
-  const payload = await apiRequest<PostsResponse>(endpoints.posts.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.posts;
-}
+export const unmatch = (matchId: string) => api.request<void>(endpoints.match(matchId), { method: "DELETE" });
 
-export async function createPost(token: string, title: string, body: string): Promise<Post> {
-  return apiRequest<Post>(endpoints.posts.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ title, body })
-  });
-}
+// ── Chat ─────────────────────────────────────────────────────────────────────
+export const getConversations = async (signal?: AbortSignal): Promise<ConversationPreview[]> =>
+  (await api.request<{ conversations: ConversationPreview[] }>(`${endpoints.conversations}?limit=100`, { signal })).conversations;
 
-export async function listChats(token: string): Promise<ChatSummary[]> {
-  const payload = await apiRequest<ChatsResponse>(endpoints.chat.chats, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.chats;
-}
+export const getMessages = (conversationId: string, before?: string, signal?: AbortSignal) =>
+  api.request<MessagesPage>(
+    `${endpoints.messages(conversationId)}?limit=40${before ? `&before=${encodeURIComponent(before)}` : ""}`,
+    { signal }
+  );
 
-export async function listChatMessages(token: string, userId: string): Promise<ChatMessage[]> {
-  const payload = await apiRequest<ChatMessagesResponse>(endpoints.chat.messages(userId), {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.messages;
-}
+export const sendMessage = (conversationId: string, content: string) =>
+  api.request<Message>(endpoints.messages(conversationId), { method: "POST", body: { content } });
 
-export async function sendChatMessage(token: string, userId: string, content: string): Promise<ChatMessage> {
-  return apiRequest<ChatMessage>(endpoints.chat.messages(userId), {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ content })
-  });
-}
+export const markConversationRead = (conversationId: string) =>
+  api.request<{ unreadCount: number }>(endpoints.markRead(conversationId), { method: "POST" });
 
-export async function listNotifications(token: string): Promise<Notification[]> {
-  const payload = await apiRequest<NotificationsResponse>(endpoints.notifications.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.notifications;
-}
+export const clearConversation = (conversationId: string) =>
+  api.request<void>(endpoints.conversation(conversationId), { method: "DELETE" });
 
-export async function createNotification(token: string, input: CreateNotificationInput): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(input)
-  });
-}
+// ── Notifications ────────────────────────────────────────────────────────────
+export const getNotifications = (signal?: AbortSignal) =>
+  api.request<NotificationsPage>(`${endpoints.notifications}?limit=50`, { signal });
 
-export async function markNotificationRead(token: string, notificationId: string): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.markRead(notificationId), {
-    method: "POST",
-    headers: authHeaders(token)
-  });
-}
+export const markNotificationRead = (id: string) =>
+  api.request<AppNotification>(endpoints.notificationRead(id), { method: "POST" });
 
-export async function getBillingSubscription(token: string): Promise<BillingSubscription> {
-  return apiRequest<BillingSubscription>(endpoints.billing.subscription, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-}
+export const markAllNotificationsRead = () => api.request<void>(endpoints.notificationsReadAll, { method: "POST" });
 
-export async function createBillingCheckout(token: string): Promise<BillingCheckoutSession> {
-  return apiRequest<BillingCheckoutSession>(endpoints.billing.checkout, {
-    method: "POST",
-    headers: authHeaders(token)
-  });
-}
+// ── Safety ───────────────────────────────────────────────────────────────────
+export const getBlocks = async (): Promise<BlockedUser[]> =>
+  (await api.request<{ blocks: BlockedUser[] }>(endpoints.blocks)).blocks;
+
+export const blockUser = (userId: string) => api.request<void>(endpoints.blocks, { method: "POST", body: { userId } });
+
+export const unblockUser = (userId: string) => api.request<void>(endpoints.block(userId), { method: "DELETE" });
+
+export const reportUser = (userId: string, reason: ReportReason, details: string, alsoBlock: boolean) =>
+  api.request<void>(endpoints.reports, { method: "POST", body: { userId, reason, details, alsoBlock } });
+

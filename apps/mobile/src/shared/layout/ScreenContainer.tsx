@@ -1,58 +1,50 @@
-import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, spacing } from "../ui";
+import type { ReactNode } from "react";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import type { Edge } from "react-native-safe-area-context";
+import { layout, spacing } from "../../theme";
 import { SafeAreaLayout } from "./SafeAreaLayout";
 
-type ScreenContainerProps = {
-  children: ReactNode;
-  centered?: boolean;
-  contentMaxWidth?: number;
-  contentStyle?: StyleProp<ViewStyle>;
-  edges?: ("top" | "right" | "bottom" | "left")[];
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
-};
-
+/**
+ * Standard screen shell: safe area, themed background, content capped to a readable width on tablets and
+ * the web, optional scrolling and keyboard avoidance for forms.
+ */
 export function ScreenContainer({
-  centered = false,
   children,
-  contentMaxWidth = 960,
+  scroll,
+  padded = true,
+  edges = ["top", "bottom"],
   contentStyle,
-  edges,
-  style,
   testID
-}: ScreenContainerProps) {
+}: {
+  children: ReactNode;
+  scroll?: boolean;
+  padded?: boolean;
+  edges?: Edge[];
+  contentStyle?: StyleProp<ViewStyle>;
+  testID?: string;
+}) {
+  const inner = [styles.content, padded && styles.padded, contentStyle];
   return (
-    <SafeAreaLayout edges={edges} style={style}>
-      <View style={[styles.outer, centered ? styles.centered : null]}>
-        <View
-          style={[styles.content, centered ? styles.contentCentered : null, { maxWidth: contentMaxWidth }, contentStyle]}
-          testID={testID}
-        >
-          {children}
-        </View>
-      </View>
+    <SafeAreaLayout edges={edges}>
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === "ios" ? "padding" : undefined} testID={testID}>
+        {scroll ? (
+          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <View style={inner}>{children}</View>
+          </ScrollView>
+        ) : (
+          <View style={[styles.fill, styles.center]}>
+            <View style={[styles.fill, inner]}>{children}</View>
+          </View>
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  outer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
-  },
-  centered: {
-    justifyContent: "center"
-  },
-  content: {
-    flex: 1,
-    width: "100%",
-    alignSelf: "center"
-  },
-  contentCentered: {
-    flex: 0
-  }
+  fill: { flex: 1 },
+  center: { alignItems: "center" },
+  scroll: { flexGrow: 1, alignItems: "center" },
+  content: { width: "100%", maxWidth: layout.maxContentWidth },
+  padded: { paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, gap: spacing.lg }
 });

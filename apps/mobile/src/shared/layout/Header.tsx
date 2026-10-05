@@ -1,61 +1,31 @@
-import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, colors, spacing } from "../ui";
+import type { ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
+import { IconButton } from "../ui/IconButton";
+import { Text } from "../ui/Text";
 
-type HeaderProps = {
-  action?: ReactNode;
-  leading?: ReactNode;
-  eyebrow?: string;
-  subtitle?: string;
-  title: string;
-  centered?: boolean;
-  style?: StyleProp<ViewStyle>;
-};
-
-export function Header({ action, centered = false, eyebrow, leading, subtitle, style, title }: HeaderProps) {
+/** In-screen header: optional back button, title and right-side actions. */
+export function Header({ title, subtitle, onBack, right }: { title: string; subtitle?: string; onBack?: () => void; right?: ReactNode }) {
   return (
-    <View style={[styles.root, centered ? styles.rootCentered : null, style]}>
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
-      <View style={[styles.copy, centered ? styles.copyCentered : null]}>
-        {eyebrow ? (
-          <Text tone="secondary" variant="eyebrow" weight="bold">
-            {eyebrow}
-          </Text>
-        ) : null}
-        <Text style={styles.title} variant="title" weight="bold">
+    <View style={styles.row}>
+      {onBack ? <IconButton icon="chevron-back" label="Retour" onPress={onBack} testID="header-back" /> : null}
+      <View style={styles.titles}>
+        <Text variant="title" numberOfLines={1}>
           {title}
         </Text>
-        {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text variant="caption" tone="muted">
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
-      {action ? <View style={styles.action}>{action}</View> : null}
+      {right ? <View style={styles.right}>{right}</View> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.lg
-  },
-  rootCentered: {
-    justifyContent: "center"
-  },
-  leading: {
-    paddingTop: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.sm
-  },
-  copyCentered: {
-    alignItems: "center"
-  },
-  action: {
-    paddingTop: spacing.md
-  },
-  title: {
-    color: colors.text
-  }
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  titles: { flex: 1 },
+  right: { flexDirection: "row", alignItems: "center" }
 });

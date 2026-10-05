@@ -1,223 +1,96 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { createPost, listPosts, type Post } from "../api/platform";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import type { MatchPreview } from "../api/types";
+import { MatchModal } from "../components/MatchModal";
+import { SwipeDeck, type SwipeDeckHandle } from "../components/SwipeDeck";
+import { useDeck } from "../hooks/useDeck";
+import { useMyProfile, useNotifications } from "../hooks/queries";
+import { consumeDeckStale } from "../lib/deckSignal";
+import type { RootStackParamList } from "../navigation/types";
+import { useRealtime } from "../realtime/RealtimeProvider";
 import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Badge, Button, Card, Input, Notice, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import { IconButton, Text } from "../shared/ui";
+import { SafeAreaLayout } from "../shared/layout";
+import { layout, spacing } from "../theme";
 
-type HomeScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+/** "Découvrir" tab: the swipe deck. */
+export default function HomeScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { markMatchAnnounced } = useRealtime();
+  const { data: my } = useMyProfile();
+  const { data: notifications } = useNotifications();
+  const [match, setMatch] = useState<MatchPreview | null>(null);
+  const deckRef = useRef<SwipeDeckHandle>(null);
 
-function formatPostDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
-}
+  const { cards, status, error, act, reload, recheck } = useDeck((m) => {
+    markMatchAnnounced(m.id); // the realtime push for this match must not show a second banner
+    setMatch(m);
+  });
 
-export default function HomeScreen({ token, currentUserId }: HomeScreenProps) {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextPosts = await listPosts(token);
-      setPosts(nextPosts);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load posts");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
+  // Coming back to the tab: reload when settings changed, or when the deck was empty (new people may have joined).
+  const statusRef = useRef(status);
   useEffect(() => {
-    load();
-  }, [load]);
+    statusRef.current = status;
+  });
+  useFocusEffect(
+    useCallback(() => {
+      if (consumeDeckStale() || statusRef.current === "empty") void reload();
+      // While the deck is empty, look again every 30 s so new people appear without a manual refresh.
+      const timer = setInterval(() => {
+        if (statusRef.current === "empty") void recheck();
+      }, 30_000);
+      return () => clearInterval(timer);
+    }, [reload, recheck])
+  );
 
-  async function onSubmit() {
-    const normalizedTitle = title.trim();
-    const normalizedBody = body.trim();
-    if (!normalizedTitle || !normalizedBody) {
-      setError("title and body are required");
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-    setFeedback(null);
-    try {
-      const created = await createPost(token, normalizedTitle, normalizedBody);
-      setPosts((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
-      setTitle("");
-      setBody("");
-      setFeedback("Post published.");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "could not create post");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const emptyState = useMemo(() => {
-    if (loading) {
-      return null;
-    }
-    return (
-      <EmptyView
-        message="Share progress, notes, or the first workspace announcement."
-        title="No posts yet"
-      />
-    );
-  }, [loading]);
-
-  if (loading && posts.length === 0) {
-    return (
-      <ScreenContainer testID="home-screen">
-        <LoadingView fullScreen label="Loading workspace..." />
-      </ScreenContainer>
-    );
-  }
+  const openChat = (m: MatchPreview) => {
+    setMatch(null);
+    navigation.navigate("Chat", { conversationId: m.conversationId, matchId: m.id, userId: m.user.id, name: m.user.firstName, photoPath: m.user.photos[0]?.url });
+  };
 
   return (
-    <ScreenContainer testID="home-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || submitting}
-            label="Reload"
-            onPress={load}
-            size="sm"
-            testID="home-reload-button"
-            variant="outline"
-          />
-        }
-        eyebrow="Workspace"
-        style={styles.header}
-        subtitle="Team updates, product notes, and lightweight announcements."
-        title="Home"
-      />
+    <SafeAreaLayout edges={["top"]}>
+      <View style={styles.page}>
+        <View style={styles.header}>
+          <Text variant="title" tone="primary">
+            Lueur
+          </Text>
+          <IconButton testID="open-notifications" icon="notifications-outline" label="Notifications" badge={notifications?.unreadCount} onPress={() => navigation.navigate("Notifications")} />
+        </View>
 
-      <Card style={styles.composer} variant="accent">
-        <Text style={styles.sectionTitle} variant="heading" weight="bold">
-          Publish an update
-        </Text>
-        <Input
-          containerStyle={styles.field}
-          label="Title"
-          onChangeText={setTitle}
-          placeholder="Post title"
-          testID="home-post-title-input"
-          value={title}
-        />
-        <Input
-          containerStyle={styles.field}
-          label="Body"
-          multiline
-          numberOfLines={4}
-          onChangeText={setBody}
-          placeholder="Share progress, notes, or an announcement..."
-          style={styles.bodyInput}
-          testID="home-post-body-input"
-          value={body}
-        />
-        <Button
-          fullWidth
-          disabled={loading}
-          label="Publish"
-          loading={submitting}
-          onPress={onSubmit}
-          testID="home-post-submit-button"
-        />
-      </Card>
+        <View style={styles.deck}>
+          {status === "loading" ? <LoadingView label="On cherche des personnes pour vous…" /> : null}
+          {status === "error" ? <ErrorView error={error} onRetry={() => void reload()} /> : null}
+          {status === "incomplete" ? <EmptyView icon="person-circle-outline" title="Terminez votre profil" message="Ajoutez une photo, vos préférences et votre position pour découvrir des personnes." /> : null}
+          {status === "empty" ? (
+            <EmptyView
+              icon="compass-outline"
+              title="Vous avez fait le tour pour le moment"
+              message="Revenez plus tard : de nouvelles personnes s'inscrivent chaque jour. Vous pouvez aussi élargir la distance ou la tranche d'âge."
+              actionLabel="Actualiser"
+              onAction={() => void reload()}
+            />
+          ) : null}
+          {status === "ready" && cards.length > 0 ? (
+            <SwipeDeck
+              ref={deckRef}
+              cards={cards}
+              onSwipe={(card, action) => void act(card, action)}
+              onOpenDetails={(card) => navigation.navigate("ProfileDetail", { userId: card.id })}
+            />
+          ) : null}
+        </View>
+      </View>
 
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-      {feedback ? (
-        <Notice description="Your update is now visible in the workspace feed." style={styles.feedback} title={feedback} tone="success" />
-      ) : null}
-
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={posts}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={emptyState}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle} variant="heading" weight="bold">
-                {item.title}
-              </Text>
-              <Badge label={item.authorUserId === currentUserId ? "You" : "Member"} size="sm" variant="primary" />
-            </View>
-            <Text style={styles.cardBody}>{item.body}</Text>
-            <Text style={styles.meta} tone="muted" variant="caption">
-              {formatPostDate(item.createdAt)}
-            </Text>
-          </Card>
-        )}
-      />
-    </ScreenContainer>
+      <MatchModal match={match} myName={my?.profile?.firstName ?? ""} myPhotoPath={my?.profile?.photos[0]?.url} onMessage={openChat} onClose={() => setMatch(null)} />
+    </SafeAreaLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: spacing.lg
-  },
-  composer: {
-    marginBottom: spacing.md
-  },
-  sectionTitle: {
-    marginBottom: spacing.lg
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  bodyInput: {
-    minHeight: 120
-  },
-  error: {
-    marginBottom: spacing.sm
-  },
-  feedback: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  },
-  empty: {
-    marginTop: spacing.xxxl
-  },
-  card: {
-    marginBottom: spacing.md
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-    gap: spacing.sm
-  },
-  cardTitle: {
-    flex: 1,
-    color: colors.text
-  },
-  cardBody: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  page: { flex: 1, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 52 },
+  deck: { flex: 1 }
 });

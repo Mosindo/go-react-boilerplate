@@ -1,170 +1,62 @@
-import React, { type ReactNode } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  View,
-  type PressableProps,
-  type StyleProp,
-  type TextStyle,
-  type ViewStyle
-} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import { radii, spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
-  children?: ReactNode;
-  label?: string;
-  loading?: boolean;
+  label: string;
   variant?: ButtonVariant;
-  size?: ButtonSize;
-  fullWidth?: boolean;
+  loading?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
+  compact?: boolean;
   style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  }
-});
-
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
-};
-
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
-
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
-  primary: "inverse",
-  secondary: "primary",
-  destructive: "inverse",
-  success: "inverse",
-  outline: "default",
-  ghost: "secondary"
-};
-
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
-};
-
-export function Button({
-  children,
-  disabled,
-  fullWidth = false,
-  label,
-  loading = false,
-  size = "md",
-  style,
-  textStyle,
-  variant = "primary",
-  ...props
-}: ButtonProps) {
-  const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
-  const labelNode = typeof children === "string" ? children : label;
+export function Button({ label, variant = "primary", loading, icon, compact, disabled, style, onPress, ...props }: ButtonProps) {
+  const { colors } = useTheme();
+  const inactive = disabled || loading;
+  const palette = {
+    primary: { bg: colors.primary, fg: colors.onPrimary, border: colors.primary },
+    secondary: { bg: colors.surface, fg: colors.text, border: colors.border },
+    ghost: { bg: "transparent", fg: colors.primary, border: "transparent" },
+    danger: { bg: colors.dangerSoft, fg: colors.danger, border: colors.dangerSoft }
+  }[variant];
 
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={buttonDisabled}
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!inactive, busy: !!loading }}
+      disabled={inactive}
+      onPress={onPress}
       style={({ pressed }) => [
         styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
-        fullWidth ? styles.fullWidth : null,
-        buttonDisabled ? styles.disabled : null,
-        pressed ? styles.pressed : null,
+        compact && styles.compact,
+        { backgroundColor: palette.bg, borderColor: palette.border, opacity: inactive ? 0.55 : pressed ? 0.85 : 1 },
         style
       ]}
       {...props}
     >
       <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
-        {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
-            {labelNode}
-          </Text>
+        {loading ? (
+          <ActivityIndicator color={palette.fg} />
         ) : (
-          children
+          <>
+            {icon ? <Ionicons name={icon} size={20} color={palette.fg} /> : null}
+            <Text variant="bodyStrong" style={{ color: palette.fg }}>
+              {label}
+            </Text>
+          </>
         )}
       </View>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  base: { minHeight: 52, borderRadius: radii.pill, borderWidth: 1, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
+  compact: { minHeight: 40, paddingHorizontal: spacing.lg },
+  content: { flexDirection: "row", alignItems: "center", gap: spacing.sm }
+});
