@@ -7,8 +7,8 @@ const (
 	MaxUploadBytes   = 8 << 20 // 8 MiB
 	MaxEdgePixels    = 1440
 	minEdgePixels    = 200
-	maxSourcePixels  = 50_000_000
-	maxSourceEdge    = 12_000
+	maxSourcePixels  = 24_000_000
+	maxSourceEdge    = 8_000
 	jpegQuality      = 82
 	storedMime       = "image/jpeg"
 )

@@ -29,7 +29,7 @@ export default function SettingsScreen() {
   const [deleting, setDeleting] = useState(false);
 
   if (isLoading) return <LoadingView />;
-  if (isError || !data?.profile) return <ErrorView error={error} onRetry={() => void refetch()} />;
+  if (!data?.profile) return isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : <LoadingView />;
   const profile = data.profile;
 
   const updatePrivacy = async (isDiscoverable: boolean, showDistance: boolean) => {

@@ -17,7 +17,7 @@ export default function ProfileScreen() {
   const { data, isLoading, isError, error, refetch } = useMyProfile();
 
   if (isLoading) return <LoadingView />;
-  if (isError || !data?.profile) return <ErrorView error={error} onRetry={() => void refetch()} />;
+  if (!data?.profile) return isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : <LoadingView />;
   const profile = data.profile;
   const chevron = <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />;
 

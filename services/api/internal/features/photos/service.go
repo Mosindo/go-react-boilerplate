@@ -20,7 +20,7 @@ type Service struct {
 }
 
 func NewService(repo Repository, storage Storage, signer *signing.Signer) *Service {
-	return &Service{repo: repo, storage: storage, signer: signer, cpu: make(chan struct{}, 3)}
+	return &Service{repo: repo, storage: storage, signer: signer, cpu: make(chan struct{}, 2)}
 }
 
 func newKey() (string, error) {

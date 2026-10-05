@@ -37,6 +37,14 @@ func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) (
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Same pair lock as matching.Swipe: a block and a reciprocal like cannot interleave into a match.
+	low, high := blockerID, blockedID
+	if low > high {
+		low, high = high, low
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 7))`, low+high); err != nil {
+		return "", err
+	}
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)`, blockedID).Scan(&exists); err != nil {
 		return "", err

@@ -16,7 +16,7 @@ import { visiblePending, type PendingMessage } from "../lib/chat";
 import { formatDayLabel, isSameDay } from "../lib/dates";
 import { errorMessage } from "../lib/errors";
 import type { RootScreenProps, RootStackParamList } from "../navigation/types";
-import { appendMessage, queryKeys, type MessagesData } from "../realtime/cache";
+import { appendMessage, applyMessagesRead, queryKeys, type MessagesData } from "../realtime/cache";
 import { EmptyView, ErrorView, LoadingView, showError, showSuccess } from "../shared/feedback";
 import { Avatar, IconButton, MessageItem, Text } from "../shared/ui";
 import { SafeAreaLayout } from "../shared/layout";
@@ -68,12 +68,14 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
     if (!focused || !unreadFromOther) return;
     void markConversationRead(conversationId)
       .then(() => {
+        // Flip the local cache to "read" too, otherwise messages arriving later never trigger another mark-read.
+        applyMessagesRead(queryClient, conversationId, me.id, new Date().toISOString());
         void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
         void queryClient.invalidateQueries({ queryKey: queryKeys.matches });
         void queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
       })
       .catch(() => undefined);
-  }, [focused, unreadFromOther, conversationId, queryClient]);
+  }, [focused, unreadFromOther, conversationId, queryClient, me.id]);
 
   const send = useCallback(
     async (content: string, existingTempId?: string) => {
@@ -111,6 +113,7 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
   };
 
   const leave = () => {
+    queryClient.removeQueries({ queryKey: queryKeys.messages(conversationId) }); // never show a cleared/blocked history again
     void queryClient.invalidateQueries({ queryKey: queryKeys.matches });
     void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
     navigation.goBack();
@@ -232,6 +235,7 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
                       </Text>
                     ) : null}
                     <Pressable
+                      accessibilityRole="button"
                       disabled={!isPending || !(m as PendingMessage).failed}
                       onPress={() => void send(m.content, (m as PendingMessage).tempId)}
                       accessibilityHint={isPending && (m as PendingMessage).failed ? "Appuyez pour renvoyer" : undefined}

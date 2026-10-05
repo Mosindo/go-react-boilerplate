@@ -166,3 +166,34 @@ func TestAccountDeletionRemovesEverything(t *testing.T) {
 	// The other user is unaffected.
 	env.do(http.MethodGet, "/me", b.Token, nil).expect(t, http.StatusOK)
 }
+
+func TestAuthHardeningRegressions(t *testing.T) {
+	env := newEnv(t)
+	s := env.register("harden")
+
+	// A NUL byte must be a clean 401, not a database error.
+	env.do(http.MethodPost, "/auth/login", "", map[string]string{"email": "a\x00b@test.local", "password": testPassword}).expect(t, http.StatusUnauthorized)
+
+	// Repeated recovery requests within a minute send a single email and keep the first link valid.
+	env.do(http.MethodPost, "/auth/password/forgot", "", map[string]string{"email": s.Email}).expect(t, http.StatusAccepted)
+	env.do(http.MethodPost, "/auth/password/forgot", "", map[string]string{"email": s.Email}).expect(t, http.StatusAccepted)
+	if n := len(env.mail.Messages()); n != 1 {
+		t.Fatalf("expected 1 recovery email, got %d", n)
+	}
+}
+
+func TestDeletingAnAccountErasesNotificationsAboutIt(t *testing.T) {
+	env := newEnv(t)
+	a, b := env.pair()
+	m := env.match(a, b)
+	env.do(http.MethodPost, "/conversations/"+m.ConversationID+"/messages", a.Token, map[string]string{"content": "secret words"}).expect(t, http.StatusCreated)
+	env.do(http.MethodDelete, "/me", a.Token, map[string]string{"password": testPassword}).expect(t, http.StatusNoContent)
+
+	var n int
+	if err := env.pool.QueryRow(t.Context(), `SELECT count(*) FROM notifications WHERE data->>'userId' = $1 OR body LIKE '%secret words%'`, a.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("notifications quoting the deleted user must be erased, %d left", n)
+	}
+}

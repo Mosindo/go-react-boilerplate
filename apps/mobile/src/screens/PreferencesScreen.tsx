@@ -15,7 +15,7 @@ import { Button, Notice } from "../shared/ui";
 export default function PreferencesScreen() {
   const { data, isLoading, isError, error, refetch } = useMyProfile();
   if (isLoading) return <LoadingView />;
-  if (isError || !data) return <ErrorView error={error} onRetry={() => void refetch()} />;
+  if (!data) return isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : <LoadingView />;
   return <Editor initial={data.preferences ?? DEFAULT_PREFERENCES} />;
 }
 

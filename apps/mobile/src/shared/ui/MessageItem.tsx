@@ -23,7 +23,7 @@ export function MessageItem({
     <View style={[styles.row, mine ? styles.mine : styles.theirs]}>
       <View
         accessible
-        accessibilityLabel={`${mine ? "Vous" : "Message reçu"} à ${time} : ${content}${mine && read ? ". Lu" : ""}`}
+        accessibilityLabel={`${mine ? "Vous" : "Message reçu"} à ${time} : ${content}${mine && read ? ". Lu" : ""}${failed ? ". Échec de l'envoi, appuyez pour renvoyer" : ""}`}
         style={[styles.bubble, { backgroundColor: mine ? colors.bubbleMine : colors.bubbleTheirs }]}
       >
         <Text style={{ color: mine ? colors.onBubbleMine : colors.text }}>{content}</Text>

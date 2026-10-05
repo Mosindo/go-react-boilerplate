@@ -1,4 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
+import { markDeckStale } from "../lib/deckSignal";
+import { queryKeys } from "../realtime/cache";
 import { useState } from "react";
 import { Dimensions, FlatList, StyleSheet, View } from "react-native";
 import { blockUser } from "../api/platform";
@@ -20,13 +23,14 @@ export default function ProfileDetailScreen({ route }: RootScreenProps<"ProfileD
   const { userId } = route.params;
   const navigation = useNavigation();
   const me = useCurrentUser();
+  const queryClient = useQueryClient();
   const { data: profile, isLoading, isError, error, refetch } = useProfileCard(userId);
   const [menu, setMenu] = useState(false);
   const [reporting, setReporting] = useState(false);
   const isSelf = userId === me.id;
 
   if (isLoading) return <LoadingView />;
-  if (isError || !profile) return <ErrorView error={error} onRetry={() => void refetch()} />;
+  if (!profile) return isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : <LoadingView />;
 
   const width = Math.min(Dimensions.get("window").width, layout.maxContentWidth);
   const distance = distanceLabel(profile.distanceKm);
@@ -42,6 +46,10 @@ export default function ProfileDetailScreen({ route }: RootScreenProps<"ProfileD
         if (!(await confirm(`Bloquer ${profile.firstName} ?`, "Vous ne vous verrez plus mutuellement.", "Bloquer", true))) return;
         try {
           await blockUser(userId);
+          markDeckStale();
+          void queryClient.invalidateQueries({ queryKey: queryKeys.matches });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+          queryClient.removeQueries({ queryKey: ["messages"] });
           showSuccess(`${profile.firstName} est bloqué(e).`);
           navigation.goBack();
         } catch (e) {
@@ -94,7 +102,13 @@ export default function ProfileDetailScreen({ route }: RootScreenProps<"ProfileD
         userId={userId}
         name={profile.firstName}
         onClose={() => setReporting(false)}
-        onDone={(blocked) => blocked && navigation.goBack()}
+        onDone={(blocked) => {
+          if (!blocked) return;
+          markDeckStale();
+          void queryClient.invalidateQueries({ queryKey: queryKeys.matches });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+          navigation.goBack();
+        }}
       />
     </ScreenContainer>
   );

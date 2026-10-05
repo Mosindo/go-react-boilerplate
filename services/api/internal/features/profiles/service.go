@@ -279,7 +279,7 @@ func uniqueStrings(in []string) []string {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]string, 0, len(in))
 	for _, v := range in {
-		v = strings.TrimSpace(v)
+		v = strings.TrimSpace(strings.ReplaceAll(v, "\x00", ""))
 		if v == "" {
 			continue
 		}

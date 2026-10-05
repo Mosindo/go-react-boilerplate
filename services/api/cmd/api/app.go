@@ -30,10 +30,11 @@ type limits struct {
 	messages    int // per user per minute
 	uploads     int // per user per 10 minutes
 	reports     int // per user per hour
+	locations   int // per user per hour (position updates)
 }
 
 func defaultLimits() limits {
-	return limits{global: 600, credentials: 20, swipes: 120, messages: 60, uploads: 30, reports: 10}
+	return limits{global: 600, credentials: 20, swipes: 120, messages: 60, uploads: 30, reports: 10, locations: 12}
 }
 
 type deps struct {
@@ -112,6 +113,7 @@ func newRouter(d deps) (*gin.Engine, error) {
 	authOpts := []authfeature.Option{
 		authfeature.WithMailer(d.mailer, d.resetURL),
 		authfeature.WithAccountEraser(accountEraser{photos: photosService, hub: hub}),
+		authfeature.WithSessionsRevoked(hub.DisconnectUser),
 	}
 	if d.syncMail {
 		authOpts = append(authOpts, authfeature.WithSyncMail())
@@ -123,6 +125,8 @@ func newRouter(d deps) (*gin.Engine, error) {
 	swipeLimit := middleware.NewRateLimiter(d.limits.swipes, time.Minute).ByUser("swipes")
 	messageLimit := middleware.NewRateLimiter(d.limits.messages, time.Minute).ByUser("messages")
 	uploadLimit := middleware.NewRateLimiter(d.limits.uploads, 10*time.Minute).ByUser("uploads")
+	// Moving the profile around is how a distance oracle would be probed: keep it rare.
+	locationLimit := middleware.NewRateLimiter(d.limits.locations, time.Hour).ByUser("locations")
 	reportLimit := middleware.NewRateLimiter(d.limits.reports, time.Hour).ByUser("reports")
 
 	r.GET("/health", platformhandlers.NewHealthHandler(d.pool))
@@ -132,7 +136,7 @@ func newRouter(d deps) (*gin.Engine, error) {
 	}))
 
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, credentialLimit)
-	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser, locationLimit)
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser, uploadLimit)
 	matchingfeature.RegisterRoutes(r,
 		matchingfeature.NewHandler(matchingfeature.NewService(matchingfeature.NewPGRepository(d.pool), profilesService, hub)),

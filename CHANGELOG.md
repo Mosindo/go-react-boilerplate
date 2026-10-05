@@ -1,27 +1,27 @@
-# go-react-saas Changelog
+# Lueur Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented here.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
-
-## [0.1.0] - 2026-03-17
-
-### Added
-- Introduced a standardized documentation set with `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `docs/ARCHITECTURE.md`.
-- Added a generic changelog for future platform releases.
+- The dating product: profiles with photos, interests and preferences; discovery with mutual age / gender /
+  distance filtering; likes, passes and atomic matching; match-gated real-time chat with read receipts;
+  notifications; blocking, reporting, profile pause; password recovery; account deletion.
+- WebSocket hub, signed photo URLs, image processing pipeline, rate limiting, tracked SQL migrations.
+- Seed tool for clearly labelled demo accounts (`go run ./cmd/seed`, `--purge`).
+- Mobile: onboarding wizard, swipe deck, matches, chat, settings; light/dark "Lueur" design system.
+- Tests: Go unit and PostgreSQL integration tests, Vitest unit tests, Playwright browser E2E, Maestro flow, API smoke.
+- CI for backend, mobile, browser E2E and Docker; ESLint and Prettier for the mobile app.
 
 ### Changed
-- Converted the repository from a single-product application into `go-react-saas`, a reusable fullstack boilerplate.
-- Repositioned the repository as `go-react-saas`, a reusable fullstack boilerplate for social, forum, SaaS, marketplace, and community products.
-- Updated project descriptions, examples, and documentation to use generic module language.
-- Aligned the documentation with the feature-first backend and generic frontend shell.
+- Product repositioned from the generic `go-react-saas` boilerplate to a free dating app.
+- Migrations are now applied once and recorded in `schema_migrations` (they used to re-run on every boot).
+- Notifications can no longer be created by clients; they are emitted by the server.
+- Access tokens no longer carry an organisation claim; sessions are checked on every request.
+- Replaced Tamagui with the in-repo design system.
 
 ### Removed
-- Removed legacy status and daily log documents tied to earlier single-product tracking.
-- Removed remaining product-specific naming from repository-level documentation.
+- Stripe billing, organisations, posts, comments, votes and the generic user directory were unwired from the
+  product (source files pending deletion, see README "Legacy code").

@@ -67,6 +67,7 @@ export class ApiClient {
     const auth = options.auth ?? true;
     let tokens = auth ? await this.deps.tokens.load() : null;
     if (auth && !tokens) {
+      this.onSessionExpired?.();
       throw new ApiError(401, "unauthorized", "Session expirée. Reconnectez-vous.");
     }
 
@@ -75,7 +76,7 @@ export class ApiClient {
       // The access token is short-lived: refresh once, then replay the request.
       tokens = await this.refreshTokens(tokens?.refreshToken);
       if (!tokens) {
-        this.onSessionExpired?.();
+        // refreshTokens() already signalled the expiry
         throw new ApiError(401, "unauthorized", "Session expirée. Reconnectez-vous.");
       }
       response = await this.send(path, options, tokens.accessToken);
@@ -129,9 +130,14 @@ export class ApiClient {
   /** Single-flight: concurrent 401s share one refresh call, so a rotated refresh token is never reused. */
   private refreshTokens(refreshToken: string | undefined): Promise<AuthTokens | null> {
     if (!this.refreshing) {
-      this.refreshing = this.doRefresh(refreshToken).finally(() => {
-        this.refreshing = null;
-      });
+      this.refreshing = this.doRefresh(refreshToken)
+        .then((next) => {
+          if (!next) this.onSessionExpired?.(); // rejected refresh token: sign the user out, whoever asked
+          return next;
+        })
+        .finally(() => {
+          this.refreshing = null;
+        });
     }
     return this.refreshing;
   }

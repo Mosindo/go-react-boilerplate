@@ -221,6 +221,16 @@ Errors are `{ "error": "...", "code": "snake_case" }`.
 | Safety | `GET/POST /blocks`, `DELETE /blocks/:userId`, `POST /reports` |
 | Realtime | `GET /ws` (WebSocket; first frame `{"type":"auth","token":"…"}`) |
 
+## Known limitations
+
+- No email verification at sign-up, and registration answers `409` for an existing address (account enumeration is
+  only throttled per IP). No push notifications, no automatic photo moderation, no admin UI for reports.
+- Discovery filters on exact coarse coordinates, so a determined user who moves their own position repeatedly could
+  narrow down someone's area (position updates are limited to 12/hour). Snapping distance filters to a coarser grid is the next hardening step.
+- Logout does not close an already open WebSocket until its access token expires (≤ 15 min); password change/reset and
+  account deletion do close it.
+- Rate limiters and the realtime hub are per instance (see Build and deploy).
+
 ## Legacy code pending removal
 
 These modules come from the original SaaS boilerplate. They are **not wired** into the router, but their files

@@ -20,7 +20,7 @@ import { Button, Input, Notice, Text } from "../shared/ui";
 export default function EditProfileScreen() {
   const { data, isLoading, isError, error, refetch } = useMyProfile();
   if (isLoading) return <LoadingView />;
-  if (isError || !data?.profile) return <ErrorView error={error} onRetry={() => void refetch()} />;
+  if (!data?.profile) return isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : <LoadingView />;
   return <Editor profile={data.profile} />;
 }
 

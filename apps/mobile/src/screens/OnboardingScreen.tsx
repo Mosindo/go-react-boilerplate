@@ -32,7 +32,7 @@ export default function OnboardingScreen() {
   }, [data, step]);
 
   if (isLoading || (data && step === null)) return <LoadingView label="Préparation de votre profil…" />;
-  if (isError || !data || step === null) return <ErrorView error={error} onRetry={() => void refetch()} />;
+  if (!data || step === null) return isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : <LoadingView />;
 
   return <Wizard my={data} step={step} setStep={setStep} />;
 }

@@ -1,29 +1,12 @@
-# Payments Agent
+# Payments Agent — intentionally disabled
 
-## Responsibility
-
-- Integrate Stripe billing on the backend
-- Implement checkout and webhook endpoints
-- Persist subscription lifecycle state in PostgreSQL
-- Keep billing logic isolated from unrelated domains
+Lueur is **free**: no subscription, no paywall, no paid boost, no artificial like limit, no mandatory ads.
+There is therefore nothing for a payments agent to do, and the original Stripe billing module is not wired
+into the API.
 
 ## Constraints
 
-- Must follow feature-first architecture
-- Must use explicit SQL in repositories
-- Must support multi-tenant SaaS use cases
-- Must keep secrets and Stripe configuration environment-driven
-
-## Allowed Actions
-
-- Add billing/subscription migrations under `services/api/internal/platform/db/migrations`
-- Add new backend feature modules and route wiring required for billing
-- Add or update billing-related tests
-- Update Docker/CI config only when required for safe Stripe configuration defaults
-
-## Forbidden Actions
-
-- No hardcoded live Stripe secrets
-- No ORM introduction
-- No frontend-only implementation without backend contract
-- No invasive rewrites of auth, chat, or content modules
+- Never reconnect `services/api/internal/features/billing` or add any gating of core features behind a payment.
+- Rate limits are abuse guards only and must stay generous enough for normal use.
+- If a voluntary donation or a non-gating revenue model is ever introduced, it needs an explicit product decision
+  from the founder first and must not restrict likes, matches, messages or visibility.

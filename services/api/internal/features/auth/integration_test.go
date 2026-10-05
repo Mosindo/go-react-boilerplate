@@ -76,9 +76,9 @@ func (m *memRepo) RevokeSessionByTokenHash(_ context.Context, hash string, _ tim
 	return nil
 }
 func (m *memRepo) IsSessionActive(context.Context, string, string) (bool, error) { return true, nil }
-func (m *memRepo) CreatePasswordReset(_ context.Context, userID, hash string, _ time.Time) error {
+func (m *memRepo) CreatePasswordReset(_ context.Context, userID, hash string, _ time.Time) (bool, error) {
 	m.resets[hash] = userID
-	return nil
+	return true, nil
 }
 func (m *memRepo) ConsumePasswordReset(_ context.Context, hash, newHash string) (string, error) {
 	id, ok := m.resets[hash]

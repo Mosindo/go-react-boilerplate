@@ -44,6 +44,7 @@ export class RealtimeClient {
   private running = false;
   private everConnected = false;
   private generation = 0;
+  private authRetries = 0;
 
   constructor(private readonly deps: RealtimeDeps) {}
 
@@ -112,6 +113,7 @@ export class RealtimeClient {
       const isReconnect = this.everConnected;
       this.everConnected = true;
       this.attempts = 0;
+      this.authRetries = 0;
       this.setStatus("connected");
       this.deps.onConnected?.(isReconnect);
       return;
@@ -124,7 +126,8 @@ export class RealtimeClient {
     this.socket = null;
     this.setStatus(this.everConnected ? "reconnecting" : "connecting");
 
-    if (code === AUTH_REJECTED) {
+    if (code === AUTH_REJECTED && this.authRetries < 2) {
+      this.authRetries++;
       const fresh = await this.deps.refreshAccessToken().catch(() => null);
       if (!this.running || generation !== this.generation) return;
       if (fresh) {

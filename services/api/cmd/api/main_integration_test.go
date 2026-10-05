@@ -107,7 +107,7 @@ func newEnv(t *testing.T) *testEnv {
 	router, err := newRouter(deps{
 		pool: pool, jwtSecret: testJWTSecret, uploadDir: env.upload,
 		resetURL: "https://app.test/reset?token={token}", mailer: env.mail, syncMail: true,
-		limits: limits{global: 100000, credentials: 100000, swipes: 100000, messages: 100000, uploads: 100000, reports: 100000},
+		limits: limits{global: 100000, credentials: 100000, swipes: 100000, messages: 100000, uploads: 100000, reports: 100000, locations: 100000},
 	})
 	if err != nil {
 		t.Fatalf("router: %v", err)

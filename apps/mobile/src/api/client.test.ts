@@ -151,4 +151,10 @@ describe("ApiClient", () => {
     expect(client.mediaUrl("/photos/1/image?sig=x")).toBe("http://api.test/photos/1/image?sig=x");
     expect(client.mediaUrl("https://cdn.test/a.jpg")).toBe("https://cdn.test/a.jpg");
   });
+
+  it("signs the user out when the realtime layer's refresh is rejected", async () => {
+    const { client, expired } = await setup(() => json(401, { error: "invalid refresh token" }));
+    expect(await client.ensureFreshAccessToken()).toBeNull();
+    expect(expired).toHaveBeenCalledOnce();
+  });
 });

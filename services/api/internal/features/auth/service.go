@@ -53,6 +53,7 @@ type Service struct {
 	eraser        AccountEraser
 	dummyHash     []byte
 	asyncMailSend bool
+	onRevoked     func(userID string)
 }
 
 type Option func(*Service)
@@ -60,6 +61,12 @@ type Option func(*Service)
 // WithMailer enables password recovery emails. resetURL must contain "{token}".
 func WithMailer(m Mailer, resetURL string) Option {
 	return func(s *Service) { s.mailer, s.resetURL = m, resetURL }
+}
+
+// WithSessionsRevoked registers a callback run after every session of a user was revoked (password reset or
+// change), so live WebSockets are closed instead of surviving until the access token expires.
+func WithSessionsRevoked(fn func(userID string)) Option {
+	return func(s *Service) { s.onRevoked = fn }
 }
 
 func WithAccountEraser(e AccountEraser) Option {
@@ -218,8 +225,12 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.repo.CreatePasswordReset(ctx, stored.User.ID, hashToken(token), time.Now().Add(resetTokenTTL)); err != nil {
+	created, err := s.repo.CreatePasswordReset(ctx, stored.User.ID, hashToken(token), time.Now().Add(resetTokenTTL))
+	if err != nil {
 		return err
+	}
+	if !created {
+		return nil
 	}
 
 	link := strings.ReplaceAll(s.resetURL, "{token}", token)
@@ -246,11 +257,15 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	if err != nil {
 		return err
 	}
-	if _, err := s.repo.ConsumePasswordReset(ctx, hashToken(strings.TrimSpace(token)), string(hash)); err != nil {
+	userID, err := s.repo.ConsumePasswordReset(ctx, hashToken(strings.TrimSpace(token)), string(hash))
+	if err != nil {
 		if errors.Is(err, ErrRepositoryTokenGone) {
 			return ErrInvalidResetToken
 		}
 		return err
+	}
+	if s.onRevoked != nil {
+		s.onRevoked(userID)
 	}
 	return nil
 }
@@ -268,7 +283,13 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdatePassword(ctx, stored.User.ID, string(hash), sessionID)
+	if err := s.repo.UpdatePassword(ctx, stored.User.ID, string(hash), sessionID); err != nil {
+		return err
+	}
+	if s.onRevoked != nil {
+		s.onRevoked(stored.User.ID) // the current device reconnects with its still-valid session
+	}
+	return nil
 }
 
 // DeleteAccount permanently removes the account after password confirmation.
@@ -355,7 +376,8 @@ func hashToken(token string) string {
 
 // normalizeEmail trims and lower-cases so "  Foo@Bar.com " and "foo@bar.com" are the same account.
 func normalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	// NUL bytes are invalid in PostgreSQL text and would turn a bad login into a 500.
+	return strings.ToLower(strings.TrimSpace(strings.ReplaceAll(email, "\x00", "")))
 }
 
 // validEmail accepts a plain "local@domain.tld" address (no display name, no comments, no spaces).

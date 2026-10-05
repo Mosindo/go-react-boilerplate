@@ -6,8 +6,9 @@ import { markAllNotificationsRead, markNotificationRead } from "../api/platform"
 import type { AppNotification } from "../api/types";
 import { useMatches, useNotifications } from "../hooks/queries";
 import type { RootStackParamList } from "../navigation/types";
+import { errorMessage } from "../lib/errors";
 import { queryKeys } from "../realtime/cache";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
+import { EmptyView, ErrorView, LoadingView, showError } from "../shared/feedback";
 import { Header, ScreenContainer } from "../shared/layout";
 import { Button, NotificationItem } from "../shared/ui";
 
@@ -52,8 +53,12 @@ export default function NotificationsScreen() {
               variant="ghost"
               compact
               onPress={async () => {
-                await markAllNotificationsRead();
-                void refresh();
+                try {
+                  await markAllNotificationsRead();
+                  void refresh();
+                } catch (e) {
+                  showError(errorMessage(e));
+                }
               }}
             />
           ) : undefined

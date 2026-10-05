@@ -47,7 +47,7 @@ type Repository interface {
 	RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
 	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
-	CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (created bool, err error)
 	ConsumePasswordReset(ctx context.Context, tokenHash, newPasswordHash string) (string, error)
 	UpdatePassword(ctx context.Context, userID, passwordHash, keepSessionID string) error
 	DeleteUser(ctx context.Context, userID string) error
@@ -208,22 +208,37 @@ func (r *PGRepository) IsSessionActive(ctx context.Context, sessionID, userID st
 }
 
 // CreatePasswordReset stores a new token and invalidates the user's previous unused tokens.
-func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+// It returns created=false when a token was issued less than a minute ago: re-sending would let anyone spam
+// the owner's mailbox and keep invalidating the link they just received.
+func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (bool, error) {
 	tx, err := r.dbPool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 11))`, userID); err != nil {
+		return false, err
+	}
+	var recent bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM password_reset_tokens
+		               WHERE user_id = $1 AND used_at IS NULL AND created_at > NOW() - INTERVAL '60 seconds')
+	`, userID).Scan(&recent); err != nil {
+		return false, err
+	}
+	if recent {
+		return false, nil
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
-		return err
+		return false, err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)
 	`, userID, tokenHash, expiresAt); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit(ctx)
+	return true, tx.Commit(ctx)
 }
 
 // ConsumePasswordReset marks a valid token as used, sets the new password and revokes all sessions atomically.
@@ -281,6 +296,10 @@ func (r *PGRepository) UpdatePassword(ctx context.Context, userID, passwordHash,
 
 // DeleteUser removes the account; foreign keys cascade to every dependent table.
 func (r *PGRepository) DeleteUser(ctx context.Context, userID string) error {
+	// Notifications addressed to other people may quote this user's name or messages: erase them too.
+	if _, err := r.dbPool.Exec(ctx, `DELETE FROM notifications WHERE data->>'userId' = $1`, userID); err != nil {
+		return err
+	}
 	tag, err := r.dbPool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	if err != nil {
 		return err

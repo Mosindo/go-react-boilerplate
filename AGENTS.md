@@ -7,24 +7,22 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is `Lueur`, a free dating app (see README). Users can create a profile with photos, discover
+people nearby, like or pass, match on mutual interest, chat in real time, get notifications, and block, report
+or delete their account.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- 100% free: no subscription, paywall, paid boost, artificial like limit or mandatory ads.
+- Safety first: server-side authorization and validation, age 18+, privacy of location and data.
 
-Core reusable modules:
+Core modules (`services/api/internal/features`):
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- matching (discovery, swipes, matches)
 - chat
 - notifications
-- files
+- safety (blocks, reports)
 
 ---
 
@@ -55,7 +53,7 @@ Core reusable modules:
 
 Target structure:
 
-`cmd/api/main.go`  
+`cmd/api/main.go` (+ `app.go` wiring)  
 `internal/`
 - `platform/`
   - `config/`
@@ -65,12 +63,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +128,12 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `swipes (target_id, action)`
+- `matches (user_a, created_at)` and `(user_b, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
 
 ---
 
@@ -150,13 +148,17 @@ Before any backend delivery:
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/*_integration_test.go`, need `DATABASE_URL_TEST`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/*`, `/me`, account deletion)
+- Profiles and photos (`/profile/*`, `/photos*`)
+- Discovery, swipes, matches (`/discover`, `/swipes`, `/matches`)
+- Chat (`/conversations*`) and realtime (`/ws`)
 - Notifications (`/notifications`)
+- Safety (`/blocks`, `/reports`)
+
+Frontend: `npx tsc --noEmit`, `npm run lint`, `npm run format:check`, `npm test`, and `npm run e2e:web` (Playwright)
+in `apps/mobile`.
 
 ---
 

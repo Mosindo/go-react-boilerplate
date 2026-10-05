@@ -45,7 +45,7 @@ function MainTabs() {
 function AuthenticatedApp() {
   const { data, isLoading, isError, error, refetch } = useMyProfile();
   if (isLoading) return <LoadingView label="Chargement…" />;
-  if (isError || !data) return <ErrorView error={error} onRetry={() => void refetch()} />;
+  if (!data) return isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : <LoadingView />;
 
   return (
     <RealtimeProvider>
