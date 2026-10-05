@@ -36,5 +36,9 @@ function subscribe(listener: () => void) {
 }
 
 export function useToasts(): Toast[] {
-  return useSyncExternalStore(subscribe, () => toasts, () => toasts);
+  return useSyncExternalStore(
+    subscribe,
+    () => toasts,
+    () => toasts
+  );
 }

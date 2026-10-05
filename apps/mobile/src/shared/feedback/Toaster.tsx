@@ -41,5 +41,13 @@ export function Toaster() {
 
 const styles = StyleSheet.create({
   host: { position: "absolute", left: spacing.lg, right: spacing.lg, gap: spacing.sm, alignItems: "center", zIndex: 100 },
-  toast: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radii.md, width: "100%", maxWidth: 520 }
+  toast: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    width: "100%",
+    maxWidth: 520
+  }
 });

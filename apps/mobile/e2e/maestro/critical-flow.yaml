@@ -1,48 +1,49 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lueur critical flow
 ---
+# Prerequisite: `npm run e2e:ui:setup` creates an onboarded user who was already liked by CONTACT_NAME.
 - launchApp:
     clearState: true
 
-- assertVisible: Login
 - tapOn:
-    id: auth-email-input
+    id: auth-email
 - inputText: ${TEST_EMAIL}
 - tapOn:
-    id: auth-password-input
+    id: auth-password
 - inputText: ${TEST_PASSWORD}
 - tapOn:
-    id: auth-submit-button
+    id: auth-submit
 
+# Discovery: the admirer comes first; liking back creates the match.
 - assertVisible:
-    id: home-screen
-
-- tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
-
-- tapOn: Chat
+    id: tab-Discover
 - assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
+    id: card-${CONTACT_NAME}
 - tapOn:
-    id: chat-message-input
+    id: swipe-like
+- assertVisible:
+    id: match-modal
+- tapOn:
+    id: match-message
+
+# Chat.
+- tapOn:
+    id: chat-input
 - inputText: maestro ui ping
 - tapOn:
-    id: chat-send-button
+    id: chat-send
 - assertVisible: maestro ui ping
+- tapOn:
+    id: chat-back
 
-- tapOn: Notifications
+# Messages, notifications, profile.
+- tapOn:
+    id: tab-Messages
+- assertVisible:
+    id: conversation-${CONTACT_NAME}
+- tapOn:
+    id: tab-Discover
+- tapOn:
+    id: open-notifications
 - assertVisible:
     id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
-- assertVisible:
-    id: profile-screen

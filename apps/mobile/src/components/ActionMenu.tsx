@@ -10,7 +10,12 @@ export function ActionMenu({ visible, actions, onClose }: { visible: boolean; ac
   const { colors } = useTheme();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} accessibilityViewIsModal>
-      <Pressable style={[styles.backdrop, { backgroundColor: colors.overlay }]} onPress={onClose} accessibilityLabel="Fermer le menu" accessibilityRole="button">
+      <Pressable
+        style={[styles.backdrop, { backgroundColor: colors.overlay }]}
+        onPress={onClose}
+        accessibilityLabel="Fermer le menu"
+        accessibilityRole="button"
+      >
         <View style={[styles.sheet, { backgroundColor: colors.surface }]} testID="action-menu">
           {actions.map((action) => (
             <Pressable
@@ -38,6 +43,20 @@ export function ActionMenu({ visible, actions, onClose }: { visible: boolean; ac
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: "flex-end", alignItems: "center" },
-  sheet: { width: "100%", maxWidth: 560, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: spacing.sm, paddingBottom: spacing.xl },
-  item: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, minHeight: 56, borderRadius: radii.md }
+  sheet: {
+    width: "100%",
+    maxWidth: 560,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.sm,
+    paddingBottom: spacing.xl
+  },
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    minHeight: 56,
+    borderRadius: radii.md
+  }
 });

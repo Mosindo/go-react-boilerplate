@@ -31,7 +31,13 @@ export default function BlockedScreen() {
       <Header title="Personnes bloquées" onBack={() => navigation.goBack()} />
       {isLoading ? <LoadingView /> : null}
       {isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : null}
-      {data && data.length === 0 ? <EmptyView icon="shield-checkmark-outline" title="Personne n'est bloqué" message="Les personnes que vous bloquez apparaissent ici. Elles ne sont jamais prévenues." /> : null}
+      {data && data.length === 0 ? (
+        <EmptyView
+          icon="shield-checkmark-outline"
+          title="Personne n'est bloqué"
+          message="Les personnes que vous bloquez apparaissent ici. Elles ne sont jamais prévenues."
+        />
+      ) : null}
       {data && data.length > 0 ? (
         <FlatList
           data={data}
@@ -40,7 +46,9 @@ export default function BlockedScreen() {
             <ListItem
               leading={<Avatar name={item.user.firstName} path={item.user.photos[0]?.url} />}
               title={item.user.firstName}
-              trailing={<Button label="Débloquer" variant="secondary" compact onPress={() => void unblock(item.user.id, item.user.firstName)} />}
+              trailing={
+                <Button label="Débloquer" variant="secondary" compact onPress={() => void unblock(item.user.id, item.user.firstName)} />
+              }
             />
           )}
         />

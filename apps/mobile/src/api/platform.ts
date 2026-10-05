@@ -36,8 +36,7 @@ export const saveLocation = (latitude: number, longitude: number, city: string) 
 export const savePrivacy = (isDiscoverable: boolean, showDistance: boolean) =>
   api.request<MyProfile>(endpoints.privacy, { method: "PUT", body: { isDiscoverable, showDistance } });
 
-export const getInterests = async (): Promise<Interest[]> =>
-  (await api.request<{ interests: Interest[] }>(endpoints.interests)).interests;
+export const getInterests = async (): Promise<Interest[]> => (await api.request<{ interests: Interest[] }>(endpoints.interests)).interests;
 
 export const getProfile = (userId: string) => api.request<ProfileCard>(endpoints.profile(userId));
 
@@ -70,10 +69,9 @@ export const getConversations = async (signal?: AbortSignal): Promise<Conversati
   (await api.request<{ conversations: ConversationPreview[] }>(`${endpoints.conversations}?limit=100`, { signal })).conversations;
 
 export const getMessages = (conversationId: string, before?: string, signal?: AbortSignal) =>
-  api.request<MessagesPage>(
-    `${endpoints.messages(conversationId)}?limit=40${before ? `&before=${encodeURIComponent(before)}` : ""}`,
-    { signal }
-  );
+  api.request<MessagesPage>(`${endpoints.messages(conversationId)}?limit=40${before ? `&before=${encodeURIComponent(before)}` : ""}`, {
+    signal
+  });
 
 export const sendMessage = (conversationId: string, content: string) =>
   api.request<Message>(endpoints.messages(conversationId), { method: "POST", body: { content } });
@@ -85,17 +83,14 @@ export const clearConversation = (conversationId: string) =>
   api.request<void>(endpoints.conversation(conversationId), { method: "DELETE" });
 
 // ── Notifications ────────────────────────────────────────────────────────────
-export const getNotifications = (signal?: AbortSignal) =>
-  api.request<NotificationsPage>(`${endpoints.notifications}?limit=50`, { signal });
+export const getNotifications = (signal?: AbortSignal) => api.request<NotificationsPage>(`${endpoints.notifications}?limit=50`, { signal });
 
-export const markNotificationRead = (id: string) =>
-  api.request<AppNotification>(endpoints.notificationRead(id), { method: "POST" });
+export const markNotificationRead = (id: string) => api.request<AppNotification>(endpoints.notificationRead(id), { method: "POST" });
 
 export const markAllNotificationsRead = () => api.request<void>(endpoints.notificationsReadAll, { method: "POST" });
 
 // ── Safety ───────────────────────────────────────────────────────────────────
-export const getBlocks = async (): Promise<BlockedUser[]> =>
-  (await api.request<{ blocks: BlockedUser[] }>(endpoints.blocks)).blocks;
+export const getBlocks = async (): Promise<BlockedUser[]> => (await api.request<{ blocks: BlockedUser[] }>(endpoints.blocks)).blocks;
 
 export const blockUser = (userId: string) => api.request<void>(endpoints.blocks, { method: "POST", body: { userId } });
 
@@ -103,4 +98,3 @@ export const unblockUser = (userId: string) => api.request<void>(endpoints.block
 
 export const reportUser = (userId: string, reason: ReportReason, details: string, alsoBlock: boolean) =>
   api.request<void>(endpoints.reports, { method: "POST", body: { userId, reason, details, alsoBlock } });
-

@@ -28,7 +28,7 @@ export const lightColors: Colors = {
   text: "#231A24",
   textMuted: "#6B5F6E",
   border: "#E7DDD3",
-  primary: "#C4402A",
+  primary: "#B8381F",
   onPrimary: "#FFFFFF",
   primarySoft: "#FBE3DC",
   accent: "#3A1F3D",

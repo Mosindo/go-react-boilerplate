@@ -5,7 +5,19 @@ import { Button } from "../ui/Button";
 import { Text } from "../ui/Text";
 
 /** Friendly empty state: what is missing, why, and what to do about it. */
-export function EmptyView({ icon = "sparkles-outline", title, message, actionLabel, onAction }: { icon?: keyof typeof Ionicons.glyphMap; title: string; message?: string; actionLabel?: string; onAction?: () => void }) {
+export function EmptyView({
+  icon = "sparkles-outline",
+  title,
+  message,
+  actionLabel,
+  onAction
+}: {
+  icon?: keyof typeof Ionicons.glyphMap;
+  title: string;
+  message?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
   const { colors } = useTheme();
   return (
     <View style={styles.box}>

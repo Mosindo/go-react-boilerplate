@@ -38,7 +38,12 @@ export function ListItem({
           {title}
         </Text>
         {subtitle ? (
-          <Text variant="caption" tone={subtitleStrong ? "default" : "muted"} numberOfLines={1} style={subtitleStrong ? styles.strong : undefined}>
+          <Text
+            variant="caption"
+            tone={subtitleStrong ? "default" : "muted"}
+            numberOfLines={1}
+            style={subtitleStrong ? styles.strong : undefined}
+          >
             {subtitle}
           </Text>
         ) : null}
@@ -49,7 +54,14 @@ export function ListItem({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 72 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    minHeight: 72
+  },
   texts: { flex: 1, gap: 2 },
   strong: { fontWeight: "700" },
   trailing: { alignItems: "flex-end", gap: spacing.xs }

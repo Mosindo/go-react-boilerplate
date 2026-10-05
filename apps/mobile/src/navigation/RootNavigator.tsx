@@ -27,7 +27,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<TabParamList>();
 
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ["lueur://"],
+  prefixes: ["lueur://", "http://localhost:8081"],
   config: { screens: { ResetPassword: "reset-password" } }
 };
 
@@ -73,24 +73,34 @@ export function RootNavigator() {
   const { status, retryBoot } = useAuth();
   const { colors, isDark } = useTheme();
   const base = isDark ? DarkTheme : DefaultTheme;
-  const navTheme = { ...base, colors: { ...base.colors, background: colors.background, card: colors.surface, text: colors.text, border: colors.border, primary: colors.primary } };
+  const navTheme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      primary: colors.primary
+    }
+  };
 
-  let content;
-  if (status === "booting") content = <LoadingView label="Restauration de votre session…" />;
-  else if (status === "unreachable") content = <ErrorView error={new Error("offline")} onRetry={retryBoot} />;
-  else if (status === "authenticated") content = <AuthenticatedApp />;
-  else
-    content = (
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Auth" component={AuthScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-        <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-      </Stack.Navigator>
-    );
+  if (status === "booting") return <LoadingView label="Restauration de votre session…" />;
+  if (status === "unreachable") return <ErrorView error={new Error("offline")} onRetry={retryBoot} />;
 
+  // The container is keyed by auth state so navigation state never leaks between sessions, and deep links
+  // (password recovery) are only resolved while signed out.
   return (
-    <NavigationContainer theme={navTheme} linking={status === "anonymous" ? linking : undefined}>
-      {content}
+    <NavigationContainer key={status} theme={navTheme} linking={status === "anonymous" ? linking : undefined}>
+      {status === "authenticated" ? (
+        <AuthenticatedApp />
+      ) : (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+        </Stack.Navigator>
+      )}
     </NavigationContainer>
   );
 }

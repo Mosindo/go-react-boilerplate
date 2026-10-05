@@ -3,7 +3,19 @@ import type { MatchPreview } from "../api/types";
 import { Avatar, Button, Text } from "../shared/ui";
 import { radii, spacing, useTheme } from "../theme";
 
-export function MatchModal({ match, myName, myPhotoPath, onMessage, onClose }: { match: MatchPreview | null; myName: string; myPhotoPath?: string; onMessage: (match: MatchPreview) => void; onClose: () => void }) {
+export function MatchModal({
+  match,
+  myName,
+  myPhotoPath,
+  onMessage,
+  onClose
+}: {
+  match: MatchPreview | null;
+  myName: string;
+  myPhotoPath?: string;
+  onMessage: (match: MatchPreview) => void;
+  onClose: () => void;
+}) {
   const { colors } = useTheme();
   return (
     <Modal visible={!!match} transparent animationType="fade" onRequestClose={onClose} accessibilityViewIsModal>
@@ -20,7 +32,12 @@ export function MatchModal({ match, myName, myPhotoPath, onMessage, onClose }: {
               <Avatar name={myName} path={myPhotoPath} size={96} />
               <Avatar name={match.user.firstName} path={match.user.photos[0]?.url} size={96} />
             </View>
-            <Button testID="match-message" label={`Écrire à ${match.user.firstName}`} icon="chatbubble-ellipses-outline" onPress={() => onMessage(match)} />
+            <Button
+              testID="match-message"
+              label={`Écrire à ${match.user.firstName}`}
+              icon="chatbubble-ellipses-outline"
+              onPress={() => onMessage(match)}
+            />
             <Button testID="match-continue" label="Continuer à découvrir" variant="ghost" onPress={onClose} />
           </View>
         ) : null}

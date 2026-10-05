@@ -97,7 +97,7 @@ func validateJWTSecret(secret string) error {
 	}
 
 	lower := strings.ToLower(trimmed)
-	for _, fragment := range []string{"change-me", "replace-me", "example", "placeholder", "dev-secret", "test-secret"} {
+	for _, fragment := range []string{"change-me", "replace-me", "replace-with", "example", "placeholder", "dev-secret", "test-secret"} {
 		if strings.Contains(lower, fragment) {
 			return errors.New("JWT_SECRET must be a strong random secret, not a placeholder value")
 		}

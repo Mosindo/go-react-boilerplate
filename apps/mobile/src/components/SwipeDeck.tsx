@@ -54,7 +54,11 @@ export const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck({
         finish();
         return;
       }
-      Animated.timing(position, { toValue: { x: action === "like" ? w * 1.4 : -w * 1.4, y: 0 }, duration: 220, useNativeDriver: false }).start(finish);
+      Animated.timing(position, {
+        toValue: { x: action === "like" ? w * 1.4 : -w * 1.4, y: 0 },
+        duration: 220,
+        useNativeDriver: false
+      }).start(finish);
     },
     [position]
   );
@@ -98,7 +102,10 @@ export const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck({
           {...responder.panHandlers}
         >
           <ProfileCardView profile={top} onOpenDetails={() => onOpenDetails(top)} />
-          <Animated.View style={[styles.stamp, styles.likeStamp, { opacity: likeOpacity, borderColor: colors.success }]} pointerEvents="none">
+          <Animated.View
+            style={[styles.stamp, styles.likeStamp, { opacity: likeOpacity, borderColor: colors.success }]}
+            pointerEvents="none"
+          >
             <Text variant="title" style={{ color: colors.success }}>
               LIKE
             </Text>
@@ -112,14 +119,49 @@ export const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck({
       </View>
 
       <View style={styles.actions}>
-        <RoundButton testID="swipe-pass" icon="close" label={`Passer ${top.firstName}`} color={colors.textMuted} bg={colors.surface} border={colors.border} onPress={() => fling("pass")} />
-        <RoundButton testID="swipe-like" icon="heart" label={`Liker ${top.firstName}`} color={colors.onPrimary} bg={colors.primary} border={colors.primary} large onPress={() => fling("like")} />
+        <RoundButton
+          testID="swipe-pass"
+          icon="close"
+          label={`Passer ${top.firstName}`}
+          color={colors.textMuted}
+          bg={colors.surface}
+          border={colors.border}
+          onPress={() => fling("pass")}
+        />
+        <RoundButton
+          testID="swipe-like"
+          icon="heart"
+          label={`Liker ${top.firstName}`}
+          color={colors.onPrimary}
+          bg={colors.primary}
+          border={colors.primary}
+          large
+          onPress={() => fling("like")}
+        />
       </View>
     </View>
   );
 });
 
-function RoundButton({ icon, label, color, bg, border, onPress, large, testID }: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string; bg: string; border: string; onPress: () => void; large?: boolean; testID?: string }) {
+function RoundButton({
+  icon,
+  label,
+  color,
+  bg,
+  border,
+  onPress,
+  large,
+  testID
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  bg: string;
+  border: string;
+  onPress: () => void;
+  large?: boolean;
+  testID?: string;
+}) {
   const size = large ? 72 : 60;
   return (
     <Pressable
@@ -127,7 +169,17 @@ function RoundButton({ icon, label, color, bg, border, onPress, large, testID }:
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [styles.round, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg, borderColor: border, transform: [{ scale: pressed ? 0.92 : 1 }] }]}
+      style={({ pressed }) => [
+        styles.round,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: bg,
+          borderColor: border,
+          transform: [{ scale: pressed ? 0.92 : 1 }]
+        }
+      ]}
     >
       <Ionicons name={icon} size={large ? 34 : 30} color={color} />
     </Pressable>
@@ -139,7 +191,16 @@ const styles = StyleSheet.create({
   stack: { flex: 1 },
   layer: { ...StyleSheet.absoluteFillObject },
   actions: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: spacing.xxl, paddingBottom: spacing.sm },
-  round: { alignItems: "center", justifyContent: "center", borderWidth: 1.5, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  round: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4
+  },
   stamp: { position: "absolute", top: 56, borderWidth: 4, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: 2 },
   likeStamp: { left: 24, transform: [{ rotate: "-14deg" }] },
   passStamp: { right: 24, transform: [{ rotate: "14deg" }] }

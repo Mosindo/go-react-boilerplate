@@ -29,7 +29,13 @@ export default function ProfileScreen() {
           {profile.firstName}, {profile.age}
         </Text>
         <Text tone="muted">{[GENDER_LABELS[profile.gender], profile.city].filter(Boolean).join(" · ")}</Text>
-        <Button testID="me-edit" label="Modifier mon profil" icon="create-outline" compact onPress={() => navigation.navigate("EditProfile")} />
+        <Button
+          testID="me-edit"
+          label="Modifier mon profil"
+          icon="create-outline"
+          compact
+          onPress={() => navigation.navigate("EditProfile")}
+        />
       </View>
 
       {profile.bio ? (
@@ -54,8 +60,20 @@ export default function ProfileScreen() {
       ) : null}
 
       <View>
-        <ListItem testID="me-preferences" title="Mes préférences de rencontre" subtitle="Genre, âge, distance" trailing={chevron} onPress={() => navigation.navigate("Preferences")} />
-        <ListItem testID="me-settings" title="Réglages et confidentialité" subtitle="Pause, distance visible, mot de passe, compte" trailing={chevron} onPress={() => navigation.navigate("Settings")} />
+        <ListItem
+          testID="me-preferences"
+          title="Mes préférences de rencontre"
+          subtitle="Genre, âge, distance"
+          trailing={chevron}
+          onPress={() => navigation.navigate("Preferences")}
+        />
+        <ListItem
+          testID="me-settings"
+          title="Réglages et confidentialité"
+          subtitle="Pause, distance visible, mot de passe, compte"
+          trailing={chevron}
+          onPress={() => navigation.navigate("Settings")}
+        />
         <ListItem testID="me-blocked" title="Personnes bloquées" trailing={chevron} onPress={() => navigation.navigate("BlockedUsers")} />
       </View>
     </ScreenContainer>

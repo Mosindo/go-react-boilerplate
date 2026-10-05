@@ -52,7 +52,12 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
     ];
     // Newest first because the list is inverted; a day label goes above the first message of each day.
     return all
-      .map((item, i) => ({ key: item.id, message: item.message, pending: item.pending, showDay: i === 0 || !isSameDay(all[i - 1].message.createdAt, item.message.createdAt) }))
+      .map((item, i) => ({
+        key: item.id,
+        message: item.message,
+        pending: item.pending,
+        showDay: i === 0 || !isSameDay(all[i - 1].message.createdAt, item.message.createdAt)
+      }))
       .reverse();
   }, [messages, pending, me.id]);
 
@@ -74,7 +79,9 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
     async (content: string, existingTempId?: string) => {
       const tempId = existingTempId ?? `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setPending((list) =>
-        existingTempId ? list.map((p) => (p.tempId === tempId ? { ...p, failed: false } : p)) : [...list, { tempId, content, createdAt: new Date().toISOString(), failed: false }]
+        existingTempId
+          ? list.map((p) => (p.tempId === tempId ? { ...p, failed: false } : p))
+          : [...list, { tempId, content, createdAt: new Date().toISOString(), failed: false }]
       );
       try {
         const sent = await sendMessage(conversationId, content);
@@ -110,13 +117,19 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
   };
 
   const actions: MenuAction[] = [
-    { key: "profile", label: `Voir le profil de ${name}`, icon: "person-outline", onPress: () => navigation.navigate("ProfileDetail", { userId, matchId, conversationId }) },
+    {
+      key: "profile",
+      label: `Voir le profil de ${name}`,
+      icon: "person-outline",
+      onPress: () => navigation.navigate("ProfileDetail", { userId, matchId, conversationId })
+    },
     {
       key: "clear",
       label: "Effacer la conversation pour moi",
       icon: "trash-outline",
       onPress: async () => {
-        if (!(await confirm("Effacer la conversation ?", `L'historique disparaît de votre côté. ${name} le conserve.`, "Effacer", true))) return;
+        if (!(await confirm("Effacer la conversation ?", `L'historique disparaît de votre côté. ${name} le conserve.`, "Effacer", true)))
+          return;
         try {
           await clearConversation(conversationId);
           showSuccess("Conversation effacée.");
@@ -132,7 +145,15 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
       icon: "heart-dislike-outline",
       destructive: true,
       onPress: async () => {
-        if (!(await confirm("Annuler le match ?", `Vous ne pourrez plus discuter avec ${name}, et vous ne vous reverrez pas.`, "Annuler le match", true))) return;
+        if (
+          !(await confirm(
+            "Annuler le match ?",
+            `Vous ne pourrez plus discuter avec ${name}, et vous ne vous reverrez pas.`,
+            "Annuler le match",
+            true
+          ))
+        )
+          return;
         try {
           await unmatch(matchId);
           leave();
@@ -166,7 +187,12 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
         <View style={styles.page}>
           <View style={styles.header}>
             <IconButton icon="chevron-back" label="Retour" onPress={() => navigation.goBack()} testID="chat-back" />
-            <Pressable style={styles.who} accessibilityRole="button" accessibilityLabel={`Profil de ${name}`} onPress={() => navigation.navigate("ProfileDetail", { userId, matchId, conversationId })}>
+            <Pressable
+              style={styles.who}
+              accessibilityRole="button"
+              accessibilityLabel={`Profil de ${name}`}
+              onPress={() => navigation.navigate("ProfileDetail", { userId, matchId, conversationId })}
+            >
               <Avatar name={name} path={photoPath} size={40} />
               <Text variant="heading" numberOfLines={1} style={styles.name}>
                 {name}
@@ -177,7 +203,13 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
 
           {query.isLoading ? <LoadingView /> : null}
           {query.isError ? <ErrorView error={query.error} onRetry={() => void query.refetch()} /> : null}
-          {query.data && rows.length === 0 ? <EmptyView icon="chatbubbles-outline" title={`Dites bonjour à ${name} !`} message="Un premier message sympa vaut mieux qu'un simple « salut »." /> : null}
+          {query.data && rows.length === 0 ? (
+            <EmptyView
+              icon="chatbubbles-outline"
+              title={`Dites bonjour à ${name} !`}
+              message="Un premier message sympa vaut mieux qu'un simple « salut »."
+            />
+          ) : null}
           {query.data && rows.length > 0 ? (
             <FlatList
               testID="chat-list"
@@ -199,7 +231,11 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
                         {formatDayLabel(m.createdAt)}
                       </Text>
                     ) : null}
-                    <Pressable disabled={!isPending || !(m as PendingMessage).failed} onPress={() => void send(m.content, (m as PendingMessage).tempId)} accessibilityHint={isPending && (m as PendingMessage).failed ? "Appuyez pour renvoyer" : undefined}>
+                    <Pressable
+                      disabled={!isPending || !(m as PendingMessage).failed}
+                      onPress={() => void send(m.content, (m as PendingMessage).tempId)}
+                      accessibilityHint={isPending && (m as PendingMessage).failed ? "Appuyez pour renvoyer" : undefined}
+                    >
                       <MessageItem
                         content={m.content}
                         createdAt={m.createdAt}
@@ -237,7 +273,14 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
                 }
               }}
             />
-            <Pressable testID="chat-send" accessibilityRole="button" accessibilityLabel="Envoyer" disabled={!text.trim()} onPress={submit} style={[styles.send, !text.trim() && styles.sendDisabled]}>
+            <Pressable
+              testID="chat-send"
+              accessibilityRole="button"
+              accessibilityLabel="Envoyer"
+              disabled={!text.trim()}
+              onPress={submit}
+              style={[styles.send, !text.trim() && styles.sendDisabled]}
+            >
               <Ionicons name="arrow-up" size={22} color={colors.onPrimary} />
             </Pressable>
           </View>
@@ -245,7 +288,13 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
       </KeyboardAvoidingView>
 
       <ActionMenu visible={menuOpen} actions={actions} onClose={() => setMenuOpen(false)} />
-      <ReportSheet visible={reporting} userId={userId} name={name} onClose={() => setReporting(false)} onDone={(blocked) => blocked && leave()} />
+      <ReportSheet
+        visible={reporting}
+        userId={userId}
+        name={name}
+        onClose={() => setReporting(false)}
+        onDone={(blocked) => blocked && leave()}
+      />
     </SafeAreaLayout>
   );
 }
@@ -253,12 +302,47 @@ export default function ChatScreen({ route }: RootScreenProps<"Chat">) {
 const makeStyles = (colors: Colors) => ({
   fill: { flex: 1 },
   page: { flex: 1, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center" } as const,
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.border, minHeight: 56 } as const,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    minHeight: 56
+  } as const,
   who: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm } as const,
   name: { flex: 1 },
   day: { marginVertical: spacing.md },
-  composer: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background } as const,
-  input: { flex: 1, minHeight: 44, maxHeight: 120, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.lg, paddingTop: 11, paddingBottom: 11, fontSize: 16 },
-  send: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" } as const,
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background
+  } as const,
+  input: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 11,
+    paddingBottom: 11,
+    fontSize: 16
+  },
+  send: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center"
+  } as const,
   sendDisabled: { opacity: 0.4 }
 });

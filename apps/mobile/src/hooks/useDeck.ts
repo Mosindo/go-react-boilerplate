@@ -92,5 +92,12 @@ export function useDeck(onMatch: (match: MatchPreview) => void) {
     return load();
   }, [load]);
 
-  return { cards, status: status === "ready" && cards.length === 0 && exhausted.current ? ("empty" as const) : status, error, act, reload, recheck };
+  return {
+    cards,
+    status: status === "ready" && cards.length === 0 && exhausted.current ? ("empty" as const) : status,
+    error,
+    act,
+    reload,
+    recheck
+  };
 }

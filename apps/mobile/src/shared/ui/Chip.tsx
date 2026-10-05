@@ -3,7 +3,17 @@ import { radii, spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
 
 /** Pill used for interests and options. Pass `onPress` to make it selectable. */
-export function Chip({ label, selected, onPress, disabled }: { label: string; selected?: boolean; onPress?: () => void; disabled?: boolean }) {
+export function Chip({
+  label,
+  selected,
+  onPress,
+  disabled
+}: {
+  label: string;
+  selected?: boolean;
+  onPress?: () => void;
+  disabled?: boolean;
+}) {
   const { colors } = useTheme();
   const content = (
     <Text variant="label" style={{ color: selected ? colors.onPrimary : colors.text }}>
@@ -15,7 +25,11 @@ export function Chip({ label, selected, onPress, disabled }: { label: string; se
     { backgroundColor: selected ? colors.primary : colors.surface, borderColor: selected ? colors.primary : colors.border }
   ];
   if (!onPress) {
-    return <Pressable disabled style={base}>{content}</Pressable>;
+    return (
+      <Pressable disabled style={base}>
+        {content}
+      </Pressable>
+    );
   }
   return (
     <Pressable
@@ -32,5 +46,12 @@ export function Chip({ label, selected, onPress, disabled }: { label: string; se
 }
 
 const styles = StyleSheet.create({
-  chip: { borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 36, justifyContent: "center" }
+  chip: {
+    borderWidth: 1,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 36,
+    justifyContent: "center"
+  }
 });

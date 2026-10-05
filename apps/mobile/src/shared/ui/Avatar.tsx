@@ -6,7 +6,9 @@ import { Text } from "./Text";
 export function Avatar({ name, path, size = 52 }: { name: string; path?: string; size?: number }) {
   const { colors } = useTheme();
   if (path) {
-    return <RemoteImage path={path} accessibilityLabel={`Photo de ${name}`} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+    return (
+      <RemoteImage path={path} accessibilityLabel={`Photo de ${name}`} style={{ width: size, height: size, borderRadius: size / 2 }} />
+    );
   }
   return (
     <View style={[styles.fallback, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.primarySoft }]}>

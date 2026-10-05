@@ -55,7 +55,9 @@ export default function ProfileDetailScreen({ route }: RootScreenProps<"ProfileD
     <ScreenContainer scroll padded={false} edges={["top", "bottom"]} testID="profile-detail">
       <View style={styles.bar}>
         <IconButton icon="chevron-back" label="Retour" onPress={() => navigation.goBack()} testID="detail-back" />
-        {!isSelf ? <IconButton icon="ellipsis-horizontal" label="Plus d'options" onPress={() => setMenu(true)} testID="detail-menu" /> : null}
+        {!isSelf ? (
+          <IconButton icon="ellipsis-horizontal" label="Plus d'options" onPress={() => setMenu(true)} testID="detail-menu" />
+        ) : null}
       </View>
       <FlatList
         horizontal
@@ -64,15 +66,19 @@ export default function ProfileDetailScreen({ route }: RootScreenProps<"ProfileD
         keyExtractor={(p) => p.id}
         showsHorizontalScrollIndicator={false}
         style={{ width }}
-        renderItem={({ item, index }) => <RemoteImage path={item.url} accessibilityLabel={`Photo ${index + 1} sur ${profile.photos.length}`} style={{ width, height: width * 1.25 }} />}
+        renderItem={({ item, index }) => (
+          <RemoteImage
+            path={item.url}
+            accessibilityLabel={`Photo ${index + 1} sur ${profile.photos.length}`}
+            style={{ width, height: width * 1.25 }}
+          />
+        )}
       />
       <View style={styles.body}>
         <Text variant="title" testID="detail-name">
           {profile.firstName}, {profile.age}
         </Text>
-        <Text tone="muted">
-          {[GENDER_LABELS[profile.gender], profile.occupation, profile.city, distance].filter(Boolean).join(" · ")}
-        </Text>
+        <Text tone="muted">{[GENDER_LABELS[profile.gender], profile.occupation, profile.city, distance].filter(Boolean).join(" · ")}</Text>
         {profile.bio ? <Text>{profile.bio}</Text> : null}
         {profile.interests.length > 0 ? (
           <View style={styles.chips}>
@@ -83,7 +89,13 @@ export default function ProfileDetailScreen({ route }: RootScreenProps<"ProfileD
         ) : null}
       </View>
       <ActionMenu visible={menu} actions={actions} onClose={() => setMenu(false)} />
-      <ReportSheet visible={reporting} userId={userId} name={profile.firstName} onClose={() => setReporting(false)} onDone={(blocked) => blocked && navigation.goBack()} />
+      <ReportSheet
+        visible={reporting}
+        userId={userId}
+        name={profile.firstName}
+        onClose={() => setReporting(false)}
+        onDone={(blocked) => blocked && navigation.goBack()}
+      />
     </ScreenContainer>
   );
 }

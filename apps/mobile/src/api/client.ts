@@ -96,10 +96,7 @@ export class ApiClient {
 
   private async send(path: string, options: RequestOptions, accessToken?: string): Promise<Response> {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      options.timeoutMs ?? (options.form ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)
-    );
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? (options.form ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS));
     const onAbort = () => controller.abort();
     options.signal?.addEventListener("abort", onAbort, { once: true });
 

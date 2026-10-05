@@ -27,7 +27,13 @@ export default function NotificationsScreen() {
     const conversationId = typeof n.data.conversationId === "string" ? n.data.conversationId : null;
     const match = matches.data?.find((m) => m.conversationId === conversationId);
     if (match) {
-      navigation.navigate("Chat", { conversationId: match.conversationId, matchId: match.id, userId: match.user.id, name: match.user.firstName, photoPath: match.user.photos[0]?.url });
+      navigation.navigate("Chat", {
+        conversationId: match.conversationId,
+        matchId: match.id,
+        userId: match.user.id,
+        name: match.user.firstName,
+        photoPath: match.user.photos[0]?.url
+      });
     } else if (typeof n.data.userId === "string") {
       navigation.navigate("ProfileDetail", { userId: n.data.userId });
     }
@@ -55,9 +61,15 @@ export default function NotificationsScreen() {
       />
       {isLoading ? <LoadingView /> : null}
       {isError ? <ErrorView error={error} onRetry={() => void refetch()} /> : null}
-      {data && data.notifications.length === 0 ? <EmptyView icon="notifications-outline" title="Rien de neuf" message="Vos nouveaux matchs et messages apparaîtront ici." /> : null}
+      {data && data.notifications.length === 0 ? (
+        <EmptyView icon="notifications-outline" title="Rien de neuf" message="Vos nouveaux matchs et messages apparaîtront ici." />
+      ) : null}
       {data && data.notifications.length > 0 ? (
-        <FlatList data={data.notifications} keyExtractor={(n) => n.id} renderItem={({ item }) => <NotificationItem notification={item} onPress={() => void open(item)} />} />
+        <FlatList
+          data={data.notifications}
+          keyExtractor={(n) => n.id}
+          renderItem={({ item }) => <NotificationItem notification={item} onPress={() => void open(item)} />}
+        />
       ) : null}
     </ScreenContainer>
   );

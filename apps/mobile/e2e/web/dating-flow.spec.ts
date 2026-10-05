@@ -14,7 +14,12 @@ const alice: Person = { name: `Alice${tag}`, email: `alice.${stamp}@e2e.test`, g
 const bob: Person = { name: `Bob${tag}`, email: `bob.${stamp}@e2e.test`, gender: "Homme", birth: ["02", "11", "1990"] };
 
 async function newPerson(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ geolocation: PARIS, permissions: ["geolocation"], viewport: { width: 420, height: 860 }, locale: "fr-FR" });
+  const context = await browser.newContext({
+    geolocation: PARIS,
+    permissions: ["geolocation"],
+    viewport: { width: 420, height: 860 },
+    locale: "fr-FR"
+  });
   const page = await context.newPage();
   page.on("dialog", (dialog) => void dialog.accept()); // destructive actions use window.confirm on the web
   return { context, page };
@@ -133,6 +138,49 @@ test("signup → profile → discovery → like → match → chat, in real time
     await expect(b.page.getByTestId(`conversation-${alice.name}`)).toHaveCount(0);
   });
 
+  await test.step("Bob deletes his account from the settings: he is signed out and cannot sign back in", async () => {
+    await b.page.getByTestId("tab-Me").click();
+    await b.page.getByTestId("me-settings").click();
+    await b.page.getByTestId("delete-password").fill(PASSWORD);
+    await b.page.getByTestId("delete-account").click(); // window.confirm is auto-accepted
+    await expect(b.page.getByTestId("auth-screen")).toBeVisible();
+    await b.page.getByTestId("auth-email").fill(bob.email);
+    await b.page.getByTestId("auth-password").fill(PASSWORD);
+    await b.page.getByTestId("auth-submit").click();
+    await expect(b.page.getByText("Email ou mot de passe incorrect.")).toBeVisible();
+  });
+
   await a.context.close();
   await b.context.close();
+});
+
+test("password recovery link opens the reset screen and refuses an invalid token", async ({ page }) => {
+  await page.goto("/reset-password?token=not-a-real-token");
+  await expect(page.getByTestId("reset-screen")).toBeVisible();
+  await page.getByTestId("reset-password").fill("a-brand-new-password");
+  await page.getByTestId("reset-submit").click();
+  await expect(page.getByText("Ce lien a expiré ou a déjà été utilisé. Demandez-en un nouveau.")).toBeVisible();
+});
+
+test("an underage birth date is refused during onboarding, and bad credentials show a clear error", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("auth-email").fill(`nobody.${stamp}@e2e.test`);
+  await page.getByTestId("auth-password").fill("wrong-password-1");
+  await page.getByTestId("auth-submit").click();
+  await expect(page.getByText("Email ou mot de passe incorrect.")).toBeVisible();
+
+  await page.getByTestId("auth-mode-register").click();
+  await page.getByTestId("auth-email").fill(`minor.${stamp}@e2e.test`);
+  await page.getByTestId("auth-password").fill(PASSWORD);
+  await page.getByTestId("auth-submit").click();
+  await expect(page.getByTestId("onboarding-step-0")).toBeVisible();
+  await page.getByTestId("onb-first-name").fill("Jeune");
+  const year = String(new Date().getFullYear() - 16);
+  await page.getByTestId("birth-day").fill("10");
+  await page.getByTestId("birth-month").fill("05");
+  await page.getByTestId("birth-year").fill(year);
+  await page.getByRole("button", { name: "Femme", exact: true }).click();
+  await page.getByTestId("onb-next").click();
+  await expect(page.getByText("Vous devez avoir au moins 18 ans pour utiliser l'application.")).toBeVisible();
+  await expect(page.getByTestId("onboarding-step-0")).toBeVisible();
 });

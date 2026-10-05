@@ -70,7 +70,12 @@ export default function SettingsScreen() {
       setDeleteError("Entrez votre mot de passe pour confirmer.");
       return;
     }
-    const ok = await confirm("Supprimer définitivement votre compte ?", "Votre profil, vos photos, vos matchs et vos messages seront effacés. Cette action est irréversible.", "Supprimer mon compte", true);
+    const ok = await confirm(
+      "Supprimer définitivement votre compte ?",
+      "Votre profil, vos photos, vos matchs et vos messages seront effacés. Cette action est irréversible.",
+      "Supprimer mon compte",
+      true
+    );
     if (!ok) return;
     setDeleting(true);
     setDeleteError(null);
@@ -104,8 +109,23 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="Compte" description={user?.email}>
-        <Input testID="pw-current" label="Mot de passe actuel" value={current} onChangeText={setCurrent} secureTextEntry autoCapitalize="none" />
-        <Input testID="pw-new" label="Nouveau mot de passe" value={next} onChangeText={setNext} secureTextEntry autoCapitalize="none" hint="8 caractères minimum." />
+        <Input
+          testID="pw-current"
+          label="Mot de passe actuel"
+          value={current}
+          onChangeText={setCurrent}
+          secureTextEntry
+          autoCapitalize="none"
+        />
+        <Input
+          testID="pw-new"
+          label="Nouveau mot de passe"
+          value={next}
+          onChangeText={setNext}
+          secureTextEntry
+          autoCapitalize="none"
+          hint="8 caractères minimum."
+        />
         {pwError ? <Notice kind="error" message={pwError} /> : null}
         <Button testID="pw-save" label="Changer le mot de passe" variant="secondary" onPress={submitPassword} loading={pwSaving} />
         <Button testID="logout" label="Se déconnecter" variant="secondary" onPress={() => void logout()} />
@@ -117,7 +137,14 @@ export default function SettingsScreen() {
           <Text variant="caption" tone="muted">
             Efface définitivement votre profil, vos photos, vos matchs et vos conversations.
           </Text>
-          <Input testID="delete-password" label="Mot de passe" value={deletePassword} onChangeText={setDeletePassword} secureTextEntry autoCapitalize="none" />
+          <Input
+            testID="delete-password"
+            label="Mot de passe"
+            value={deletePassword}
+            onChangeText={setDeletePassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
           {deleteError ? <Notice kind="error" message={deleteError} /> : null}
           <Button testID="delete-account" label="Supprimer mon compte" variant="danger" onPress={submitDelete} loading={deleting} />
         </Card>

@@ -118,14 +118,7 @@ export type AppNotification = {
 
 export type NotificationsPage = { notifications: AppNotification[]; unreadCount: number };
 
-export type ReportReason =
-  | "spam"
-  | "fake_profile"
-  | "inappropriate_content"
-  | "harassment"
-  | "underage"
-  | "scam"
-  | "other";
+export type ReportReason = "spam" | "fake_profile" | "inappropriate_content" | "harassment" | "underage" | "scam" | "other";
 
 export type BlockedUser = { user: ProfileCard; blockedAt: string };
 

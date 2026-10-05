@@ -38,9 +38,27 @@ export default function ResetPasswordScreen({ route }: RootScreenProps<"ResetPas
   return (
     <ScreenContainer scroll testID="reset-screen">
       <Header title="Nouveau mot de passe" onBack={() => navigation.goBack()} />
-      {route.params?.token ? null : <Input testID="reset-token" label="Code reçu par email" value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} />}
+      {route.params?.token ? null : (
+        <Input
+          testID="reset-token"
+          label="Code reçu par email"
+          value={token}
+          onChangeText={setToken}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      )}
       <Text tone="muted">Choisissez un mot de passe d'au moins 8 caractères. Vous serez déconnecté(e) de vos autres appareils.</Text>
-      <Input testID="reset-password" label="Nouveau mot de passe" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoComplete="new-password" onSubmitEditing={submit} />
+      <Input
+        testID="reset-password"
+        label="Nouveau mot de passe"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        autoCapitalize="none"
+        autoComplete="new-password"
+        onSubmitEditing={submit}
+      />
       {error ? <Notice kind="error" message={error} /> : null}
       <Button testID="reset-submit" label="Enregistrer" onPress={submit} loading={loading} />
     </ScreenContainer>

@@ -33,9 +33,26 @@ export default function ForgotPasswordScreen() {
   return (
     <ScreenContainer scroll testID="forgot-screen">
       <Header title="Mot de passe oublié" onBack={() => navigation.goBack()} />
-      <Text tone="muted">Saisissez l'email de votre compte. Si un compte existe, vous recevrez un lien pour choisir un nouveau mot de passe (valable 1 heure).</Text>
-      <Input testID="forgot-email" label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" onSubmitEditing={submit} />
-      {sent ? <Notice kind="success" message="Si un compte existe pour cette adresse, un email vient de partir. Pensez à vérifier vos courriers indésirables." /> : null}
+      <Text tone="muted">
+        Saisissez l'email de votre compte. Si un compte existe, vous recevrez un lien pour choisir un nouveau mot de passe (valable 1
+        heure).
+      </Text>
+      <Input
+        testID="forgot-email"
+        label="Email"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        autoComplete="email"
+        keyboardType="email-address"
+        onSubmitEditing={submit}
+      />
+      {sent ? (
+        <Notice
+          kind="success"
+          message="Si un compte existe pour cette adresse, un email vient de partir. Pensez à vérifier vos courriers indésirables."
+        />
+      ) : null}
       {error ? <Notice kind="error" message={error} /> : null}
       <Button testID="forgot-submit" label="Envoyer le lien" onPress={submit} loading={loading} disabled={sent} />
     </ScreenContainer>

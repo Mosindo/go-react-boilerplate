@@ -15,7 +15,9 @@ export function LocationStep({ onSaved, label = "Utiliser ma position" }: { onSa
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") {
-        setError("Sans accès à votre position, nous ne pouvons pas vous proposer de personnes proches. Autorisez la localisation dans les réglages puis réessayez.");
+        setError(
+          "Sans accès à votre position, nous ne pouvons pas vous proposer de personnes proches. Autorisez la localisation dans les réglages puis réessayez."
+        );
         return;
       }
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -38,7 +40,8 @@ export function LocationStep({ onSaved, label = "Utiliser ma position" }: { onSa
   return (
     <>
       <Text tone="muted">
-        Votre position exacte n'est jamais affichée ni partagée : les autres voient seulement une distance approximative (par tranches de 5 km). Nous n'en conservons qu'une version arrondie à environ 1 km.
+        Votre position exacte n'est jamais affichée ni partagée : les autres voient seulement une distance approximative (par tranches de 5
+        km). Nous n'en conservons qu'une version arrondie à environ 1 km.
       </Text>
       {error ? <Notice kind="error" message={error} /> : null}
       <Button testID="location-use" label={label} icon="location-outline" onPress={locate} loading={loading} />

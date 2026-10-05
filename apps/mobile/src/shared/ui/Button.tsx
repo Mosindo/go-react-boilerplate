@@ -56,7 +56,14 @@ export function Button({ label, variant = "primary", loading, icon, compact, dis
 }
 
 const styles = StyleSheet.create({
-  base: { minHeight: 52, borderRadius: radii.pill, borderWidth: 1, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
+  base: {
+    minHeight: 52,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    paddingHorizontal: spacing.xl,
+    alignItems: "center",
+    justifyContent: "center"
+  },
   compact: { minHeight: 40, paddingHorizontal: spacing.lg },
   content: { flexDirection: "row", alignItems: "center", gap: spacing.sm }
 });

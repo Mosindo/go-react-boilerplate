@@ -13,11 +13,33 @@ export function PreferencesForm({ value, onChange }: { value: Preferences; onCha
         <InterestedInPicker value={value.interestedIn} onChange={(interestedIn) => onChange({ ...value, interestedIn })} />
       </FormField>
       <FormField label="Tranche d'âge">
-        <Stepper label="Âge minimum" value={value.minAge} min={18} max={value.maxAge} format={(v) => `${v} ans`} onChange={(minAge) => onChange({ ...value, minAge })} />
-        <Stepper label="Âge maximum" value={value.maxAge} min={value.minAge} max={99} format={(v) => `${v} ans`} onChange={(maxAge) => onChange({ ...value, maxAge })} />
+        <Stepper
+          label="Âge minimum"
+          value={value.minAge}
+          min={18}
+          max={value.maxAge}
+          format={(v) => `${v} ans`}
+          onChange={(minAge) => onChange({ ...value, minAge })}
+        />
+        <Stepper
+          label="Âge maximum"
+          value={value.maxAge}
+          min={value.minAge}
+          max={99}
+          format={(v) => `${v} ans`}
+          onChange={(maxAge) => onChange({ ...value, maxAge })}
+        />
       </FormField>
       <FormField label="Distance maximale" hint="Vous ne verrez que des personnes dans ce rayon (et qui vous acceptent dans le leur).">
-        <Stepper label="Distance" value={value.maxDistanceKm} min={5} max={500} step={5} format={(v) => `${v} km`} onChange={(maxDistanceKm) => onChange({ ...value, maxDistanceKm })} />
+        <Stepper
+          label="Distance"
+          value={value.maxDistanceKm}
+          min={5}
+          max={500}
+          step={5}
+          format={(v) => `${v} km`}
+          onChange={(maxDistanceKm) => onChange({ ...value, maxDistanceKm })}
+        />
       </FormField>
     </View>
   );

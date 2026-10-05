@@ -4,9 +4,30 @@ import { IconButton } from "./IconButton";
 import { Text } from "./Text";
 
 /** − value + control with bounds; used for age and distance preferences (no slider dependency needed). */
-export function Stepper({ label, value, min, max, step = 1, format, onChange }: { label: string; value: number; min: number; max: number; step?: number; format?: (value: number) => string; onChange: (value: number) => void }) {
+export function Stepper({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  format,
+  onChange
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  format?: (value: number) => string;
+  onChange: (value: number) => void;
+}) {
   return (
-    <View style={styles.row} accessibilityRole="adjustable" accessibilityLabel={label} accessibilityValue={{ min, max, now: value, text: format?.(value) ?? String(value) }}>
+    <View
+      style={styles.row}
+      accessibilityRole="adjustable"
+      accessibilityLabel={label}
+      accessibilityValue={{ min, max, now: value, text: format?.(value) ?? String(value) }}
+    >
       <Text variant="bodyStrong" style={styles.label}>
         {label}
       </Text>

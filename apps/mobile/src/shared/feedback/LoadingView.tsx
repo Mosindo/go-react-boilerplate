@@ -16,4 +16,6 @@ export function LoadingView({ label }: { label?: string }) {
   );
 }
 
-const styles = StyleSheet.create({ box: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl } });
+const styles = StyleSheet.create({
+  box: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl }
+});

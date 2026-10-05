@@ -2,7 +2,19 @@ import { StyleSheet, Switch, View } from "react-native";
 import { spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
 
-export function SwitchRow({ label, description, value, onValueChange, disabled }: { label: string; description?: string; value: boolean; onValueChange: (value: boolean) => void; disabled?: boolean }) {
+export function SwitchRow({
+  label,
+  description,
+  value,
+  onValueChange,
+  disabled
+}: {
+  label: string;
+  description?: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
   const { colors } = useTheme();
   return (
     <View style={styles.row}>

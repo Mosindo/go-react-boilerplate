@@ -4,7 +4,19 @@ import { radii, spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
 
 /** One chat bubble. Text is always rendered as plain text, never as markup. */
-export function MessageItem({ content, createdAt, mine, read, failed }: { content: string; createdAt: string; mine: boolean; read?: boolean; failed?: boolean }) {
+export function MessageItem({
+  content,
+  createdAt,
+  mine,
+  read,
+  failed
+}: {
+  content: string;
+  createdAt: string;
+  mine: boolean;
+  read?: boolean;
+  failed?: boolean;
+}) {
   const { colors } = useTheme();
   const time = formatTime(createdAt);
   return (

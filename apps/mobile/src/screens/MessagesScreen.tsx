@@ -35,10 +35,22 @@ export default function MessagesScreen() {
   };
 
   const openMatch = (m: MatchPreview) =>
-    navigation.navigate("Chat", { conversationId: m.conversationId, matchId: m.id, userId: m.user.id, name: m.user.firstName, photoPath: m.user.photos[0]?.url });
+    navigation.navigate("Chat", {
+      conversationId: m.conversationId,
+      matchId: m.id,
+      userId: m.user.id,
+      name: m.user.firstName,
+      photoPath: m.user.photos[0]?.url
+    });
 
   const openConversation = (c: ConversationPreview) =>
-    navigation.navigate("Chat", { conversationId: c.id, matchId: c.matchId, userId: c.user.id, name: c.user.firstName, photoPath: c.user.photos[0]?.url });
+    navigation.navigate("Chat", {
+      conversationId: c.id,
+      matchId: c.matchId,
+      userId: c.user.id,
+      name: c.user.firstName,
+      photoPath: c.user.photos[0]?.url
+    });
 
   if (matches.isLoading || conversations.isLoading) {
     return (
@@ -83,7 +95,13 @@ export default function MessagesScreen() {
                     keyExtractor={(m) => m.id}
                     contentContainerStyle={styles.rail}
                     renderItem={({ item }) => (
-                      <Pressable testID={`new-match-${item.user.firstName}`} style={styles.railItem} accessibilityRole="button" accessibilityLabel={`Nouveau match : ${item.user.firstName}. Écrire`} onPress={() => openMatch(item)}>
+                      <Pressable
+                        testID={`new-match-${item.user.firstName}`}
+                        style={styles.railItem}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Nouveau match : ${item.user.firstName}. Écrire`}
+                        onPress={() => openMatch(item)}
+                      >
                         <Avatar name={item.user.firstName} path={item.user.photos[0]?.url} size={68} />
                         <Text variant="caption" numberOfLines={1} style={styles.railName}>
                           {item.user.firstName}
@@ -102,7 +120,11 @@ export default function MessagesScreen() {
           }
           ListEmptyComponent={
             newMatches.length === 0 ? (
-              <EmptyView icon="chatbubbles-outline" title="Pas encore de conversation" message="Likez des profils : dès que l'intérêt est réciproque, vous pourrez discuter ici." />
+              <EmptyView
+                icon="chatbubbles-outline"
+                title="Pas encore de conversation"
+                message="Likez des profils : dès que l'intérêt est réciproque, vous pourrez discuter ici."
+              />
             ) : (
               <Text tone="muted" center style={styles.hint}>
                 Choisissez un match ci-dessus pour envoyer le premier message.

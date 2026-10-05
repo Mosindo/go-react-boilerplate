@@ -7,10 +7,7 @@ export function Badge({ count }: { count: number }) {
   const { colors } = useTheme();
   if (count <= 0) return null;
   return (
-    <View
-      accessibilityLabel={`${count} non lu${count > 1 ? "s" : ""}`}
-      style={[styles.badge, { backgroundColor: colors.primary }]}
-    >
+    <View accessibilityLabel={`${count} non lu${count > 1 ? "s" : ""}`} style={[styles.badge, { backgroundColor: colors.primary }]}>
       <Text variant="label" tone="onPrimary" style={styles.text}>
         {count > 99 ? "99+" : count}
       </Text>

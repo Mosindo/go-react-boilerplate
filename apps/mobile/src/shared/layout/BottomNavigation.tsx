@@ -20,7 +20,13 @@ export function BottomNavigation({ state, navigation }: BottomTabBarProps) {
   const unread = useUnreadMessages();
 
   return (
-    <View style={[styles.bar, { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, spacing.sm) }]} accessibilityRole="tablist">
+    <View
+      style={[
+        styles.bar,
+        { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, spacing.sm) }
+      ]}
+      accessibilityRole="tablist"
+    >
       {state.routes.map((route, index) => {
         const tab = TABS[route.name];
         const focused = state.index === index;

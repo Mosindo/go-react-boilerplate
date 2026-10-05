@@ -9,7 +9,19 @@ import { Button, Chip, Input, Notice, SwitchRow, Text } from "../shared/ui";
 import { radii, spacing, useTheme } from "../theme";
 
 /** Report a person (with an optional block). Reports are reviewed by moderators; the reported person is never told. */
-export function ReportSheet({ visible, userId, name, onClose, onDone }: { visible: boolean; userId: string; name: string; onClose: () => void; onDone?: (blocked: boolean) => void }) {
+export function ReportSheet({
+  visible,
+  userId,
+  name,
+  onClose,
+  onDone
+}: {
+  visible: boolean;
+  userId: string;
+  name: string;
+  onClose: () => void;
+  onDone?: (blocked: boolean) => void;
+}) {
   const { colors } = useTheme();
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [details, setDetails] = useState("");
@@ -51,8 +63,20 @@ export function ReportSheet({ visible, userId, name, onClose, onDone }: { visibl
                 <Chip key={r.value} label={r.label} selected={reason === r.value} onPress={() => setReason(r.value)} />
               ))}
             </View>
-            <Input testID="report-details" label="Détails (facultatif)" value={details} onChangeText={setDetails} multiline maxLength={1000} />
-            <SwitchRow label="Bloquer aussi cette personne" description="Vous ne vous verrez plus mutuellement." value={alsoBlock} onValueChange={setAlsoBlock} />
+            <Input
+              testID="report-details"
+              label="Détails (facultatif)"
+              value={details}
+              onChangeText={setDetails}
+              multiline
+              maxLength={1000}
+            />
+            <SwitchRow
+              label="Bloquer aussi cette personne"
+              description="Vous ne vous verrez plus mutuellement."
+              value={alsoBlock}
+              onValueChange={setAlsoBlock}
+            />
             {error ? <Notice kind="error" message={error} /> : null}
             <Button testID="report-submit" label="Envoyer le signalement" onPress={submit} loading={sending} />
             <Button label="Annuler" variant="ghost" onPress={onClose} />

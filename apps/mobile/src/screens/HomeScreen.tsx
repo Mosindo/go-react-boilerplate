@@ -47,7 +47,13 @@ export default function HomeScreen() {
 
   const openChat = (m: MatchPreview) => {
     setMatch(null);
-    navigation.navigate("Chat", { conversationId: m.conversationId, matchId: m.id, userId: m.user.id, name: m.user.firstName, photoPath: m.user.photos[0]?.url });
+    navigation.navigate("Chat", {
+      conversationId: m.conversationId,
+      matchId: m.id,
+      userId: m.user.id,
+      name: m.user.firstName,
+      photoPath: m.user.photos[0]?.url
+    });
   };
 
   return (
@@ -57,13 +63,25 @@ export default function HomeScreen() {
           <Text variant="title" tone="primary">
             Lueur
           </Text>
-          <IconButton testID="open-notifications" icon="notifications-outline" label="Notifications" badge={notifications?.unreadCount} onPress={() => navigation.navigate("Notifications")} />
+          <IconButton
+            testID="open-notifications"
+            icon="notifications-outline"
+            label="Notifications"
+            badge={notifications?.unreadCount}
+            onPress={() => navigation.navigate("Notifications")}
+          />
         </View>
 
         <View style={styles.deck}>
           {status === "loading" ? <LoadingView label="On cherche des personnes pour vous…" /> : null}
           {status === "error" ? <ErrorView error={error} onRetry={() => void reload()} /> : null}
-          {status === "incomplete" ? <EmptyView icon="person-circle-outline" title="Terminez votre profil" message="Ajoutez une photo, vos préférences et votre position pour découvrir des personnes." /> : null}
+          {status === "incomplete" ? (
+            <EmptyView
+              icon="person-circle-outline"
+              title="Terminez votre profil"
+              message="Ajoutez une photo, vos préférences et votre position pour découvrir des personnes."
+            />
+          ) : null}
           {status === "empty" ? (
             <EmptyView
               icon="compass-outline"
@@ -84,13 +102,26 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <MatchModal match={match} myName={my?.profile?.firstName ?? ""} myPhotoPath={my?.profile?.photos[0]?.url} onMessage={openChat} onClose={() => setMatch(null)} />
+      <MatchModal
+        match={match}
+        myName={my?.profile?.firstName ?? ""}
+        myPhotoPath={my?.profile?.photos[0]?.url}
+        onMessage={openChat}
+        onClose={() => setMatch(null)}
+      />
     </SafeAreaLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, width: "100%", maxWidth: layout.maxContentWidth, alignSelf: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  page: {
+    flex: 1,
+    width: "100%",
+    maxWidth: layout.maxContentWidth,
+    alignSelf: "center",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm
+  },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 52 },
   deck: { flex: 1 }
 });

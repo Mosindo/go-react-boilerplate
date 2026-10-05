@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { savePreferences, saveProfile } from "../api/platform";
-import type { Completion, Gender, MyProfile, Preferences } from "../api/types";
+import type { Gender, MyProfile, Preferences } from "../api/types";
 import { BirthDateField, type BirthDateValue } from "../components/BirthDateField";
 import { GenderPicker } from "../components/GenderPicker";
 import { InterestPicker } from "../components/InterestPicker";
@@ -13,6 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useMyProfile } from "../hooks/queries";
 import { parseBirthDate, splitIsoDate } from "../lib/dates";
 import { errorMessage } from "../lib/errors";
+import { firstIncompleteStep, ONBOARDING_STEPS } from "../lib/onboarding";
 import { isValidFirstName } from "../lib/validation";
 import { queryKeys } from "../realtime/cache";
 import { ErrorView, LoadingView } from "../shared/feedback";
@@ -20,16 +21,7 @@ import { Header, ScreenContainer } from "../shared/layout";
 import { Button, FormField, Input, Notice, Text } from "../shared/ui";
 import { radii, spacing, useTheme } from "../theme";
 
-const STEPS = ["Vous", "Photos", "À propos", "Préférences", "Localisation"] as const;
-
-/** First step that still needs work, so people who quit midway resume where they stopped. */
-export function firstIncompleteStep(completion: Completion): number {
-  if (!completion.profile) return 0;
-  if (!completion.photos) return 1;
-  if (!completion.preferences) return 3;
-  if (!completion.location) return 4;
-  return 2;
-}
+const STEPS = ONBOARDING_STEPS;
 
 export default function OnboardingScreen() {
   const { data, isLoading, isError, error, refetch } = useMyProfile();
@@ -60,14 +52,42 @@ function Wizard({ my, step, setStep }: { my: MyProfile; step: number; setStep: (
         onBack={step > 0 ? () => setStep(step - 1) : undefined}
         right={<Button label="Se déconnecter" variant="ghost" compact onPress={() => void logout()} />}
       />
-      <View style={[styles.track, { backgroundColor: colors.surfaceMuted }]} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: STEPS.length, now: step + 1 }}>
+      <View
+        style={[styles.track, { backgroundColor: colors.surfaceMuted }]}
+        accessibilityRole="progressbar"
+        accessibilityValue={{ min: 0, max: STEPS.length, now: step + 1 }}
+      >
         <View style={[styles.bar, { backgroundColor: colors.primary, width: `${((step + 1) / STEPS.length) * 100}%` }]} />
       </View>
 
-      {step === 0 ? <AboutYouStep my={my} onDone={async () => { await refresh(); next(); }} /> : null}
+      {step === 0 ? (
+        <AboutYouStep
+          my={my}
+          onDone={async () => {
+            await refresh();
+            next();
+          }}
+        />
+      ) : null}
       {step === 1 ? <PhotosStep my={my} onNext={next} /> : null}
-      {step === 2 ? <BioStep my={my} onDone={async () => { await refresh(); next(); }} /> : null}
-      {step === 3 ? <PreferencesStep my={my} onDone={async () => { await refresh(); next(); }} /> : null}
+      {step === 2 ? (
+        <BioStep
+          my={my}
+          onDone={async () => {
+            await refresh();
+            next();
+          }}
+        />
+      ) : null}
+      {step === 3 ? (
+        <PreferencesStep
+          my={my}
+          onDone={async () => {
+            await refresh();
+            next();
+          }}
+        />
+      ) : null}
       {step === 4 ? <LocationStepScreen onDone={refresh} /> : null}
     </ScreenContainer>
   );
@@ -110,7 +130,15 @@ function AboutYouStep({ my, onDone }: { my: MyProfile; onDone: () => Promise<voi
 
   return (
     <>
-      <Input testID="onb-first-name" label="Prénom" value={firstName} onChangeText={setFirstName} error={errors.name} autoComplete="given-name" maxLength={40} />
+      <Input
+        testID="onb-first-name"
+        label="Prénom"
+        value={firstName}
+        onChangeText={setFirstName}
+        error={errors.name}
+        autoComplete="given-name"
+        maxLength={40}
+      />
       <BirthDateField value={birth} onChange={setBirth} error={errors.birth} locked={!!existing} />
       <FormField label="Je suis" error={errors.gender}>
         <GenderPicker value={gender} onChange={setGender} />
@@ -125,7 +153,9 @@ function PhotosStep({ my, onNext }: { my: MyProfile; onNext: () => void }) {
   const photos = my.profile?.photos ?? [];
   return (
     <>
-      <Text tone="muted">Ajoutez au moins une photo où l'on vous voit bien. Elles sont compressées et nettoyées de leurs métadonnées (position GPS comprise).</Text>
+      <Text tone="muted">
+        Ajoutez au moins une photo où l'on vous voit bien. Elles sont compressées et nettoyées de leurs métadonnées (position GPS comprise).
+      </Text>
       <PhotoManager photos={photos} />
       <Button testID="onb-next" label="Continuer" onPress={onNext} disabled={photos.length === 0} />
     </>
@@ -145,7 +175,14 @@ function BioStep({ my, onDone }: { my: MyProfile; onDone: () => Promise<void> })
     setSaving(true);
     setError(null);
     try {
-      await saveProfile({ firstName: profile.firstName, birthDate: profile.birthDate, gender: profile.gender, bio: bio.trim(), occupation: occupation.trim(), interests });
+      await saveProfile({
+        firstName: profile.firstName,
+        birthDate: profile.birthDate,
+        gender: profile.gender,
+        bio: bio.trim(),
+        occupation: occupation.trim(),
+        interests
+      });
       await onDone();
     } catch (e) {
       setError(errorMessage(e));
@@ -156,7 +193,16 @@ function BioStep({ my, onDone }: { my: MyProfile; onDone: () => Promise<void> })
 
   return (
     <>
-      <Input testID="onb-bio" label="Quelques mots sur vous" value={bio} onChangeText={setBio} multiline maxLength={500} hint={`${bio.length} / 500`} placeholder="Ce qui vous passionne, ce que vous cherchez…" />
+      <Input
+        testID="onb-bio"
+        label="Quelques mots sur vous"
+        value={bio}
+        onChangeText={setBio}
+        multiline
+        maxLength={500}
+        hint={`${bio.length} / 500`}
+        placeholder="Ce qui vous passionne, ce que vous cherchez…"
+      />
       <Input testID="onb-occupation" label="Métier (facultatif)" value={occupation} onChangeText={setOccupation} maxLength={60} />
       <FormField label="Centres d'intérêt" hint="Ils aident à trouver des personnes qui vous ressemblent.">
         <InterestPicker selected={interests} onChange={setInterests} />

@@ -42,7 +42,14 @@ function Editor({ profile }: { profile: OwnProfile }) {
   const save = async () => {
     setSaving(true);
     try {
-      await saveProfile({ firstName: firstName.trim(), birthDate: profile.birthDate, gender: profile.gender, bio: bio.trim(), occupation: occupation.trim(), interests });
+      await saveProfile({
+        firstName: firstName.trim(),
+        birthDate: profile.birthDate,
+        gender: profile.gender,
+        bio: bio.trim(),
+        occupation: occupation.trim(),
+        interests
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.me });
       void queryClient.invalidateQueries({ queryKey: ["profile"] });
       showSuccess("Profil mis à jour.");
@@ -73,10 +80,13 @@ function Editor({ profile }: { profile: OwnProfile }) {
         <InterestPicker selected={interests} onChange={setInterests} />
       </Section>
       <Section title="Localisation" description={profile.city ? `Actuellement : ${profile.city}` : undefined}>
-        <LocationStep label="Mettre à jour ma position" onSaved={() => {
-          markDeckStale();
-          void queryClient.invalidateQueries({ queryKey: queryKeys.me });
-        }} />
+        <LocationStep
+          label="Mettre à jour ma position"
+          onSaved={() => {
+            markDeckStale();
+            void queryClient.invalidateQueries({ queryKey: queryKeys.me });
+          }}
+        />
       </Section>
       {error ? <Notice kind="error" message={error} /> : null}
       <Button testID="edit-save" label="Enregistrer" onPress={save} loading={saving} />

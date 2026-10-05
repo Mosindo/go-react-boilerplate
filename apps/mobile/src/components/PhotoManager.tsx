@@ -45,7 +45,17 @@ export function PhotoManager({ photos }: { photos: Photo[] }) {
 
   const setPhotos = (next: Photo[]) =>
     queryClient.setQueryData<MyProfile>(queryKeys.me, (data) =>
-      data?.profile ? { ...data, profile: { ...data.profile, photos: next }, completion: { ...data.completion, photos: next.length > 0, complete: data.completion.profile && data.completion.preferences && data.completion.location && next.length > 0 } } : data
+      data?.profile
+        ? {
+            ...data,
+            profile: { ...data.profile, photos: next },
+            completion: {
+              ...data.completion,
+              photos: next.length > 0,
+              complete: data.completion.profile && data.completion.preferences && data.completion.location && next.length > 0
+            }
+          }
+        : data
     );
 
   const run = async (key: string, action: () => Promise<void>) => {
@@ -77,11 +87,12 @@ export function PhotoManager({ photos }: { photos: Photo[] }) {
     });
 
   const remove = (photo: Photo) =>
-    confirmDelete(() =>
-      void run(photo.id, async () => {
-        await deletePhoto(photo.id);
-        setPhotos(photos.filter((p) => p.id !== photo.id).map((p, i) => ({ ...p, position: i })));
-      })
+    confirmDelete(
+      () =>
+        void run(photo.id, async () => {
+          await deletePhoto(photo.id);
+          setPhotos(photos.filter((p) => p.id !== photo.id).map((p, i) => ({ ...p, position: i })));
+        })
     );
 
   const move = (index: number, to: number) =>
@@ -115,8 +126,16 @@ export function PhotoManager({ photos }: { photos: Photo[] }) {
                 </View>
               ) : null}
               <View style={styles.actions}>
-                {index > 0 ? <MiniButton icon="arrow-back" label={index === 1 ? "Mettre en photo principale" : "Déplacer vers la gauche"} onPress={() => move(index, index - 1)} /> : null}
-                {index < photos.length - 1 ? <MiniButton icon="arrow-forward" label="Déplacer vers la droite" onPress={() => move(index, index + 1)} /> : null}
+                {index > 0 ? (
+                  <MiniButton
+                    icon="arrow-back"
+                    label={index === 1 ? "Mettre en photo principale" : "Déplacer vers la gauche"}
+                    onPress={() => move(index, index - 1)}
+                  />
+                ) : null}
+                {index < photos.length - 1 ? (
+                  <MiniButton icon="arrow-forward" label="Déplacer vers la droite" onPress={() => move(index, index + 1)} />
+                ) : null}
                 <MiniButton icon="swap-horizontal" label="Remplacer la photo" onPress={() => void replace(photo)} />
                 <MiniButton icon="trash-outline" label="Supprimer la photo" onPress={() => remove(photo)} />
               </View>
@@ -128,7 +147,11 @@ export function PhotoManager({ photos }: { photos: Photo[] }) {
               testID={index === photos.length ? "photo-add" : undefined}
               disabled={index !== photos.length || busy !== null}
               onPress={() => void add()}
-              style={[styles.slot, styles.empty, { borderColor: colors.border, backgroundColor: colors.surface, opacity: index === photos.length ? 1 : 0.5 }]}
+              style={[
+                styles.slot,
+                styles.empty,
+                { borderColor: colors.border, backgroundColor: colors.surface, opacity: index === photos.length ? 1 : 0.5 }
+              ]}
             >
               {busy === "add" && index === photos.length ? <Loader /> : <Ionicons name="add" size={32} color={colors.primary} />}
             </Pressable>
@@ -155,7 +178,17 @@ const styles = StyleSheet.create({
   main: { position: "absolute", top: 6, left: 6, borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
   mainText: { fontSize: 11, lineHeight: 15 },
   busy: { alignItems: "center", justifyContent: "center" },
-  actions: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", flexWrap: "wrap", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", paddingVertical: 2 },
+  actions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    paddingVertical: 2
+  },
   mini: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
   miniButton: { width: 30, height: 30 }
 });

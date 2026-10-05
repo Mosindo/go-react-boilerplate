@@ -22,7 +22,15 @@ function Scrim({ height }: { height: number }) {
  * The main discovery card: swipe-independent content. Tap the left/right third to browse photos.
  * `onOpenDetails` opens the full profile.
  */
-export function ProfileCardView({ profile, onOpenDetails, interactive = true }: { profile: ProfileCard; onOpenDetails?: () => void; interactive?: boolean }) {
+export function ProfileCardView({
+  profile,
+  onOpenDetails,
+  interactive = true
+}: {
+  profile: ProfileCard;
+  onOpenDetails?: () => void;
+  interactive?: boolean;
+}) {
   const [index, setIndex] = useState(0);
   const photos = profile.photos;
 
@@ -33,7 +41,11 @@ export function ProfileCardView({ profile, onOpenDetails, interactive = true }: 
 
   return (
     <View style={styles.card} testID={`card-${profile.firstName}`}>
-      <RemoteImage path={photos[index]?.url} style={StyleSheet.absoluteFill} accessibilityLabel={`Photo ${index + 1} sur ${photos.length} de ${profile.firstName}`} />
+      <RemoteImage
+        path={photos[index]?.url}
+        style={StyleSheet.absoluteFill}
+        accessibilityLabel={`Photo ${index + 1} sur ${photos.length} de ${profile.firstName}`}
+      />
 
       {photos.length > 1 ? (
         <View style={styles.dots} pointerEvents="none">
@@ -57,7 +69,13 @@ export function ProfileCardView({ profile, onOpenDetails, interactive = true }: 
             {profile.firstName}, {profile.age}
           </Text>
           {onOpenDetails ? (
-            <Pressable accessibilityRole="button" accessibilityLabel={`Voir le profil de ${profile.firstName}`} testID="card-details" onPress={onOpenDetails} hitSlop={12}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Voir le profil de ${profile.firstName}`}
+              testID="card-details"
+              onPress={onOpenDetails}
+              hitSlop={12}
+            >
               <Ionicons name="information-circle-outline" size={30} color="#FFFFFF" />
             </Pressable>
           ) : null}

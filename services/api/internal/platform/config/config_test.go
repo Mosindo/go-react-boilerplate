@@ -10,6 +10,16 @@ func TestLoadRejectsWeakJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsPlaceholderSecrets(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	for _, secret := range []string{"", "short", "replace-with-a-random-secret-at-least-32-characters-long", "this-is-an-example-secret-value-0123456789"} {
+		t.Setenv("JWT_SECRET", secret)
+		if _, err := Load(); err == nil {
+			t.Errorf("secret %q must be rejected", secret)
+		}
+	}
+}
+
 func TestLoadParsesAllowedOrigins(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
 	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")

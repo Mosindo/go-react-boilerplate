@@ -107,7 +107,13 @@ export default function AuthScreen() {
         {formError ? <Notice kind="error" message={formError} /> : null}
         <Button testID="auth-submit" label={mode === "login" ? "Se connecter" : "Créer mon compte"} onPress={submit} loading={submitting} />
         {mode === "login" ? (
-          <Button label="Mot de passe oublié ?" variant="ghost" compact onPress={() => navigation.navigate("ForgotPassword")} testID="auth-forgot" />
+          <Button
+            label="Mot de passe oublié ?"
+            variant="ghost"
+            compact
+            onPress={() => navigation.navigate("ForgotPassword")}
+            testID="auth-forgot"
+          />
         ) : (
           <Text variant="caption" tone="muted" center>
             En créant un compte, vous confirmez avoir au moins 18 ans.
