@@ -95,6 +95,11 @@ async function doRefresh(): Promise<AuthTokens | null> {
       return null;
     }
     const next = { accessToken, refreshToken: body.refreshToken };
+    // The user may have signed out (or in as someone else) while we were waiting.
+    const latest = await getTokens();
+    if (!latest || latest.refreshToken !== current.refreshToken) {
+      return null;
+    }
     await saveTokens(next);
     hooks.onTokens(next);
     return next;
@@ -111,7 +116,15 @@ export async function getFreshAccessToken(): Promise<string | null> {
   }
   if (isExpiringSoon(tokens.accessToken, Date.now())) {
     const next = await refreshTokens();
-    return next?.accessToken ?? null;
+    if (!next) {
+      // Never send the request unauthenticated: a transient refresh failure must not look like a 401.
+      const stillSignedIn = await getTokens();
+      if (stillSignedIn) {
+        throw new NetworkError("session refresh unavailable");
+      }
+      return null;
+    }
+    return next.accessToken;
   }
   return tokens.accessToken;
 }

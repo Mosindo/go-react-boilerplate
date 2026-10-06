@@ -54,6 +54,10 @@ func (s *Service) Delete(ctx context.Context, userID, password string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Same lock as photo uploads: no photo can slip in between listing and deleting.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "photos:"+userID); err != nil {
+		return err
+	}
 	rows, err := tx.Query(ctx, `SELECT storage_key FROM photos WHERE user_id = $1`, userID)
 	if err != nil {
 		return err

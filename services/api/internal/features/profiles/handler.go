@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"example.com/api/internal/platform/httpx"
@@ -109,7 +110,7 @@ func (h *Handler) Catalog(c *gin.Context) {
 }
 
 func (h *Handler) View(c *gin.Context) {
-	targetID := c.Param("userId")
+	targetID := strings.ToLower(c.Param("userId"))
 	if !uuidPattern.MatchString(targetID) {
 		httpx.Error(c, http.StatusNotFound, "profile not found")
 		return

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
@@ -26,7 +27,7 @@ func (h *Handler) Block(c *gin.Context) {
 		httpx.Error(c, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if err := h.service.Block(c.Request.Context(), c.GetString("userID"), req.UserID); err != nil {
+	if err := h.service.Block(c.Request.Context(), c.GetString("userID"), strings.ToLower(req.UserID)); err != nil {
 		h.fail(c, "safety.block", err)
 		return
 	}
@@ -39,7 +40,7 @@ func (h *Handler) Unblock(c *gin.Context) {
 		httpx.Error(c, http.StatusNotFound, "user not found")
 		return
 	}
-	if err := h.service.Unblock(c.Request.Context(), c.GetString("userID"), id); err != nil {
+	if err := h.service.Unblock(c.Request.Context(), c.GetString("userID"), strings.ToLower(id)); err != nil {
 		h.fail(c, "safety.unblock", err)
 		return
 	}
@@ -66,6 +67,7 @@ func (h *Handler) Report(c *gin.Context) {
 		httpx.Error(c, http.StatusBadRequest, "invalid request")
 		return
 	}
+	req.UserID = strings.ToLower(req.UserID)
 	if err := h.service.Report(c.Request.Context(), c.GetString("userID"), req); err != nil {
 		h.fail(c, "safety.report", err)
 		return

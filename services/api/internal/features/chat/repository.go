@@ -110,6 +110,7 @@ func (r *PGRepository) Membership(ctx context.Context, matchID, userID string) (
 		  ON other_cp.conversation_id = m.conversation_id
 		 AND other_cp.user_id = CASE WHEN m.user_a = $2 THEN m.user_b ELSE m.user_a END
 		LEFT JOIN profiles me ON me.user_id = $2
+		JOIN users peer_u ON peer_u.id = CASE WHEN m.user_a = $2 THEN m.user_b ELSE m.user_a END AND peer_u.status = 'active'
 		WHERE m.id = $1 AND m.ended_at IS NULL AND (m.user_a = $2 OR m.user_b = $2)
 	`, matchID, userID).Scan(&m.MatchID, &m.ConversationID, &m.OtherUserID, &m.OtherLastRead, &m.SelfName)
 	if errors.Is(err, pgx.ErrNoRows) {

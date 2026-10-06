@@ -45,7 +45,7 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (StoredUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
-	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
+	RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
 	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
 	CreatePasswordReset(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
@@ -266,7 +266,7 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 	return session, nil
 }
 
-func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
+func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
 	var session StoredSession
 	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
@@ -276,9 +276,11 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 		    expires_at = $5,
 		    last_used_at = $6
 		WHERE id = $1
+		  AND token_hash = $7
 		  AND revoked_at IS NULL
+		  AND expires_at > NOW()
 		RETURNING id, user_id, expires_at, created_at, last_used_at
-	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt).Scan(
+	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt, currentTokenHash).Scan(
 		&session.ID,
 		&session.UserID,
 		&session.ExpiresAt,

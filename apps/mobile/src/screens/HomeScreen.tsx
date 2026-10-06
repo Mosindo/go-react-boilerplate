@@ -94,7 +94,13 @@ export default function HomeScreen({ navigation }: Props) {
           void queryClient.invalidateQueries({ queryKey: ["likes"] });
         }
       } catch (err) {
-        // Put the card back so nothing is silently lost.
+        const status = (err as { status?: number }).status;
+        if (status === 404 || status === 400) {
+          // The profile is gone (blocked, suspended, deleted): never put it back.
+          showToast("Ce profil n'est plus disponible.");
+          return;
+        }
+        // Transient failure: put the card back so nothing is silently lost.
         setQueue((current) => [profile, ...current]);
         showToast(describeError(err, "Action impossible. Réessayez."), "danger");
       }

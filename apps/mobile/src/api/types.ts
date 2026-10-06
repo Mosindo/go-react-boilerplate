@@ -123,6 +123,8 @@ export type ReportReason = "spam" | "fake_profile" | "inappropriate_content" | "
 
 export type ServerEvent =
   | { type: "ready" }
+  /** Synthetic: the socket reconnected, so anything may have been missed. */
+  | { type: "resync" }
   | { type: "message.new"; data: ChatMessage }
   | { type: "message.read"; data: { matchId: string; readAt: string } }
   | { type: "match.new"; data: { matchId: string; userId: string } }

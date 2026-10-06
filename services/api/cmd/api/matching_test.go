@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -159,5 +160,28 @@ func TestDiscoveryPrefersPeopleWhoLikedYou(t *testing.T) {
 	ids := e.discoverIDs(me)
 	if len(ids) != 4 || ids[0] != fans[0].ID {
 		t.Fatalf("the person who liked me should come first, got %v", ids)
+	}
+}
+
+func TestUppercaseUUIDsStillMatchAndSelfGuardsHold(t *testing.T) {
+	e := newEnv(t)
+	a := e.newPerson(persona{Name: "Upa", Gender: "woman", InterestedIn: []string{"man"}})
+	b := e.newPerson(persona{Name: "Upb", Gender: "man", InterestedIn: []string{"woman"}})
+	up := func(u user) user { u.ID = strings.ToUpper(u.ID); return u }
+
+	e.expect(e.do(http.MethodPost, "/swipes", a.Token, map[string]string{"userId": up(a).ID, "action": "like"}), http.StatusBadRequest)
+	e.swipe(a, up(b), "like", http.StatusCreated)
+	if out := e.swipe(b, up(a), "like", http.StatusCreated); !out.Matched {
+		t.Fatalf("uppercase ids must not break matching: %+v", out)
+	}
+	e.expect(e.do(http.MethodPost, "/blocks", a.Token, map[string]string{"userId": up(a).ID}), http.StatusBadRequest)
+}
+
+func TestMultipartContentTypeDoesNotBypassJSONBodyLimit(t *testing.T) {
+	e := newEnv(t)
+	huge := []byte(`{"email":"` + strings.Repeat("a", 3<<20) + `"}`)
+	r := e.raw(http.MethodPost, "/auth/login", "", "", huge, "multipart/form-data; boundary=x")
+	if r.Status != http.StatusBadRequest && r.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected rejection, got %d", r.Status)
 	}
 }

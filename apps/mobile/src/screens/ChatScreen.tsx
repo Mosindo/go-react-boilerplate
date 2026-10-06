@@ -24,9 +24,7 @@ type Row = { kind: "message"; key: string; message: ChatMessage } | { kind: "pen
 function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
   const byId = new Map(current.map((message) => [message.id, message]));
   incoming.forEach((message) => byId.set(message.id, message));
-  return [...byId.values()].sort((a, b) =>
-    a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt.localeCompare(b.createdAt)
-  );
+  return [...byId.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export default function ChatScreen({ navigation, route }: Props) {
@@ -45,6 +43,8 @@ export default function ChatScreen({ navigation, route }: Props) {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [draft, setDraft] = useState("");
   const focused = useRef(true);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const markRead = useCallback(() => {
     void markMatchRead(matchId)
@@ -76,10 +76,13 @@ export default function ChatScreen({ navigation, route }: Props) {
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
+      if (stateRef.current === "ready") {
+        markRead(); // messages may have arrived while another screen was on top
+      }
       return () => {
         focused.current = false;
       };
-    }, [])
+    }, [markRead])
   );
 
   useRealtimeEvents((event) => {
@@ -88,6 +91,8 @@ export default function ChatScreen({ navigation, route }: Props) {
       if (focused.current) {
         markRead();
       }
+    } else if (event.type === "resync") {
+      void load();
     } else if (event.type === "message.read" && event.data.matchId === matchId) {
       setPeerReadAt(event.data.readAt);
     } else if (event.type === "match.ended" && event.data.matchId === matchId) {
@@ -281,7 +286,7 @@ export default function ChatScreen({ navigation, route }: Props) {
           }
           const { message } = item;
           const mine = message.senderId === myId;
-          const read = mine && message.id === lastMineId && peerReadAt !== null && message.createdAt <= peerReadAt;
+          const read = mine && message.id === lastMineId && peerReadAt !== null && Date.parse(message.createdAt) <= Date.parse(peerReadAt);
           return <MessageItem body={message.body} mine={mine} status={read ? "Lu" : undefined} time={formatClock(message.createdAt)} />;
         }}
         testID="chat-screen"

@@ -103,7 +103,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
             // We may have missed events while disconnected: re-sync lists.
             void queryClient.invalidateQueries({ queryKey: ["matches"] });
             void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-            void queryClient.invalidateQueries({ queryKey: ["thread"] });
+            listeners.current.forEach((listener) => listener({ type: "resync" }));
           }
           retry = 0;
         }

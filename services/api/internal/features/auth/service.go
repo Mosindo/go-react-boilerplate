@@ -146,6 +146,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	rotatedSession, err := s.repo.RotateSessionToken(
 		ctx,
 		session.ID,
+		tokenHash,
 		hashRefreshToken(refreshSecret),
 		userAgent,
 		ipAddress,
@@ -217,9 +218,12 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 	}
 	body := "Votre code de réinitialisation : " + code + "\n\n" +
 		"Il est valable une heure. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
-	if err := s.mailer.Send(ctx, stored.User.Email, "Réinitialisation de votre mot de passe", body); err != nil {
-		log.Printf(`{"event":"password_reset_mail_failed","user_id":%q,"error":%q}`, stored.User.ID, err.Error())
-	}
+	// Sent in the background so response time does not reveal whether the account exists.
+	go func(to, userID string) {
+		if err := s.mailer.Send(context.Background(), to, "Réinitialisation de votre mot de passe", body); err != nil {
+			log.Printf(`{"event":"password_reset_mail_failed","user_id":%q,"error":%q}`, userID, err.Error())
+		}
+	}(stored.User.Email, stored.User.ID)
 	return nil
 }
 

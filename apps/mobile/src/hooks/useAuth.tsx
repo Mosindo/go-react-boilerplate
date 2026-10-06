@@ -4,6 +4,7 @@ import { logout as logoutRequest, me } from "../api/auth";
 import { ApiError, setSessionHooks } from "../api/client";
 import { getSelf } from "../api/dating";
 import type { AuthSession, AuthUser, SelfState } from "../api/types";
+import { finishOnboardingFlow } from "../state/onboardingFlow";
 import { clearTokens, getTokens, saveTokens, type AuthTokens } from "../store/tokenStore";
 
 type Status = "booting" | "signedOut" | "signedIn";
@@ -48,6 +49,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
   refreshTokenRef.current = tokens?.refreshToken ?? null;
 
   const endSession = useCallback(async () => {
+    finishOnboardingFlow();
     await clearTokens();
     setTokens(null);
     setUser(null);
@@ -109,6 +111,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(
     async (session: AuthSession) => {
       queryClient.clear();
+      finishOnboardingFlow();
       await saveTokens({ accessToken: session.accessToken, refreshToken: session.refreshToken });
       setTokens({ accessToken: session.accessToken, refreshToken: session.refreshToken });
       setUser(session.user);

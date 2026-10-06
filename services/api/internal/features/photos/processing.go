@@ -19,11 +19,14 @@ import (
 const (
 	maxUploadBytes = 8 << 20 // 8 MiB accepted from the client
 	maxSourceSide  = 8000    // reject absurd dimensions before decoding pixels
-	maxSourcePixel = 40_000_000
+	maxSourcePixel = 16_000_000
 	minSide        = 200
 	maxOutputSide  = 1600
 	jpegQuality    = 85
 )
+
+// decodeSlots caps concurrent image decodes process-wide.
+var decodeSlots = make(chan struct{}, 4)
 
 var (
 	ErrUnsupportedType = errors.New("unsupported image type (JPEG, PNG or WebP only)")
@@ -43,6 +46,9 @@ type Processed struct {
 // dimensions are checked before decoding, EXIF orientation is applied and then
 // every piece of metadata (EXIF, GPS, comments) is dropped by re-encoding.
 func Process(raw []byte) (Processed, error) {
+	// Decoding is memory hungry: bound how many run at once.
+	decodeSlots <- struct{}{}
+	defer func() { <-decodeSlots }()
 	if len(raw) == 0 {
 		return Processed{}, ErrCorruptImage
 	}

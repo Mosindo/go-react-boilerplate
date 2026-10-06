@@ -66,7 +66,8 @@ func (h *Handler) Serve(c *gin.Context) {
 	defer conn.Close()
 	conn.SetReadLimit(maxFrameSize)
 
-	userID, ok := h.authenticate(c.Request.Context(), conn)
+	identity, ok := h.authenticate(c.Request.Context(), conn)
+	userID := identity.UserID
 	if !ok {
 		_ = conn.WriteControl(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "unauthorized"),
@@ -115,6 +116,12 @@ func (h *Handler) Serve(c *gin.Context) {
 				return
 			}
 		case <-ticker.C:
+			// Logout, password reset, suspension or deletion must end the stream too.
+			if h.validator != nil {
+				if active, err := h.validator.IsSessionActive(c.Request.Context(), identity.SessionID, identity.UserID); err == nil && !active {
+					return
+				}
+			}
 			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
@@ -123,22 +130,22 @@ func (h *Handler) Serve(c *gin.Context) {
 	}
 }
 
-func (h *Handler) authenticate(ctx context.Context, conn *websocket.Conn) (string, bool) {
+func (h *Handler) authenticate(ctx context.Context, conn *websocket.Conn) (middleware.Identity, bool) {
 	_ = conn.SetReadDeadline(time.Now().Add(authTimeout))
 	_, raw, err := conn.ReadMessage()
 	if err != nil {
-		return "", false
+		return middleware.Identity{}, false
 	}
 	var frame struct {
 		Type  string `json:"type"`
 		Token string `json:"token"`
 	}
 	if err := json.Unmarshal(raw, &frame); err != nil || frame.Type != "auth" || frame.Token == "" {
-		return "", false
+		return middleware.Identity{}, false
 	}
 	identity, err := middleware.Authenticate(ctx, h.jwtSecret, h.validator, frame.Token)
 	if err != nil {
-		return "", false
+		return middleware.Identity{}, false
 	}
-	return identity.UserID, true
+	return identity, true
 }

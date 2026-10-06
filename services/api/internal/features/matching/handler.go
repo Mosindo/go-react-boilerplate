@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"example.com/api/internal/features/profiles"
 	"example.com/api/internal/platform/httpx"
@@ -51,7 +52,8 @@ func (h *Handler) Swipe(c *gin.Context) {
 		httpx.Error(c, http.StatusBadRequest, "invalid request")
 		return
 	}
-	res, err := h.service.Swipe(c.Request.Context(), c.GetString("userID"), req.UserID, req.Action)
+	// Canonical lower-case form: ordering, locking and self-checks compare strings.
+	res, err := h.service.Swipe(c.Request.Context(), c.GetString("userID"), strings.ToLower(req.UserID), req.Action)
 	if err != nil {
 		h.fail(c, "matching.swipe", err)
 		return

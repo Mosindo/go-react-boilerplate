@@ -22,3 +22,7 @@ test("describeError never leaks raw technical messages", () => {
   );
   assert.equal(describeError(undefined, "fallback"), "fallback");
 });
+
+test("describeError explains suspended accounts", () => {
+  assert.match(describeError({ status: 403, code: "account_suspended", message: "account suspended" }), /suspendu/);
+});

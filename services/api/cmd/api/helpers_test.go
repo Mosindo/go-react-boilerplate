@@ -49,14 +49,18 @@ func (m *captureMailer) Send(_ context.Context, to, _ string, body string) error
 	return nil
 }
 
+// codeFor waits briefly: the API sends reset emails in the background.
 func (m *captureMailer) codeFor(email string) string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	match := regexp.MustCompile(`: ([A-Z2-9]{8})`).FindStringSubmatch(m.last[email])
-	if len(match) != 2 {
-		return ""
+	for i := 0; i < 100; i++ {
+		m.mu.Lock()
+		match := regexp.MustCompile(`: ([A-Z2-9]{8})`).FindStringSubmatch(m.last[email])
+		m.mu.Unlock()
+		if len(match) == 2 {
+			return match[1]
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	return match[1]
+	return ""
 }
 
 type env struct {

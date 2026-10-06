@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { getFreshAccessToken } from "../api/client";
 import { useAuthedImage } from "../shared/useAuthedImage";
 import { useTheme } from "../shared/ui";
 
@@ -16,6 +17,22 @@ export function PhotoImage({ path, style, resizeMode = "cover", accessibilityLab
   const { colors } = useTheme();
   const source = useAuthedImage(path);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const retriedFor = useRef<string | null>(null);
+  const authorization = source?.headers.Authorization;
+
+  // A new token (after a refresh) or a new photo gets a fresh attempt.
+  useEffect(() => {
+    setState("loading");
+  }, [authorization, path]);
+
+  const onError = () => {
+    setState("error");
+    if (path && retriedFor.current !== path) {
+      // Most likely an expired access token: refresh once; the new token re-renders this image.
+      retriedFor.current = path;
+      void getFreshAccessToken().catch(() => undefined);
+    }
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.surfaceSubtle }, style]}>
@@ -23,7 +40,7 @@ export function PhotoImage({ path, style, resizeMode = "cover", accessibilityLab
         <Image
           accessibilityLabel={accessibilityLabel}
           accessible={Boolean(accessibilityLabel)}
-          onError={() => setState("error")}
+          onError={onError}
           onLoad={() => setState("ready")}
           resizeMode={resizeMode}
           source={source}

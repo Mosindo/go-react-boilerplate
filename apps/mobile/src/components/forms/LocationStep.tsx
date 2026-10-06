@@ -66,7 +66,13 @@ export function LocationStep({ busy = false, error, currentCity, submitLabel = "
       </Text>
       {problem || error ? <Notice message={(problem ?? error) as string} tone="danger" /> : null}
       <Button label={submitLabel} loading={busy || working} onPress={locate} testID="location-submit" />
-      {denied ? <Button label="Ouvrir les réglages" onPress={() => void Linking.openSettings()} variant="ghost" /> : null}
+      {problem ? (
+        <Button
+          label={denied ? "Ouvrir les réglages" : "Ouvrir les réglages de localisation"}
+          onPress={() => void Linking.openSettings()}
+          variant="ghost"
+        />
+      ) : null}
     </View>
   );
 }

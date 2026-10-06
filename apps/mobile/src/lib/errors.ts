@@ -31,6 +31,9 @@ export function describeError(error: unknown, fallback = "Une erreur est survenu
   if (e.status !== undefined && e.status >= 500) {
     return "Le service rencontre un problème. Réessayez dans un instant.";
   }
+  if (e.code === "account_suspended") {
+    return "Votre compte est suspendu. Contactez le support pour en savoir plus.";
+  }
   if (e.code === "profile_incomplete") {
     return "Terminez d'abord votre profil.";
   }
