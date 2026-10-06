@@ -31,6 +31,12 @@ func (h *Handler) Register(c *gin.Context) {
 		case errors.Is(err, ErrEmailExists):
 			status = http.StatusConflict
 			c.JSON(status, gin.H{"error": "email already exists"})
+		case errors.Is(err, ErrPasswordTooLong):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": "password too long"})
+		case errors.Is(err, ErrInvalidEmail):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": "invalid email"})
 		default:
 			c.JSON(status, gin.H{"error": "could not create user"})
 		}
@@ -181,4 +187,43 @@ func (h *Handler) Me(c *gin.Context) {
 		OrganizationID: user.OrganizationID,
 		CreatedAt:      user.CreatedAt,
 	})
+}
+
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	if err := h.service.ForgotPassword(c.Request.Context(), req.Email); err != nil {
+		if errors.Is(err, ErrInvalidEmail) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email"})
+			return
+		}
+		logger.LogHandlerError(c, "auth.password.forgot", http.StatusInternalServerError, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not start password recovery"})
+		return
+	}
+	// Same answer whether or not the email exists.
+	c.JSON(http.StatusAccepted, gin.H{"status": "if the account exists, a code was sent"})
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	err := h.service.ResetPassword(c.Request.Context(), req.Email, req.Code, req.NewPassword)
+	switch {
+	case err == nil:
+		c.Status(http.StatusNoContent)
+	case errors.Is(err, ErrInvalidResetCode):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired code"})
+	case errors.Is(err, ErrPasswordTooLong):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password too long"})
+	default:
+		logger.LogHandlerError(c, "auth.password.reset", http.StatusInternalServerError, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not reset password"})
+	}
 }

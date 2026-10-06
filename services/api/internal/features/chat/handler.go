@@ -3,12 +3,14 @@ package chat
 import (
 	"errors"
 	"net/http"
-	"strconv"
-	"strings"
+	"regexp"
 
+	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
 	"github.com/gin-gonic/gin"
 )
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type Handler struct {
 	service *Service
@@ -18,201 +20,129 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func (h *Handler) Chats(c *gin.Context) {
-	userID := c.GetString("userID")
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "chat.list.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-		return
-	}
-	limit := parseBoundedLimit(c.Query("limit"), 20, 100)
-	offset := parseNonNegativeInt(c.Query("offset"), 0)
-	chats, err := h.service.ListChatsWithPagination(c.Request.Context(), organizationID, userID, limit, offset)
+func (h *Handler) Matches(c *gin.Context) {
+	limit := httpx.Limit(c.Query("limit"), defaultMatchesLimit, maxMatchesLimit)
+	offset := httpx.Offset(c.Query("offset"))
+	items, unread, err := h.service.ListMatches(c.Request.Context(), c.GetString("userID"), limit, offset)
 	if err != nil {
-		logger.LogHandlerError(c, "chat.list", http.StatusInternalServerError, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch chats"})
+		h.fail(c, "chat.matches", err)
 		return
 	}
-
-	payload := make([]ChatSummaryResponse, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummaryResponse{
-			User: UserResponse{
-				ID:        chat.UserID,
-				Email:     chat.UserEmail,
-				CreatedAt: chat.UserCreatedAt,
-			},
+	payload := make([]MatchResponse, 0, len(items))
+	for _, it := range items {
+		r := MatchResponse{
+			ID:          it.ID,
+			User:        PeerResponse{UserID: it.Peer.UserID, FirstName: it.Peer.FirstName},
+			CreatedAt:   it.CreatedAt,
+			UnreadCount: it.UnreadCount,
 		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreviewResponse{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
+		if it.Peer.PrimaryPhoto != "" {
+			r.User.PrimaryPhoto = "/photos/" + it.Peer.PrimaryPhoto + "/content"
 		}
-		payload = append(payload, item)
+		if it.LastMessage != nil {
+			lm := ToMessageResponse(*it.LastMessage)
+			r.LastMessage = &lm
+		}
+		payload = append(payload, r)
 	}
-
-	c.JSON(http.StatusOK, ChatsResponse{Chats: payload})
+	httpx.NoStore(c)
+	c.JSON(http.StatusOK, MatchesResponse{Matches: payload, UnreadTotal: unread})
 }
 
-func (h *Handler) ChatMessages(c *gin.Context) {
-	userID := c.GetString("userID")
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "chat.messages.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+func (h *Handler) Messages(c *gin.Context) {
+	matchID, ok := matchParam(c)
+	if !ok {
 		return
 	}
-	otherUserID := strings.TrimSpace(c.Param("userId"))
-	if !isUUIDLike(otherUserID) {
-		logger.LogHandlerError(c, "chat.messages.validate_user_id", http.StatusBadRequest, errors.New("invalid user id"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+	before := c.Query("before")
+	if before != "" && !uuidPattern.MatchString(before) {
+		httpx.Error(c, http.StatusBadRequest, "invalid cursor")
 		return
 	}
-	if otherUserID == userID {
-		logger.LogHandlerError(c, "chat.messages.validate_self", http.StatusBadRequest, errors.New("cannot open self chat"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot open self chat"})
-		return
-	}
-
-	limit := parsePositiveInt(c.Query("limit"), 200)
-	messages, err := h.service.ListMessagesWithLimit(c.Request.Context(), organizationID, userID, otherUserID, limit)
+	msgs, hasMore, peerRead, err := h.service.ListMessages(c.Request.Context(), c.GetString("userID"), matchID, before, httpx.Limit(c.Query("limit"), defaultMessagesLimit, maxMessagesLimit))
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrValidateChatTarget):
-			c.JSON(status, gin.H{"error": "could not validate chat target"})
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusNotFound
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not fetch messages"})
-		}
-		logger.LogHandlerError(c, "chat.messages", status, err)
+		h.fail(c, "chat.messages", err)
 		return
 	}
-
-	payload := make([]ChatMessageResponse, 0, len(messages))
-	for _, message := range messages {
-		payload = append(payload, ChatMessageResponse{
-			ID:              message.ID,
-			SenderUserID:    message.SenderUserID,
-			RecipientUserID: message.RecipientUserID,
-			Content:         message.Content,
-			CreatedAt:       message.CreatedAt,
-		})
+	payload := make([]MessageResponse, 0, len(msgs))
+	for _, m := range msgs {
+		payload = append(payload, ToMessageResponse(m))
 	}
-
-	c.JSON(http.StatusOK, ChatMessagesResponse{Messages: payload})
+	httpx.NoStore(c)
+	c.JSON(http.StatusOK, MessagesResponse{Messages: payload, HasMore: hasMore, PeerLastReadAt: peerRead})
 }
 
-func (h *Handler) SendChatMessage(c *gin.Context) {
-	userID := c.GetString("userID")
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "chat.send.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+func (h *Handler) Send(c *gin.Context) {
+	matchID, ok := matchParam(c)
+	if !ok {
 		return
 	}
-	otherUserID := strings.TrimSpace(c.Param("userId"))
-	if !isUUIDLike(otherUserID) {
-		logger.LogHandlerError(c, "chat.send.validate_user_id", http.StatusBadRequest, errors.New("invalid user id"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
-	if otherUserID == userID {
-		logger.LogHandlerError(c, "chat.send.validate_self", http.StatusBadRequest, errors.New("cannot message yourself"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot message yourself"})
-		return
-	}
-
 	var req SendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "chat.send.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		httpx.Error(c, http.StatusBadRequest, "invalid request")
 		return
 	}
-
-	message, err := h.service.SendMessage(c.Request.Context(), organizationID, userID, otherUserID, req.Content)
+	msg, err := h.service.Send(c.Request.Context(), c.GetString("userID"), matchID, req.Body)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrValidateChatTarget):
-			c.JSON(status, gin.H{"error": "could not validate chat target"})
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusNotFound
-			c.JSON(status, gin.H{"error": "user not found"})
-		case errors.Is(err, ErrMessageContentNeeded):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "message content required"})
-		default:
-			c.JSON(status, gin.H{"error": "could not send message"})
-		}
-		logger.LogHandlerError(c, "chat.send", status, err)
+		h.fail(c, "chat.send", err)
 		return
 	}
-
-	status := http.StatusCreated
-	c.JSON(status, ChatMessageResponse{
-		ID:              message.ID,
-		SenderUserID:    message.SenderUserID,
-		RecipientUserID: message.RecipientUserID,
-		Content:         message.Content,
-		CreatedAt:       message.CreatedAt,
-	})
-	logger.LogHandlerEvent(c, "chat.send.success", status, map[string]string{
-		"recipient_user_id": otherUserID,
-		"message_id":        message.ID,
-	})
+	c.JSON(http.StatusCreated, ToMessageResponse(msg))
 }
 
-func parsePositiveInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+func (h *Handler) MarkRead(c *gin.Context) {
+	matchID, ok := matchParam(c)
+	if !ok {
+		return
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed <= 0 {
-		return fallback
+	if err := h.service.MarkRead(c.Request.Context(), c.GetString("userID"), matchID); err != nil {
+		h.fail(c, "chat.read", err)
+		return
 	}
-	return parsed
+	c.Status(http.StatusNoContent)
 }
 
-func parseBoundedLimit(raw string, fallback, max int) int {
-	parsed := parsePositiveInt(raw, fallback)
-	if parsed > max {
-		return max
+func (h *Handler) Hide(c *gin.Context) {
+	matchID, ok := matchParam(c)
+	if !ok {
+		return
 	}
-	return parsed
+	if err := h.service.Hide(c.Request.Context(), c.GetString("userID"), matchID); err != nil {
+		h.fail(c, "chat.hide", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
-func parseNonNegativeInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+func (h *Handler) Unmatch(c *gin.Context) {
+	matchID, ok := matchParam(c)
+	if !ok {
+		return
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed < 0 {
-		return fallback
+	if err := h.service.Unmatch(c.Request.Context(), c.GetString("userID"), matchID); err != nil {
+		h.fail(c, "chat.unmatch", err)
+		return
 	}
-	return parsed
+	c.Status(http.StatusNoContent)
 }
 
-func isUUIDLike(v string) bool {
-	if len(v) != 36 {
-		return false
+func matchParam(c *gin.Context) (string, bool) {
+	id := c.Param("matchId")
+	if !uuidPattern.MatchString(id) {
+		httpx.Error(c, http.StatusNotFound, "match not found")
+		return "", false
 	}
-	hyphenPos := map[int]struct{}{8: {}, 13: {}, 18: {}, 23: {}}
-	for i := 0; i < len(v); i++ {
-		ch := v[i]
-		if _, ok := hyphenPos[i]; ok {
-			if ch != '-' {
-				return false
-			}
-			continue
-		}
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
-			return false
-		}
+	return id, true
+}
+
+func (h *Handler) fail(c *gin.Context, op string, err error) {
+	switch {
+	case errors.Is(err, ErrMatchNotFound):
+		httpx.Error(c, http.StatusNotFound, "match not found")
+	case errors.Is(err, ErrEmptyMessage), errors.Is(err, ErrMessageTooBig):
+		httpx.Error(c, http.StatusUnprocessableEntity, err.Error())
+	default:
+		logger.LogHandlerError(c, op, http.StatusInternalServerError, err)
+		httpx.Internal(c)
 	}
-	return true
 }
