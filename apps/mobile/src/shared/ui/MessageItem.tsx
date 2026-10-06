@@ -1,46 +1,44 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { useTheme } from "./theme";
+import { radii, spacing } from "./tokens";
 
 export type MessageItemProps = {
-  content: string;
-  mine?: boolean;
-  style?: StyleProp<ViewStyle>;
+  body: string;
+  time: string;
+  mine: boolean;
+  /** "Lu" marker shown under my last read message. */
+  status?: string;
 };
 
-export function MessageItem({ content, mine = false, style }: MessageItemProps) {
+export function MessageItem({ body, time, mine, status }: MessageItemProps) {
+  const { colors } = useTheme();
   return (
-    <View style={[styles.bubble, mine ? styles.mine : styles.theirs, style]}>
-      <Text style={mine ? styles.mineText : styles.theirsText} tone={mine ? "inverse" : "default"}>
-        {content}
-      </Text>
+    <View style={[styles.row, mine ? styles.rowMine : styles.rowTheirs]}>
+      <View
+        style={[
+          styles.bubble,
+          mine
+            ? { backgroundColor: colors.primary, borderBottomRightRadius: radii.xs }
+            : { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderBottomLeftRadius: radii.xs }
+        ]}
+      >
+        <Text selectable style={{ color: mine ? colors.primaryForeground : colors.text }}>
+          {body}
+        </Text>
+        <Text style={{ color: mine ? colors.primaryForeground : colors.textSubtle, opacity: 0.8, alignSelf: "flex-end" }} variant="caption">
+          {time}
+          {status ? ` · ${status}` : ""}
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bubble: {
-    maxWidth: "78%",
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm
-  },
-  mine: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.text
-  },
-  theirs: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  mineText: {
-    color: colors.inverse
-  },
-  theirsText: {
-    color: colors.text
-  }
+  row: { flexDirection: "row", paddingHorizontal: spacing.lg, marginVertical: 3 },
+  rowMine: { justifyContent: "flex-end" },
+  rowTheirs: { justifyContent: "flex-start" },
+  bubble: { maxWidth: "80%", borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 }
 });

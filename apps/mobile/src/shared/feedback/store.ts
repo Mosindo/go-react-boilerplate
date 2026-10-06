@@ -1,90 +1,42 @@
 import { useSyncExternalStore } from "react";
 
-type FeedbackState = {
-  error: string | null;
-  errors: string[];
-  loadingCount: number;
-  loadingLabel: string | null;
-  loadingLabels: string[];
-};
+export type Toast = { id: number; message: string; tone: "info" | "success" | "danger" };
 
-type Listener = () => void;
-
-let state: FeedbackState = {
-  error: null,
-  errors: [],
-  loadingCount: 0,
-  loadingLabel: null,
-  loadingLabels: []
-};
-
-const listeners = new Set<Listener>();
+let toasts: Toast[] = [];
+let nextId = 1;
+const listeners = new Set<() => void>();
 
 function emit() {
   listeners.forEach((listener) => listener());
 }
 
-function subscribe(listener: Listener) {
+function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-function getSnapshot(): FeedbackState {
-  return state;
-}
-
-export function beginGlobalLoading(label = "Working...") {
-  const nextLabels = [...state.loadingLabels, label];
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function endGlobalLoading() {
-  const nextLabels = state.loadingLabels.slice(0, -1);
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function showGlobalError(message: string) {
+/** Shows a transient message at the bottom of the screen (auto-dismissed by <ToastHost />). */
+export function showToast(message: string, tone: Toast["tone"] = "info"): void {
   if (!message) {
     return;
   }
-
-  const nextErrors = state.errors.at(-1) === message ? state.errors : [...state.errors, message];
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
+  toasts = [...toasts.filter((toast) => toast.message !== message), { id: nextId++, message, tone }].slice(-3);
   emit();
 }
 
-export function clearGlobalError() {
-  if (state.errors.length === 0) {
-    return;
-  }
+export const showGlobalError = (message: string) => showToast(message, "danger");
 
-  const nextErrors = state.errors.slice(0, -1);
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
+export function dismissToast(id: number): void {
+  toasts = toasts.filter((toast) => toast.id !== id);
   emit();
 }
 
-export function useGlobalFeedback() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+export function useToasts(): Toast[] {
+  return useSyncExternalStore(
+    subscribe,
+    () => toasts,
+    () => toasts
+  );
 }

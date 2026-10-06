@@ -2,23 +2,16 @@ param(
   [string]$ApiBaseUrl = "http://localhost:18080"
 )
 
+# Quality gate for Windows machines: same checks as scripts/check.sh, followed by
+# the end-to-end API smoke test against a running API (docker compose up -d).
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $reportDir = Join-Path $repoRoot ".smoke"
 $reportPath = Join-Path $reportDir "qa-lite-report.txt"
-$goCacheDir = Join-Path $repoRoot ".cache\\go-build"
-
-if (-not (Test-Path $reportDir)) {
-  New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
-}
-
-if (-not (Test-Path $goCacheDir)) {
-  New-Item -ItemType Directory -Path $goCacheDir -Force | Out-Null
-}
-
-$env:GOCACHE = $goCacheDir
+New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 
 $results = New-Object System.Collections.Generic.List[string]
 $failed = $false
@@ -26,6 +19,7 @@ $failed = $false
 function Run-Step([string]$name, [scriptblock]$action) {
   try {
     & $action
+    if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
     $results.Add("PASS - $name")
   }
   catch {
@@ -39,72 +33,25 @@ try {
   Run-Step "Backend gofmt" {
     Push-Location ".\services\api"
     try {
-      $unformatted = @(Get-ChildItem -Recurse -Filter *.go | ForEach-Object { gofmt -l $_.FullName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-      if ($LASTEXITCODE -ne 0) { throw "gofmt check failed with exit code $LASTEXITCODE" }
-      if ($unformatted.Count -gt 0) {
-        throw ("gofmt check failed. Unformatted files:`n{0}" -f ($unformatted -join [Environment]::NewLine))
-      }
-    }
-    finally {
-      Pop-Location
-    }
+      $unformatted = gofmt -l .
+      if ($unformatted) { throw "gofmt needed on: $unformatted" }
+    } finally { Pop-Location }
   }
-
-  Run-Step "Backend tests (go test ./...)" {
-    Push-Location ".\services\api"
-    try {
-      go test ./... | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "go test exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Backend build (go build ./cmd/api)" {
-    Push-Location ".\services\api"
-    try {
-      go build ./cmd/api
-      if ($LASTEXITCODE -ne 0) { throw "go build exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Mobile TypeScript check (npx tsc --noEmit)" {
+  Run-Step "Backend go vet" { Push-Location ".\services\api"; try { go vet ./... } finally { Pop-Location } }
+  Run-Step "Backend go test" { Push-Location ".\services\api"; try { go test ./... } finally { Pop-Location } }
+  Run-Step "Backend go build" { Push-Location ".\services\api"; try { go build -o NUL ./cmd/api } finally { Pop-Location } }
+  Run-Step "Mobile npm ci" { Push-Location ".\apps\mobile"; try { npm ci } finally { Pop-Location } }
+  Run-Step "Mobile typecheck" { Push-Location ".\apps\mobile"; try { npx tsc --noEmit } finally { Pop-Location } }
+  Run-Step "Mobile lint" { Push-Location ".\apps\mobile"; try { npx eslint . --max-warnings 0 } finally { Pop-Location } }
+  Run-Step "Mobile unit tests" { Push-Location ".\apps\mobile"; try { npm test } finally { Pop-Location } }
+  Run-Step "API smoke (register -> match -> chat)" {
     Push-Location ".\apps\mobile"
-    try {
-      npx tsc --noEmit
-      if ($LASTEXITCODE -ne 0) { throw "tsc exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Smoke API + mobile critique" {
-    & (Join-Path $repoRoot "scripts/smoke-all.ps1") -ApiBaseUrl $ApiBaseUrl
-    if ($LASTEXITCODE -ne 0) { throw "smoke-all exited with code $LASTEXITCODE" }
+    try { $env:MOBILE_E2E_API_URL = $ApiBaseUrl; npm run e2e:smoke } finally { Pop-Location }
   }
 }
 finally {
   Pop-Location
 }
 
-$stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$header = @(
-  "go-react-saas QA Lite Report",
-  "Generated: $stamp",
-  "API Base URL: $ApiBaseUrl",
-  ""
-)
-
-($header + $results) | Set-Content -Path $reportPath -Encoding UTF8
-Get-Content $reportPath
-
-if ($failed) {
-  exit 1
-}
-
-exit 0
+$results | Tee-Object -FilePath $reportPath
+if ($failed) { exit 1 }

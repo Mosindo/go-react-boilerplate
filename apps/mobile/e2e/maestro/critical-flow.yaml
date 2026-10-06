@@ -1,10 +1,11 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lien critical flow (sign in -> discover -> like -> match -> chat)
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: Login
+- assertVisible:
+    id: auth-screen
 - tapOn:
     id: auth-email-input
 - inputText: ${TEST_EMAIL}
@@ -14,35 +15,39 @@ name: go-react-saas Critical Flow
 - tapOn:
     id: auth-submit-button
 
+# Discovery shows the contact, who already liked us.
 - assertVisible:
     id: home-screen
+- assertVisible: ${CONTACT_NAME}.*
+- tapOn:
+    id: like-button
 
+# Reciprocal like -> match celebration.
+- assertVisible:
+    id: match-modal
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
+    id: match-modal-message
 
-- tapOn: Chat
+# Conversation.
 - assertVisible:
     id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
 - tapOn:
     id: chat-message-input
-- inputText: maestro ui ping
+- inputText: Bonjour, ravi de ce match !
 - tapOn:
     id: chat-send-button
-- assertVisible: maestro ui ping
+- assertVisible: Bonjour, ravi de ce match !
 
-- tapOn: Notifications
+# The conversation is listed.
+- back
+- tapOn:
+    id: tab-messages
 - assertVisible:
-    id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
+    id: matches-list
+- assertVisible: ${CONTACT_NAME}
 
-- tapOn: Profile
+# Profile / settings are reachable.
+- tapOn:
+    id: tab-profile
 - assertVisible:
     id: profile-screen

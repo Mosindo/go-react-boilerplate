@@ -111,6 +111,7 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))
+	r.Use(middleware.BodyLimit(1 << 20))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
@@ -132,7 +133,7 @@ func setupRouter(a *app) *gin.Engine {
 	accountService := accountfeature.NewService(a.dbPool, a.blobs)
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
-	r.GET("/ws", realtime.NewHandler(hub, a.jwtSecret, authService, a.allowedOrigins).Serve)
+	r.GET("/ws", middleware.RateLimitByIP(30, time.Minute), realtime.NewHandler(hub, a.jwtSecret, authService, a.allowedOrigins).Serve)
 
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser)
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)

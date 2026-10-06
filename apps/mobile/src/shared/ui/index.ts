@@ -10,4 +10,5 @@ export * from "./MessageItem";
 export * from "./Notice";
 export * from "./NotificationItem";
 export * from "./Text";
+export * from "./theme";
 export * from "./tokens";

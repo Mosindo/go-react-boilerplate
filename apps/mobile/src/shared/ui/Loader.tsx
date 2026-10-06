@@ -1,38 +1,29 @@
 import React from "react";
-import { ActivityIndicator, StyleSheet, View, type ActivityIndicatorProps, type StyleProp, type ViewStyle } from "react-native";
+import { ActivityIndicator, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Text } from "./Text";
-import { colors, spacing, typography } from "./tokens";
+import { useTheme } from "./theme";
+import { spacing } from "./tokens";
 
 export type LoaderProps = {
-  fullScreen?: boolean;
   label?: string;
-  size?: ActivityIndicatorProps["size"];
+  size?: "small" | "large";
   style?: StyleProp<ViewStyle>;
 };
 
-const styles = StyleSheet.create({
-  inline: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  },
-  fullScreen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.md
-  }
-});
-
-export function Loader({ fullScreen = false, label, size = "large", style }: LoaderProps) {
+export function Loader({ label, size = "large", style }: LoaderProps) {
+  const { colors } = useTheme();
   return (
-    <View style={[fullScreen ? styles.fullScreen : styles.inline, style]}>
+    <View accessibilityLabel={label ?? "Chargement"} accessibilityRole="progressbar" style={[styles.root, style]}>
       <ActivityIndicator color={colors.primary} size={size} />
       {label ? (
-        <Text style={typography.label} tone="muted">
+        <Text tone="muted" variant="label">
           {label}
         </Text>
       ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.lg }
+});

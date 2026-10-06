@@ -1,73 +1,52 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
-import { Card } from "./Card";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { useTheme } from "./theme";
+import { radii, spacing } from "./tokens";
 
 export type NotificationItemProps = {
-  body: string;
-  createdAtLabel: string;
-  isRead: boolean;
-  onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
   title: string;
-  type: string;
+  body: string;
+  time: string;
+  unread: boolean;
+  icon: "heart" | "chatbubble";
+  onPress: () => void;
 };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ title, body, time, unread, icon, onPress }: NotificationItemProps) {
+  const { colors } = useTheme();
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
-        </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.root,
+        {
+          backgroundColor: unread ? colors.primarySoft : colors.surface,
+          borderColor: unread ? colors.primaryBorder : colors.border,
+          opacity: pressed ? 0.8 : 1
+        }
+      ]}
+    >
+      <View style={[styles.icon, { backgroundColor: unread ? colors.primary : colors.surfaceSubtle }]}>
+        <Ionicons color={unread ? colors.primaryForeground : colors.textMuted} name={icon} size={18} />
+      </View>
+      <View style={styles.copy}>
+        <Text weight="semibold">{title}</Text>
+        <Text tone="muted" variant="label">
+          {body}
         </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
+        <Text tone="subtle" variant="caption">
+          {time}
         </Text>
-      </Card>
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.sm
-  },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  root: { flexDirection: "row", gap: spacing.md, padding: spacing.md, borderRadius: radii.lg, borderWidth: 1 },
+  icon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  copy: { flex: 1, gap: 2 }
 });

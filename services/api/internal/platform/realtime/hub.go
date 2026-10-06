@@ -30,10 +30,17 @@ func NewHub() *Hub {
 	return &Hub{clients: make(map[string]map[*client]struct{})}
 }
 
+// maxConnectionsPerUser bounds sockets per account (phone, tablet, a few tabs).
+const maxConnectionsPerUser = 5
+
+// register adds a connection, or returns nil when the user already has too many.
 func (h *Hub) register(userID string) *client {
 	c := &client{userID: userID, send: make(chan []byte, sendBuffer)}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if len(h.clients[userID]) >= maxConnectionsPerUser {
+		return nil
+	}
 	if h.clients[userID] == nil {
 		h.clients[userID] = make(map[*client]struct{})
 	}

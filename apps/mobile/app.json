@@ -1,12 +1,42 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lien",
+    "slug": "lien",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "scheme": "lien",
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "app.lien.dating",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Lien utilise votre position approximative pour vous proposer des personnes proches. Votre position exacte n'est jamais partagée.",
+        "NSPhotoLibraryUsageDescription": "Lien a besoin d'accéder à vos photos pour les ajouter à votre profil."
+      }
+    },
+    "android": {
+      "package": "app.lien.dating",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lien utilise votre position approximative pour vous proposer des personnes proches."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lien a besoin d'accéder à vos photos pour les ajouter à votre profil."
+        }
+      ]
     ]
   }
 }

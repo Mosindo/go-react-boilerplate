@@ -10,7 +10,7 @@ jobs:
   qa-lite:
     runs-on: ubuntu-latest
     env:
-      JWT_SECRET: ci-jwt-secret-32-chars-minimum-value
+      JWT_SECRET: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a6978
 
     steps:
       - name: Checkout
@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20.19.4"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: apps/mobile/package-lock.json
 
@@ -51,9 +51,11 @@ jobs:
           docker compose logs api || true
           exit 1
 
-      - name: Run QA lite
-        shell: pwsh
-        run: ./scripts/qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+      - name: API smoke (register -> match -> chat -> realtime)
+        working-directory: apps/mobile
+        env:
+          MOBILE_E2E_API_URL: http://localhost:18080
+        run: npm run e2e:smoke
 
       - name: Upload QA reports
         if: always()

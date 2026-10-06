@@ -225,3 +225,10 @@ A task is complete only if:
 
 The agent is an execution engineer.
 Architecture and product decisions belong to the founder.
+
+
+---
+
+# CURRENT PRODUCT NOTE
+
+The repository now ships **Lien**, a free dating application built on this platform (see `README.md` and `docs/ARCHITECTURE.md`). The architecture rules above still apply unchanged. Active backend features: `auth`, `profiles`, `photos`, `matching`, `chat`, `notifications`, `safety`, `account`. The legacy generic modules (`billing`, `posts`, `comments`, `files`, `users`) are not routed and are slated for removal once approved.

@@ -1,30 +1,34 @@
 export const endpoints = {
-  auth: {
-    register: "/auth/register",
-    login: "/auth/login",
-    me: "/me"
-  },
-  users: {
-    list: "/users",
-    detail: (userId: string) => `/users/${userId}`
-  },
-  posts: {
-    list: "/posts",
-    create: "/posts",
-    detail: (postId: string) => `/posts/${postId}`
-  },
-  chat: {
-    chats: "/chats",
-    messages: (userId: string) => `/chats/${userId}/messages`
-  },
-  notifications: {
-    list: "/notifications",
-    create: "/notifications",
-    markRead: (notificationId: string) => `/notifications/${notificationId}/read`
-  },
-  billing: {
-    subscription: "/billing/subscription",
-    checkout: "/billing/checkout",
-    webhook: "/billing/webhook"
-  }
+  register: "/auth/register",
+  login: "/auth/login",
+  refresh: "/auth/refresh",
+  logout: "/auth/logout",
+  forgotPassword: "/auth/password/forgot",
+  resetPassword: "/auth/password/reset",
+  me: "/me",
+  profile: "/profile",
+  profilePrivacy: "/profile/privacy",
+  profileLocation: "/profile/location",
+  profileInterests: "/profile/interests",
+  preferences: "/preferences",
+  interests: "/interests",
+  profileOf: (userId: string) => `/profiles/${userId}`,
+  photos: "/photos",
+  photosOrder: "/photos/order",
+  photo: (photoId: string) => `/photos/${photoId}`,
+  discover: "/discover",
+  likesReceived: "/likes/received",
+  swipes: "/swipes",
+  matches: "/matches",
+  match: (matchId: string) => `/matches/${matchId}`,
+  messages: (matchId: string) => `/matches/${matchId}/messages`,
+  markRead: (matchId: string) => `/matches/${matchId}/read`,
+  hide: (matchId: string) => `/matches/${matchId}/hide`,
+  notifications: "/notifications",
+  notificationsReadAll: "/notifications/read-all",
+  notificationRead: (id: string) => `/notifications/${id}/read`,
+  blocks: "/blocks",
+  block: (userId: string) => `/blocks/${userId}`,
+  reports: "/reports",
+  account: "/account"
 } as const;

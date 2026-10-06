@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -141,4 +142,39 @@ func TestAccountDeletionErasesEverything(t *testing.T) {
 		t.Fatalf("the peer must not see a ghost match: %v", list)
 	}
 	e.expect(e.do(http.MethodGet, "/me", f.b.Token, nil), http.StatusOK)
+}
+
+func TestSuspendedAccountsAreLockedOutAndHidden(t *testing.T) {
+	e := newEnv(t)
+	bad := e.newPerson(persona{Name: "Bad", Gender: "woman", InterestedIn: []string{"man"}})
+	viewer := e.newPerson(persona{Name: "View", Gender: "man", InterestedIn: []string{"woman"}})
+	if !contains(e.discoverIDs(viewer), bad.ID) {
+		t.Fatal("precondition: visible before suspension")
+	}
+
+	// What `moderation suspend` does.
+	if _, err := e.pool.Exec(t.Context(), `UPDATE users SET status='suspended' WHERE id=$1`, bad.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	e.expect(e.do(http.MethodGet, "/me", bad.Token, nil), http.StatusUnauthorized)
+	r := e.expect(e.do(http.MethodPost, "/auth/login", "", map[string]string{"email": bad.Email, "password": "Password123!"}), http.StatusForbidden)
+	if r.json(t)["code"] != "account_suspended" {
+		t.Fatalf("unexpected body %s", r.Body)
+	}
+	if contains(e.discoverIDs(viewer), bad.ID) {
+		t.Fatal("suspended users must disappear from discovery")
+	}
+	e.expect(e.do(http.MethodGet, "/profiles/"+bad.ID, viewer.Token, nil), http.StatusNotFound)
+	e.swipe(viewer, bad, "like", http.StatusNotFound)
+}
+
+func TestOversizedJSONBodiesAreRejected(t *testing.T) {
+	e := newEnv(t)
+	u := e.register("big")
+	huge := `{"firstName":"` + strings.Repeat("a", 2<<20) + `"}`
+	r := e.raw(http.MethodPut, "/profile", u.Token, "", []byte(huge), "application/json")
+	if r.Status != http.StatusBadRequest && r.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("a 2 MB JSON body must be refused, got %d", r.Status)
+	}
 }

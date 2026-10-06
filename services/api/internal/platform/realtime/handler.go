@@ -75,6 +75,12 @@ func (h *Handler) Serve(c *gin.Context) {
 	}
 
 	cl := h.hub.register(userID)
+	if cl == nil {
+		_ = conn.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "too many connections"),
+			time.Now().Add(writeWait))
+		return
+	}
 	defer h.hub.unregister(cl)
 
 	_ = conn.SetWriteDeadline(time.Now().Add(writeWait))

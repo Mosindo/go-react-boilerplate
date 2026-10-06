@@ -27,6 +27,7 @@ type StoredUser struct {
 type StoredUserWithPassword struct {
 	User         StoredUser
 	PasswordHash string
+	Suspended    bool
 }
 
 type StoredSession struct {
@@ -180,10 +181,10 @@ func (r *PGRepository) ConsumePasswordReset(ctx context.Context, resetID, userID
 func (r *PGRepository) GetUserAuthByEmail(ctx context.Context, email string) (StoredUserWithPassword, error) {
 	var user StoredUserWithPassword
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, password_hash, created_at
+		SELECT id, email, organization_id, password_hash, created_at, status = 'suspended'
 		FROM users
 		WHERE email = $1
-	`, email).Scan(&user.User.ID, &user.User.Email, &user.User.OrganizationID, &user.PasswordHash, &user.User.CreatedAt)
+	`, email).Scan(&user.User.ID, &user.User.Email, &user.User.OrganizationID, &user.PasswordHash, &user.User.CreatedAt, &user.Suspended)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUserWithPassword{}, ErrRepositoryNotFound

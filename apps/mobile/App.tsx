@@ -1,106 +1,112 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
-import AuthScreen from "./src/screens/AuthScreen";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider, useAuth } from "./src/hooks/useAuth";
-import { BottomNavigation, SafeAreaLayout } from "./src/shared/layout";
-import { clearGlobalError, ErrorView, LoadingView, useGlobalFeedback } from "./src/shared/feedback";
-import { colors, spacing } from "./src/shared/ui";
+import type { AuthStackParamList } from "./src/navigation/types";
+import { RootNavigator } from "./src/navigation/RootNavigator";
+import { RealtimeProvider } from "./src/realtime/RealtimeProvider";
+import AuthScreen from "./src/screens/AuthScreen";
+import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen";
+import OnboardingScreen from "./src/screens/OnboardingScreen";
+import { ErrorView, LoadingView, ToastHost } from "./src/shared/feedback";
+import { SafeAreaLayout } from "./src/shared/layout";
+import { Button, useTheme } from "./src/shared/ui";
+import { useOnboardingFlowActive } from "./src/state/onboardingFlow";
 
-function AppShell() {
-  const { accessToken, isAuthenticated, isBooting, user } = useAuth();
-  const globalFeedback = useGlobalFeedback();
+const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
-  useEffect(() => {
-    if (!globalFeedback.error) {
-      return;
+function SignedOutNavigator() {
+  const { colors, scheme } = useTheme();
+  const base = scheme === "dark" ? DarkTheme : DefaultTheme;
+  const theme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      primary: colors.primary,
+      border: colors.border
     }
+  };
+  return (
+    <NavigationContainer theme={theme}>
+      <AuthStack.Navigator
+        screenOptions={{
+          headerShadowVisible: false,
+          headerBackTitleVisible: false,
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.text
+        }}
+      >
+        <AuthStack.Screen component={AuthScreen} name="Auth" options={{ headerShown: false }} />
+        <AuthStack.Screen component={ForgotPasswordScreen} name="ForgotPassword" options={{ title: "Mot de passe oublié" }} />
+      </AuthStack.Navigator>
+    </NavigationContainer>
+  );
+}
 
-    const timeoutId = setTimeout(() => {
-      clearGlobalError();
-    }, 5000);
+function SignedInGate() {
+  const { self, selfLoading, selfError, refreshSelf, signOut } = useAuth();
+  const flowActive = useOnboardingFlowActive();
 
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [globalFeedback.error]);
-
-  if (isBooting) {
+  if (selfLoading || (!self && !selfError)) {
     return (
-      <SafeAreaLayout style={styles.bootContainer}>
-        <StatusBar style="dark" />
-        <LoadingView fullScreen label="Restoring session..." />
+      <SafeAreaLayout>
+        <LoadingView fullScreen label="Chargement de votre profil…" />
       </SafeAreaLayout>
     );
   }
-
-  if (!isAuthenticated || !accessToken || !user) {
+  if (!self) {
     return (
-      <>
-        <StatusBar style="dark" />
-        <AuthScreen />
-      </>
+      <SafeAreaLayout>
+        <ErrorView message="Impossible de charger votre profil. Vérifiez votre connexion." onAction={() => void refreshSelf()} />
+        <Button label="Se déconnecter" onPress={() => void signOut()} style={{ marginHorizontal: 24 }} variant="ghost" />
+      </SafeAreaLayout>
     );
+  }
+  if (!self.onboarding.complete || flowActive) {
+    return <OnboardingScreen />;
+  }
+  return <RootNavigator />;
+}
+
+function AppShell() {
+  const { status } = useAuth();
+  const { scheme } = useTheme();
+
+  let content: React.ReactNode;
+  if (status === "booting") {
+    content = (
+      <SafeAreaLayout>
+        <LoadingView fullScreen label="Ouverture…" />
+      </SafeAreaLayout>
+    );
+  } else if (status === "signedOut") {
+    content = <SignedOutNavigator />;
+  } else {
+    content = <SignedInGate />;
   }
 
   return (
     <>
-      <StatusBar style="dark" />
-      <BottomNavigation accessToken={accessToken} key={user.id} user={user} />
-      {globalFeedback.error ? (
-        <View pointerEvents="box-none" style={styles.bannerWrap}>
-          <ErrorView
-            actionLabel="Dismiss"
-            compact
-            message={globalFeedback.error}
-            onAction={clearGlobalError}
-            style={styles.banner}
-            title="Request issue"
-          />
-        </View>
-      ) : null}
-      {globalFeedback.loadingCount > 0 && !isBooting ? (
-        <View style={styles.overlay}>
-          <LoadingView label={globalFeedback.loadingLabel ?? "Working..."} style={styles.overlayCard} />
-        </View>
-      ) : null}
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      {content}
+      <ToastHost />
     </>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <RealtimeProvider>
+          <AppShell />
+        </RealtimeProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  bootContainer: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  bannerWrap: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl
-  },
-  banner: {},
-  overlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xxl
-  },
-  overlayCard: {
-    width: "100%",
-    maxWidth: 320
-  }
-});

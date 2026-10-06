@@ -24,6 +24,7 @@ var (
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrUserNotFound        = errors.New("user not found")
 	ErrInvalidEmail        = errors.New("invalid email")
+	ErrAccountSuspended    = errors.New("account suspended")
 	ErrPasswordTooLong     = errors.New("password exceeds 72 bytes")
 	ErrInvalidResetCode    = errors.New("invalid or expired reset code")
 )
@@ -105,6 +106,9 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 
 	if err := bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(password)); err != nil {
 		return Tokens{}, User{}, ErrInvalidCredentials
+	}
+	if stored.Suspended {
+		return Tokens{}, User{}, ErrAccountSuspended
 	}
 
 	user := toUser(stored.User)
