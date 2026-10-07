@@ -8,6 +8,18 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app?sslmode=disable
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,6 +34,10 @@ jobs:
       - name: Install Go dependencies
         working-directory: services/api
         run: go mod download
+
+      - name: Check Go formatting
+        working-directory: services/api
+        run: test -z "$(gofmt -l .)"
 
       - name: Run Go tests
         working-directory: services/api
@@ -48,7 +64,19 @@ jobs:
 
       - name: Verify TypeScript
         working-directory: apps/mobile
-        run: npx tsc --noEmit
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: apps/mobile
+        run: npm run lint
+
+      - name: Check formatting
+        working-directory: apps/mobile
+        run: npm run format:check
+
+      - name: Frontend unit tests
+        working-directory: apps/mobile
+        run: npm test
 
       - name: Build Docker image
         run: docker build -t api-test ./services/api

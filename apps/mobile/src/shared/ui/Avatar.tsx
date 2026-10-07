@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
-import { Image, StyleSheet, View, type ImageStyle, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { Image, StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { useTheme } from "../../theme/useTheme";
 import { Text } from "./Text";
-import { colors, controls } from "./tokens";
+import { controls } from "./tokens";
 
 export type AvatarProps = {
   name?: string;
@@ -11,43 +12,24 @@ export type AvatarProps = {
   uri?: string | null;
 };
 
-function getInitials(name?: string): string {
-  if (!name) {
-    return "?";
-  }
-
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
+export function getInitials(name?: string): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     return "?";
   }
-
   if (parts.length === 1) {
     return parts[0].slice(0, 2).toUpperCase();
   }
-
   return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
 const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    overflow: "hidden"
-  },
-  image: {
-    width: "100%",
-    height: "100%"
-  }
+  container: { alignItems: "center", justifyContent: "center", borderWidth: 1, overflow: "hidden" },
+  image: { width: "100%", height: "100%" }
 });
 
 export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri }: AvatarProps) {
+  const { colors } = useTheme();
   const initials = useMemo(() => getInitials(name), [name]);
 
   return (
@@ -57,13 +39,15 @@ export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri 
         {
           width: size,
           height: size,
-          borderRadius: size / 2
+          borderRadius: size / 2,
+          backgroundColor: colors.primarySoft,
+          borderColor: colors.primaryBorder
         },
         style
       ]}
     >
       {uri ? (
-        <Image source={{ uri }} style={styles.image as StyleProp<ImageStyle>} />
+        <Image source={{ uri }} style={styles.image} />
       ) : (
         <Text
           style={textStyle}

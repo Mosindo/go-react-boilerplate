@@ -1,6 +1,7 @@
 import React, { type ReactNode } from "react";
+import { useTheme } from "../../theme/useTheme";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, spacing } from "../ui";
+import { spacing } from "../ui";
 import { SafeAreaLayout } from "./SafeAreaLayout";
 
 type ScreenContainerProps = {
@@ -22,11 +23,17 @@ export function ScreenContainer({
   style,
   testID
 }: ScreenContainerProps) {
+  const { colors } = useTheme();
   return (
     <SafeAreaLayout edges={edges} style={style}>
-      <View style={[styles.outer, centered ? styles.centered : null]}>
+      <View style={[styles.outer, { backgroundColor: colors.background }, centered ? styles.centered : null]}>
         <View
-          style={[styles.content, centered ? styles.contentCentered : null, { maxWidth: contentMaxWidth }, contentStyle]}
+          style={[
+            styles.content,
+            centered ? styles.contentCentered : null,
+            { maxWidth: contentMaxWidth },
+            contentStyle
+          ]}
           testID={testID}
         >
           {children}
@@ -39,10 +46,9 @@ export function ScreenContainer({
 const styles = StyleSheet.create({
   outer: {
     flex: 1,
-    backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
+    paddingBottom: spacing.lg
   },
   centered: {
     justifyContent: "center"

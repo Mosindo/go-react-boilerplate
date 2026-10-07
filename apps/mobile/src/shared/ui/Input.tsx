@@ -1,14 +1,14 @@
 import React, { useState } from "react";
 import {
-  StyleSheet,
   TextInput as RNTextInput,
   type StyleProp,
   type TextInputProps as RNTextInputProps,
   type TextStyle,
   type ViewStyle
 } from "react-native";
+import { useTheme } from "../../theme/useTheme";
 import { FormField } from "./FormField";
-import { colors, controls, radii, shadows, spacing, typography } from "./tokens";
+import { controls, radii, shadows, spacing, typography } from "./tokens";
 
 export type InputProps = Omit<RNTextInputProps, "style"> & {
   label?: string;
@@ -17,37 +17,6 @@ export type InputProps = Omit<RNTextInputProps, "style"> & {
   style?: StyleProp<TextStyle>;
   containerStyle?: StyleProp<ViewStyle>;
 };
-
-const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    backgroundColor: colors.backgroundElevated,
-    color: colors.text,
-    ...typography.body,
-    minHeight: controls.input.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md
-  },
-  multiline: {
-    minHeight: controls.input.multiline,
-    textAlignVertical: "top"
-  },
-  inputFocused: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-    ...shadows.focus
-  },
-  inputError: {
-    borderColor: colors.danger
-  },
-  inputDisabled: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.borderStrong,
-    color: colors.textMuted
-  }
-});
 
 export function Input({
   containerStyle,
@@ -60,6 +29,7 @@ export function Input({
   onFocus,
   ...props
 }: InputProps) {
+  const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
   const disabled = props.editable === false;
 
@@ -75,14 +45,24 @@ export function Input({
           setFocused(true);
           onFocus?.(event);
         }}
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor={colors.textSubtle}
         selectionColor={colors.primary}
         style={[
-          styles.input,
-          multiline ? styles.multiline : null,
-          focused && !disabled ? styles.inputFocused : null,
-          error ? styles.inputError : null,
-          disabled ? styles.inputDisabled : null,
+          {
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: radii.md,
+            backgroundColor: colors.backgroundElevated,
+            color: colors.text,
+            ...typography.body,
+            minHeight: controls.input.md,
+            paddingHorizontal: spacing.lg,
+            paddingVertical: spacing.md
+          },
+          multiline ? { minHeight: controls.input.multiline, textAlignVertical: "top" } : null,
+          focused && !disabled ? { borderColor: colors.primary, ...shadows.focus } : null,
+          error ? { borderColor: colors.danger } : null,
+          disabled ? { backgroundColor: colors.surfaceMuted, color: colors.textMuted } : null,
           style
         ]}
         {...props}

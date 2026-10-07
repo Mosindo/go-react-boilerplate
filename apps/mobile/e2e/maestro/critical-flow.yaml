@@ -1,10 +1,23 @@
+# Critical flow: register -> onboarding -> discover -> like -> match -> chat.
+#
+# NOT EXECUTED: Maestro and a device/emulator are not available in the authoring environment, so this
+# flow has only been written against the testIDs in the source, never run.
+#
+# Preconditions (env, provided by scripts/e2e-ui-setup.js once it is updated for the dating API):
+#   APP_ID, TEST_EMAIL (fresh address), TEST_PASSWORD,
+#   CANDIDATE_NAME  first name of a seeded, complete profile that ALREADY liked the new test user
+#                   (so the like below produces an instant match) and is the first card in discover.
+# IDs prefixed `auth-` and `onboarding-` belong to the auth/onboarding screens (agent A); the ones
+# prefixed `discover-`, `match-`, `chat-`, `notifications-` and `conversation-` are defined by this feature set.
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: go-react-saas Dating Critical Flow
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: Login
+# --- Register ---
+- assertVisible:
+    id: auth-email-input
 - tapOn:
     id: auth-email-input
 - inputText: ${TEST_EMAIL}
@@ -14,35 +27,48 @@ name: go-react-saas Critical Flow
 - tapOn:
     id: auth-submit-button
 
+# --- Onboarding (profile basics, interests, photo, preferences) ---
 - assertVisible:
-    id: home-screen
+    id: onboarding-screen
+- tapOn:
+    id: onboarding-next-button
+- tapOn:
+    id: onboarding-finish-button
 
+# --- Discover: like the seeded candidate ---
+- assertVisible:
+    id: discover-screen
+- assertVisible:
+    id: discover-card
+- assertVisible: ${CANDIDATE_NAME}.*
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
+    id: discover-like-button
 
-- tapOn: Chat
+# --- It's a match -> send a message ---
+- assertVisible:
+    id: match-overlay
+- assertVisible: It's a match
+- tapOn:
+    id: match-send-message
+
+# --- Chat ---
 - assertVisible:
     id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
 - tapOn:
     id: chat-message-input
-- inputText: maestro ui ping
+- inputText: hello from maestro
 - tapOn:
     id: chat-send-button
-- assertVisible: maestro ui ping
+- assertVisible: hello from maestro
+- back
 
+# --- The conversation shows up in Matches ---
+- tapOn: Matches
+- assertVisible:
+    id: matches-screen
+- assertVisible: hello from maestro
+
+# --- Notifications are readable ---
 - tapOn: Notifications
 - assertVisible:
     id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
-- assertVisible:
-    id: profile-screen

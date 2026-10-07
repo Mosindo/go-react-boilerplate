@@ -25,3 +25,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Removed
 - Removed legacy status and daily log documents tied to earlier single-product tracking.
 - Removed remaining product-specific naming from repository-level documentation.
+
+## Unreleased — Ember free dating app
+
+- Turned the boilerplate into a free dating app: profiles, photos, preferences, discovery, matching, real-time chat, notifications, block/report, account deletion, password reset.
+- New migrations 014–020 (retire generic schema, add dating schema); migration runner now records applied versions.
+- Removed Stripe billing and organisations from the active API (tenant claims dropped from JWT).
+- Mobile app rebuilt (Tamagui removed; React Navigation 7, TanStack Query, ESLint/Prettier/Jest).
+- Legacy Go packages `billing`, `posts`, `comments`, `files`, `users` are no longer wired and are pending deletion approval.

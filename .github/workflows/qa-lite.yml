@@ -51,19 +51,19 @@ jobs:
           docker compose logs api || true
           exit 1
 
-      - name: Run QA lite
-        shell: pwsh
-        run: ./scripts/qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+      - name: Run end-to-end API journey
+        shell: bash
+        run: node apps/mobile/scripts/e2e-smoke.js
+        env:
+          MOBILE_E2E_API_URL: http://localhost:18080
 
       - name: Upload QA reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qa-lite-reports
-          path: |
-            .smoke/qa-lite-report.txt
-            .smoke/report.txt
-          if-no-files-found: warn
+          path: .smoke/
+          if-no-files-found: ignore
 
       - name: API logs on failure
         if: failure()

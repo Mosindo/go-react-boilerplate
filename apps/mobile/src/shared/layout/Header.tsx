@@ -1,6 +1,6 @@
 import React, { type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, colors, spacing } from "../ui";
+import { Text, spacing } from "../ui";
 
 type HeaderProps = {
   action?: ReactNode;
@@ -22,7 +22,7 @@ export function Header({ action, centered = false, eyebrow, leading, subtitle, s
             {eyebrow}
           </Text>
         ) : null}
-        <Text style={styles.title} variant="title" weight="bold">
+        <Text variant="title" weight="bold">
           {title}
         </Text>
         {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
@@ -54,8 +54,5 @@ const styles = StyleSheet.create({
   },
   action: {
     paddingTop: spacing.md
-  },
-  title: {
-    color: colors.text
   }
 });

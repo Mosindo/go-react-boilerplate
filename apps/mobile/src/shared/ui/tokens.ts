@@ -1,33 +1,10 @@
-export const colors = {
-  primary: "#4c6fff",
-  primarySoft: "#e8edff",
-  primaryBorder: "#cad5ff",
-  primaryForeground: "#ffffff",
-  secondary: "#475467",
-  secondarySoft: "#eef2f6",
-  background: "#f6f8fc",
-  backgroundElevated: "#ffffff",
-  surface: "#ffffff",
-  surfaceMuted: "#f8fafc",
-  surfaceSubtle: "#eef2f6",
-  surfaceAccent: "#eef3ff",
-  border: "#e3e8f2",
-  borderStrong: "#c9d3e1",
-  text: "#101828",
-  textMuted: "#667085",
-  textSubtle: "#98a2b3",
-  success: "#027a48",
-  successSoft: "#ecfdf3",
-  successBorder: "#abefc6",
-  warning: "#b54708",
-  warningSoft: "#fff6e0",
-  warningBorder: "#fedf89",
-  danger: "#d92d20",
-  dangerSoft: "#fef3f2",
-  dangerBorder: "#fecdca",
-  inverse: "#ffffff",
-  overlay: "rgba(15, 23, 42, 0.38)"
-} as const;
+import { lightColors } from "../../theme/palette";
+
+/**
+ * Static LIGHT palette, kept for backwards compatibility. For anything rendered on screen use
+ * `useTheme().colors` (src/theme) so dark mode works.
+ */
+export const colors = lightColors;
 
 export const spacing = {
   xxs: 4,
@@ -124,21 +101,21 @@ export const controls = {
 
 export const shadows = {
   card: {
-    shadowColor: "#0b1220",
-    shadowOpacity: 0.08,
+    shadowColor: "#2A1A10",
+    shadowOpacity: 0.06,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     elevation: 4
   },
   floating: {
-    shadowColor: "#0b1220",
-    shadowOpacity: 0.12,
+    shadowColor: "#2A1A10",
+    shadowOpacity: 0.1,
     shadowRadius: 30,
     shadowOffset: { width: 0, height: 14 },
     elevation: 8
   },
   focus: {
-    shadowColor: "#4c6fff",
+    shadowColor: "#C8472F",
     shadowOpacity: 0.16,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },

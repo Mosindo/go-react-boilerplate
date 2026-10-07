@@ -1,7 +1,8 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { useTheme } from "../../theme/useTheme";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { radii, spacing } from "./tokens";
 
 export type MessageItemProps = {
   content: string;
@@ -10,37 +11,31 @@ export type MessageItemProps = {
 };
 
 export function MessageItem({ content, mine = false, style }: MessageItemProps) {
+  const { colors } = useTheme();
   return (
-    <View style={[styles.bubble, mine ? styles.mine : styles.theirs, style]}>
-      <Text style={mine ? styles.mineText : styles.theirsText} tone={mine ? "inverse" : "default"}>
+    <View
+      style={[
+        {
+          maxWidth: "78%",
+          borderRadius: radii.lg,
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.sm,
+          marginBottom: spacing.sm
+        },
+        mine
+          ? { alignSelf: "flex-end", backgroundColor: colors.primary }
+          : {
+              alignSelf: "flex-start",
+              backgroundColor: colors.backgroundElevated,
+              borderWidth: 1,
+              borderColor: colors.border
+            },
+        style
+      ]}
+    >
+      <Text style={mine ? { color: colors.primaryForeground } : null} tone={mine ? "inverse" : "default"}>
         {content}
       </Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  bubble: {
-    maxWidth: "78%",
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm
-  },
-  mine: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.text
-  },
-  theirs: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  mineText: {
-    color: colors.inverse
-  },
-  theirsText: {
-    color: colors.text
-  }
-});

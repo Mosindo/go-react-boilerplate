@@ -9,8 +9,10 @@ import {
   type TextStyle,
   type ViewStyle
 } from "react-native";
-import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
+import { useTheme } from "../../theme/useTheme";
+import type { ColorPalette } from "../../theme/palette";
+import { Text, type TextTone } from "./Text";
+import { controls, radii, shadows, spacing } from "./tokens";
 
 export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -27,86 +29,36 @@ export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
 };
 
 const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  }
+  base: { borderRadius: radii.pill, alignItems: "center", justifyContent: "center" },
+  fullWidth: { width: "100%" },
+  small: { minHeight: controls.button.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  medium: { minHeight: controls.button.md, paddingHorizontal: spacing.xl, paddingVertical: spacing.md },
+  large: { minHeight: controls.button.lg, paddingHorizontal: spacing.xl, paddingVertical: spacing.lg },
+  disabled: { opacity: 0.5 },
+  pressed: { opacity: 0.88 },
+  content: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm }
 });
 
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
-};
+const sizeStyles: Record<ButtonSize, ViewStyle> = { sm: styles.small, md: styles.medium, lg: styles.large };
 
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
+function variantStyle(colors: ColorPalette, variant: ButtonVariant): ViewStyle {
+  switch (variant) {
+    case "primary":
+      return { backgroundColor: colors.primary, ...shadows.card };
+    case "secondary":
+      return { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryBorder };
+    case "destructive":
+      return { backgroundColor: colors.danger, borderWidth: 1, borderColor: colors.danger };
+    case "success":
+      return { backgroundColor: colors.success, borderWidth: 1, borderColor: colors.success };
+    case "outline":
+      return { backgroundColor: colors.backgroundElevated, borderWidth: 1, borderColor: colors.borderStrong };
+    default:
+      return { backgroundColor: "transparent" };
+  }
+}
 
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
+const textToneByVariant: Record<ButtonVariant, TextTone> = {
   primary: "inverse",
   secondary: "primary",
   destructive: "inverse",
@@ -115,14 +67,18 @@ const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary"
   ghost: "secondary"
 };
 
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
-};
+function spinnerColor(colors: ColorPalette, variant: ButtonVariant): string {
+  switch (variant) {
+    case "primary":
+    case "destructive":
+    case "success":
+      return colors.inverse;
+    case "secondary":
+      return colors.primary;
+    default:
+      return colors.secondary;
+  }
+}
 
 export function Button({
   children,
@@ -136,18 +92,21 @@ export function Button({
   variant = "primary",
   ...props
 }: ButtonProps) {
+  const { colors } = useTheme();
   const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
   const labelNode = typeof children === "string" ? children : label;
+  // Primary uses `primaryForeground` for its label, which differs from `inverse` only in naming.
+  const primaryLabel = variant === "primary" ? { color: colors.primaryForeground } : null;
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: !!buttonDisabled, busy: loading }}
       disabled={buttonDisabled}
       style={({ pressed }) => [
         styles.base,
         sizeStyles[size],
-        variantStyles[variant],
+        variantStyle(colors, variant),
         fullWidth ? styles.fullWidth : null,
         buttonDisabled ? styles.disabled : null,
         pressed ? styles.pressed : null,
@@ -156,9 +115,14 @@ export function Button({
       {...props}
     >
       <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
+        {loading ? <ActivityIndicator color={spinnerColor(colors, variant)} size="small" /> : null}
         {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
+          <Text
+            style={[primaryLabel, textStyle]}
+            tone={textToneByVariant[variant]}
+            variant="button"
+            weight="bold"
+          >
             {labelNode}
           </Text>
         ) : (

@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Card, Loader, Text, colors, spacing } from "../ui";
+import { strings } from "../../i18n/strings";
+import { Card, Loader, Text, spacing } from "../ui";
 
 type LoadingViewProps = {
   fullScreen?: boolean;
@@ -13,7 +14,7 @@ type LoadingViewProps = {
 
 export function LoadingView({
   fullScreen = false,
-  label = "Loading...",
+  label = strings.common.loading,
   message,
   style,
   testID,
@@ -59,8 +60,7 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     alignSelf: "center",
     alignItems: "center",
-    gap: spacing.sm,
-    borderColor: colors.border
+    gap: spacing.sm
   },
   message: {
     textAlign: "center"

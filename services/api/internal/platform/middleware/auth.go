@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,11 +10,20 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker tells whether a session is still valid (not revoked, not expired,
+// user still existing). It is one indexed primary-key lookup per request and makes logout,
+// password reset and account deletion effective immediately.
+type SessionChecker interface {
+	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+// RequireUser validates the HS256 access token (expiration mandatory) and checks the
+// backing session. It sets "userID" and "sessionID" on the Gin context.
+func RequireUser(secret []byte, checker SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			abortUnauthorized(c, "missing token")
 			return
 		}
 
@@ -26,41 +36,41 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 				return nil, errors.New("unexpected signing method type")
 			}
 			return secret, nil
-		})
+		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			abortUnauthorized(c, "invalid token")
 			return
 		}
 
 		userID, ok := stringClaim(claims, "uid")
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			abortUnauthorized(c, "invalid token")
 			return
 		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
 		sessionID, ok := stringClaim(claims, "sid")
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			abortUnauthorized(c, "invalid token")
+			return
+		}
+
+		active, err := checker.SessionActive(c.Request.Context(), sessionID, userID)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "could not verify session", "code": "internal"})
+			return
+		}
+		if !active {
+			abortUnauthorized(c, "session expired")
 			return
 		}
 
 		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}
+}
+
+func abortUnauthorized(c *gin.Context, message string) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": message, "code": "unauthorized"})
 }
 
 func bearerToken(header string) string {

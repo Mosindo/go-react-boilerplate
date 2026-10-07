@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { strings } from "../../i18n/strings";
 import { Button, Card, Text, spacing } from "../ui";
 
 type ErrorViewProps = {
@@ -13,16 +14,20 @@ type ErrorViewProps = {
 };
 
 export function ErrorView({
-  actionLabel = "Retry",
+  actionLabel = strings.common.retry,
   compact = false,
   message,
   onAction,
   style,
   testID,
-  title = "Something went wrong"
+  title = strings.errors.title
 }: ErrorViewProps) {
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
+    <Card
+      padding={compact ? "sm" : "md"}
+      style={[styles.card, compact ? styles.cardCompact : null, style]}
+      testID={testID}
+    >
       <View style={styles.copy}>
         <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
           {title}

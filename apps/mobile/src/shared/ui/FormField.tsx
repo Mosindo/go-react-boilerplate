@@ -1,7 +1,7 @@
 import React, { type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { spacing } from "./tokens";
 
 export type FormFieldProps = {
   children: ReactNode;
@@ -28,7 +28,7 @@ export function FormField({
             {label}
           </Text>
           {required ? (
-            <Text style={styles.required} tone="danger" variant="label" weight="bold">
+            <Text tone="danger" variant="label" weight="bold">
               *
             </Text>
           ) : null}
@@ -36,7 +36,7 @@ export function FormField({
       ) : null}
       {children}
       {error ? (
-        <Text tone="danger" variant="caption" weight="medium">
+        <Text accessibilityLiveRegion="polite" tone="danger" variant="caption" weight="medium">
           {error}
         </Text>
       ) : helperText ? (
@@ -49,16 +49,6 @@ export function FormField({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    width: "100%",
-    gap: spacing.sm
-  },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  required: {
-    color: colors.danger
-  }
+  container: { width: "100%", gap: spacing.xs },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs }
 });

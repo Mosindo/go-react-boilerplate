@@ -1,9 +1,10 @@
 import React from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { strings } from "../../i18n/strings";
 import { Badge } from "./Badge";
 import { Card } from "./Card";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { spacing } from "./tokens";
 
 export type NotificationItemProps = {
   body: string;
@@ -31,7 +32,11 @@ export function NotificationItem({
           <Text style={styles.title} variant="heading" weight="bold">
             {title}
           </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
+          <Badge
+            label={isRead ? strings.notifications.read : strings.notifications.unread}
+            size="sm"
+            variant={isRead ? "muted" : "primary"}
+          />
         </View>
         <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
           {type}
@@ -57,14 +62,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm
   },
   title: {
-    flex: 1,
-    color: colors.text
+    flex: 1
   },
   type: {
     marginBottom: spacing.sm
   },
   body: {
-    color: colors.text,
     lineHeight: 22
   },
   meta: {

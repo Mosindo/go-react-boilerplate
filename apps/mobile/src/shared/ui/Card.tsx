@@ -1,6 +1,7 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
-import { colors, radii, shadows, spacing } from "./tokens";
+import { View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import { useTheme } from "../../theme/useTheme";
+import { radii, shadows, spacing } from "./tokens";
 
 export type CardVariant = "default" | "muted" | "accent";
 export type CardPadding = "sm" | "md" | "lg" | "xl";
@@ -13,67 +14,44 @@ export type CardProps = Omit<ViewProps, "style"> & {
   style?: StyleProp<ViewStyle>;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.backgroundElevated,
-    ...shadows.card
-  },
-  muted: {
-    backgroundColor: colors.surfaceMuted
-  },
-  accent: {
-    backgroundColor: colors.surfaceAccent,
-    borderColor: colors.primaryBorder
-  },
-  interactive: {
-    borderColor: colors.borderStrong,
-    ...shadows.floating
-  },
-  selected: {
-    backgroundColor: colors.surfaceAccent,
-    borderColor: colors.primaryBorder,
-    ...shadows.floating
-  },
-  paddingSm: {
-    padding: spacing.md
-  },
-  paddingMd: {
-    padding: spacing.lg
-  },
-  paddingLg: {
-    padding: spacing.xl
-  },
-  paddingXl: {
-    padding: spacing.xxl
-  }
-});
-
-const variantStyles: Record<CardVariant, ViewStyle | null> = {
-  default: null,
-  muted: styles.muted,
-  accent: styles.accent
+const paddings: Record<CardPadding, number> = {
+  sm: spacing.md,
+  md: spacing.lg,
+  lg: spacing.xl,
+  xl: spacing.xxl
 };
 
-const paddingStyles: Record<CardPadding, ViewStyle> = {
-  sm: styles.paddingSm,
-  md: styles.paddingMd,
-  lg: styles.paddingLg,
-  xl: styles.paddingXl
-};
+export function Card({
+  children,
+  interactive = false,
+  padding = "md",
+  selected = false,
+  style,
+  variant = "default",
+  ...viewProps
+}: CardProps) {
+  const { colors } = useTheme();
+  const variantStyle: ViewStyle | null =
+    variant === "muted"
+      ? { backgroundColor: colors.surfaceMuted }
+      : variant === "accent"
+        ? { backgroundColor: colors.surfaceAccent, borderColor: colors.primaryBorder }
+        : null;
 
-export function Card({ children, padding = "md", style, variant = "default", ...props }: CardProps) {
-  const { interactive = false, selected = false, ...viewProps } = props;
   return (
     <View
       style={[
-        styles.base,
-        variantStyles[variant],
-        interactive ? styles.interactive : null,
-        selected ? styles.selected : null,
-        paddingStyles[padding],
+        {
+          borderRadius: radii.lg,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.backgroundElevated,
+          ...shadows.card
+        },
+        variantStyle,
+        interactive ? { borderColor: colors.borderStrong } : null,
+        selected ? { backgroundColor: colors.surfaceAccent, borderColor: colors.primary } : null,
+        { padding: paddings[padding] },
         style
       ]}
       {...viewProps}
