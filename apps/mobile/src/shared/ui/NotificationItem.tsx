@@ -1,73 +1,42 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
-import { Card } from "./Card";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../../theme";
+import { formatRelative } from "../format";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { radii, spacing } from "./tokens";
 
-export type NotificationItemProps = {
-  body: string;
-  createdAtLabel: string;
-  isRead: boolean;
-  onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
-  title: string;
-  type: string;
-};
+type NotificationItemProps = { title: string; body: string; createdAt: string; isRead: boolean; onPress?: () => void };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ title, body, createdAt, isRead, onPress }: NotificationItemProps) {
+  const { colors } = useTheme();
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
-        </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
+    <Pressable
+      accessibilityLabel={`${title}. ${body}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[styles.row, { backgroundColor: isRead ? colors.surface : colors.primarySoft, borderColor: colors.border }]}
+    >
+      <View style={[styles.icon, { backgroundColor: colors.primary }]}>
+        <Ionicons color={colors.onPrimary} name="heart" size={18} />
+      </View>
+      <View style={styles.body}>
+        <Text weight="semibold">{title}</Text>
+        <Text tone="muted" variant="bodySmall">
+          {body}
         </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
+        <Text tone="subtle" variant="caption">
+          {formatRelative(createdAt)}
         </Text>
-      </Card>
+      </View>
+      {!isRead ? <View accessibilityLabel="Non lu" style={[styles.dot, { backgroundColor: colors.primary }]} /> : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.sm
-  },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  row: { flexDirection: "row", gap: spacing.md, padding: spacing.md, borderRadius: radii.lg, borderWidth: 1, alignItems: "center" },
+  icon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  body: { flex: 1, gap: 2 },
+  dot: { width: 10, height: 10, borderRadius: 5 }
 });

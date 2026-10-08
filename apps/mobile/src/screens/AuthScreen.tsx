@@ -1,161 +1,141 @@
-import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet } from "react-native";
-import { useAuth, useLogin, useRegister } from "../hooks/useAuth";
-import { ErrorView } from "../shared/feedback";
-import { Button, Card, Input, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { login, register } from "../api/auth";
+import { describeError } from "../api/client";
+import { useAuth } from "../hooks/useAuth";
+import type { AuthStackParamList } from "../navigation/types";
+import { ScreenContainer, SafeAreaLayout } from "../shared/layout";
+import { Button, FormField, Notice, Text, radii, spacing } from "../shared/ui";
+import { useTheme } from "../theme";
+import { validateEmail, validatePassword } from "../utils/validation";
 
 type Mode = "login" | "register";
 
-export default function AuthScreen() {
+export default function AuthScreen({ navigation }: NativeStackScreenProps<AuthStackParamList, "Auth">) {
+  const { colors } = useTheme();
+  const { signIn, sessionExpired } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const { authError, clearAuthError } = useAuth();
-  const loginMutation = useLogin();
-  const registerMutation = useRegister();
+  const [showPassword, setShowPassword] = useState(false);
+  const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const title = useMemo(() => (mode === "login" ? "Welcome back" : "Create your workspace"), [mode]);
-  const subtitle = useMemo(
-    () =>
-      mode === "login"
-        ? "Sign in to continue into your shared SaaS workspace."
-        : "Open a clean account experience with persistent team access.",
-    [mode]
-  );
-  const switchLabel = mode === "login" ? "Need an account? Register" : "Already have an account? Login";
-  const submitting = loginMutation.isPending || registerMutation.isPending;
-  const surfaceError = formError ?? authError;
+  const emailError = touched ? validateEmail(email) : null;
+  const passwordError = touched && mode === "register" ? validatePassword(password) : touched && !password ? "Saisissez votre mot de passe." : null;
 
-  async function onSubmit() {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
-      setFormError("email and password are required");
-      return;
-    }
-
-    setFormError(null);
-    clearAuthError();
-
+  const submit = async () => {
+    setTouched(true);
+    setError(null);
+    if (validateEmail(email) || (mode === "register" ? validatePassword(password) : !password)) return;
+    setSubmitting(true);
     try {
-      if (mode === "login") {
-        await loginMutation.mutateAsync({ email: normalizedEmail, password });
-      } else {
-        await registerMutation.mutateAsync({ email: normalizedEmail, password });
-      }
-    } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "authentication failed");
+      const session = mode === "login" ? await login(email.trim(), password) : await register(email.trim(), password);
+      await signIn(session);
+    } catch (e) {
+      setError(describeError(e));
+      setSubmitting(false);
     }
-  }
+  };
 
   return (
-    <ScreenContainer centered contentMaxWidth={440}>
-      <Card padding="xl" style={styles.card} variant="accent">
-        <Header
-          centered
-          eyebrow="Go React SaaS"
-          style={styles.header}
-          subtitle={subtitle}
-          title={title}
-        />
+    <SafeAreaLayout>
+      <ScreenContainer>
+        <View style={styles.brand}>
+          <View style={[styles.logo, { backgroundColor: colors.primary }]}>
+            <Ionicons color={colors.onPrimary} name="heart" size={28} />
+          </View>
+          <Text accessibilityRole="header" variant="title">
+            Lien
+          </Text>
+          <Text align="center" tone="muted">
+            Des rencontres sincères. Gratuit, pour toujours : pas d'abonnement, pas de limite.
+          </Text>
+        </View>
 
-        <Text style={styles.intro} tone="secondary">
-          Minimal, secure access for a premium team workspace.
-        </Text>
+        <View accessibilityRole="tablist" style={[styles.segment, { backgroundColor: colors.surfaceMuted }]}>
+          {(["login", "register"] as const).map((value) => (
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: mode === value }}
+              key={value}
+              onPress={() => {
+                setMode(value);
+                setError(null);
+              }}
+              style={[styles.segmentItem, mode === value ? { backgroundColor: colors.surface } : null]}
+            >
+              <Text weight="semibold" tone={mode === value ? "default" : "muted"}>
+                {value === "login" ? "Connexion" : "Créer un compte"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
-        <Input
+        {sessionExpired && !error ? <Notice message="Votre session a expiré. Reconnectez-vous." /> : null}
+        {error ? <Notice message={error} tone="error" /> : null}
+
+        <FormField
           autoCapitalize="none"
           autoComplete="email"
-          containerStyle={styles.field}
-          helperText="Use the email tied to your workspace."
+          error={emailError}
           keyboardType="email-address"
-          label="Email"
-          onChangeText={(value) => {
-            setEmail(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Email"
-          testID="auth-email-input"
+          label="Adresse e-mail"
+          onChangeText={setEmail}
+          placeholder="vous@exemple.fr"
+          textContentType="emailAddress"
           value={email}
         />
-
-        <Input
-          autoCapitalize="none"
-          containerStyle={styles.field}
-          error={formError?.toLowerCase().includes("password") ? formError : null}
-          helperText={mode === "login" ? "Enter your secure password." : "Create a password for future sessions."}
-          label="Password"
-          onChangeText={(value) => {
-            setPassword(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Password"
-          secureTextEntry
-          testID="auth-password-input"
-          value={password}
-        />
-
-        {surfaceError ? (
-          <ErrorView
-            compact
-            message={surfaceError}
-            style={styles.error}
-            title="Authentication issue"
+        <View>
+          <FormField
+            autoCapitalize="none"
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            error={passwordError}
+            hint={mode === "register" ? "8 caractères minimum, avec des lettres et des chiffres ou symboles." : undefined}
+            label="Mot de passe"
+            onChangeText={setPassword}
+            onSubmitEditing={submit}
+            secureTextEntry={!showPassword}
+            textContentType={mode === "login" ? "password" : "newPassword"}
+            value={password}
           />
+          <Pressable
+            accessibilityLabel={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => setShowPassword((v) => !v)}
+            style={styles.eye}
+          >
+            <Ionicons color={colors.textMuted} name={showPassword ? "eye-off-outline" : "eye-outline"} size={22} />
+          </Pressable>
+        </View>
+
+        {mode === "register" ? (
+          <Text tone="subtle" variant="caption">
+            En créant un compte, vous confirmez avoir 18 ans ou plus.
+          </Text>
         ) : null}
 
-        <Button
-          fullWidth
-          label={mode === "login" ? "Login" : "Register"}
-          loading={submitting}
-          onPress={onSubmit}
-          testID="auth-submit-button"
-        />
-
-        <Pressable
-          disabled={submitting}
-          onPress={() => {
-            setMode((prev) => (prev === "login" ? "register" : "login"));
-            setFormError(null);
-            clearAuthError();
-          }}
-          testID="auth-switch-mode-button"
-        >
-          <Text style={styles.switchText} tone="secondary" variant="label" weight="semibold">
-            {switchLabel}
-          </Text>
-        </Pressable>
-      </Card>
-    </ScreenContainer>
+        <Button fullWidth loading={submitting} onPress={submit} size="lg">
+          {mode === "login" ? "Se connecter" : "Créer mon compte"}
+        </Button>
+        {mode === "login" ? (
+          <Button onPress={() => navigation.navigate("Forgot", { email: email.trim() || undefined })} variant="ghost">
+            Mot de passe oublié ?
+          </Button>
+        ) : null}
+      </ScreenContainer>
+    </SafeAreaLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: "100%"
-  },
-  header: {
-    marginBottom: spacing.lg
-  },
-  intro: {
-    marginBottom: spacing.xl,
-    textAlign: "center"
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  switchText: {
-    marginTop: spacing.lg,
-    textAlign: "center"
-  },
-  error: {
-    marginBottom: spacing.sm
-  }
+  brand: { alignItems: "center", gap: spacing.sm, paddingTop: spacing.xl, paddingBottom: spacing.md },
+  logo: { width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center" },
+  segment: { flexDirection: "row", borderRadius: radii.pill, padding: 4 },
+  segmentItem: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 44, borderRadius: radii.pill },
+  eye: { position: "absolute", right: spacing.md, top: 31 }
 });

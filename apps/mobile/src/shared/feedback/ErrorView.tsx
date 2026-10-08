@@ -1,52 +1,37 @@
 import React from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../../theme";
+import { Button, Text, spacing } from "../ui";
 
 type ErrorViewProps = {
-  actionLabel?: string;
+  title?: string;
   message: string;
+  actionLabel?: string;
   onAction?: () => void;
   style?: StyleProp<ViewStyle>;
-  testID?: string;
-  title?: string;
-  compact?: boolean;
 };
 
-export function ErrorView({
-  actionLabel = "Retry",
-  compact = false,
-  message,
-  onAction,
-  style,
-  testID,
-  title = "Something went wrong"
-}: ErrorViewProps) {
+export function ErrorView({ title = "Un problème est survenu", message, actionLabel = "Réessayer", onAction, style }: ErrorViewProps) {
+  const { colors } = useTheme();
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
-      <View style={styles.copy}>
-        <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
-          {title}
-        </Text>
-        <Text tone="muted" variant={compact ? "caption" : "body"}>
-          {message}
-        </Text>
-      </View>
-      {onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="outline" /> : null}
-    </Card>
+    <View accessibilityRole="alert" style={[styles.box, style]}>
+      <Ionicons color={colors.danger} name="cloud-offline-outline" size={40} />
+      <Text align="center" variant="heading">
+        {title}
+      </Text>
+      <Text align="center" tone="muted">
+        {message}
+      </Text>
+      {onAction ? (
+        <Button onPress={onAction} variant="outline">
+          {actionLabel}
+        </Button>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: spacing.md
-  },
-  cardCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  }
+  box: { alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl, flex: 1 }
 });

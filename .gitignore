@@ -53,3 +53,10 @@ docker-data/
 # Mobile e2e runtime artifacts
 apps/mobile/.e2e/
 
+
+# Expo web export, Playwright output, uploads and local data
+apps/mobile/dist/
+apps/mobile/test-results/
+apps/mobile/e2e/web/test-results/
+apps/mobile/playwright-report/
+services/api/data/

@@ -3,6 +3,9 @@
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
-    "moduleResolution": "bundler"
-  }
+    "moduleResolution": "bundler",
+    "types": ["jest", "node"]
+  },
+  "include": ["App.tsx", "src/**/*", "e2e/**/*", "jest.setup.ts"],
+  "exclude": ["node_modules", "tamagui.config.ts"]
 }

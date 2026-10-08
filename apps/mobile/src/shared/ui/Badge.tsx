@@ -1,90 +1,60 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { radii, spacing } from "./tokens";
 
-export type BadgeVariant = "default" | "primary" | "success" | "warning" | "danger" | "muted";
-export type BadgeSize = "sm" | "md";
-
-export type BadgeProps = Omit<ViewProps, "style"> & {
-  label: string;
-  size?: BadgeSize;
-  style?: StyleProp<ViewStyle>;
-  variant?: BadgeVariant;
-};
-
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    alignSelf: "flex-start",
-    justifyContent: "center"
-  },
-  sizeSm: {
-    minHeight: 24,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs
-  },
-  sizeMd: {
-    minHeight: 28,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs
-  },
-  default: {
-    backgroundColor: colors.backgroundElevated,
-    borderColor: colors.border
-  },
-  primary: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryBorder
-  },
-  success: {
-    backgroundColor: colors.successSoft,
-    borderColor: colors.successBorder
-  },
-  warning: {
-    backgroundColor: colors.warningSoft,
-    borderColor: colors.warningBorder
-  },
-  danger: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.dangerBorder
-  },
-  muted: {
-    backgroundColor: colors.surfaceSubtle,
-    borderColor: colors.border
-  }
-});
-
-const sizeStyles: Record<BadgeSize, ViewStyle> = {
-  sm: styles.sizeSm,
-  md: styles.sizeMd
-};
-
-const variantStyles: Record<BadgeVariant, ViewStyle> = {
-  default: styles.default,
-  primary: styles.primary,
-  success: styles.success,
-  warning: styles.warning,
-  danger: styles.danger,
-  muted: styles.muted
-};
-
-const toneByVariant: Record<BadgeVariant, "danger" | "muted" | "primary" | "secondary" | "success"> = {
-  default: "secondary",
-  primary: "primary",
-  success: "success",
-  warning: "secondary",
-  danger: "danger",
-  muted: "muted"
-};
-
-export function Badge({ label, size = "md", style, variant = "default", ...props }: BadgeProps) {
+/** Small count bubble, used on tab icons. */
+export function Badge({ count }: { count: number }) {
+  const { colors } = useTheme();
+  if (count <= 0) return null;
   return (
-    <View style={[styles.base, sizeStyles[size], variantStyles[variant], style]} {...props}>
-      <Text tone={toneByVariant[variant]} variant="caption" weight="bold">
-        {label}
+    <View accessibilityLabel={`${count} non lus`} style={[styles.badge, { backgroundColor: colors.primary }]}>
+      <Text style={{ color: colors.onPrimary }} variant="caption" weight="bold">
+        {count > 99 ? "99+" : count}
       </Text>
     </View>
   );
 }
+
+type ChipProps = { label: string; selected?: boolean; onPress?: () => void; highlighted?: boolean; disabled?: boolean };
+
+/** Pill used for interests and choices; selectable when `onPress` is provided. */
+export function Chip({ label, selected = false, onPress, highlighted = false, disabled = false }: ChipProps) {
+  const { colors } = useTheme();
+  const active = selected || highlighted;
+  const body = (
+    <View
+      style={[
+        styles.chip,
+        {
+          backgroundColor: selected ? colors.primary : highlighted ? colors.primarySoft : colors.surfaceMuted,
+          borderColor: active ? colors.primary : colors.border
+        }
+      ]}
+    >
+      <Text style={{ color: selected ? colors.onPrimary : highlighted ? colors.primary : colors.text }} variant="bodySmall" weight="medium">
+        {label}
+      </Text>
+    </View>
+  );
+  if (!onPress) return body;
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={disabled ? styles.disabled : undefined}
+    >
+      {body}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, alignItems: "center", justifyContent: "center" },
+  chip: { borderRadius: radii.pill, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2 },
+  disabled: { opacity: 0.45 }
+});

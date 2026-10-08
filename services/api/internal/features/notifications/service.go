@@ -2,118 +2,55 @@ package notifications
 
 import (
 	"context"
-	"errors"
-	"strings"
-	"unicode/utf8"
+	"time"
+
+	platformerrors "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/pagination"
 )
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
-)
+type Service struct{ repo Repository }
 
-type Service struct {
-	repo Repository
-}
+func NewService(repo Repository) *Service { return &Service{repo: repo} }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
-}
-
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
+func (s *Service) List(ctx context.Context, userID string, limit int, cursor string, unreadOnly bool) (ListResponse, error) {
+	cur, err := pagination.Decode(cursor)
 	if err != nil {
-		return nil, err
+		return ListResponse{}, err
 	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
+	var afterAt *time.Time
+	afterID := ""
+	if cur != nil {
+		afterAt, afterID = &cur.At, cur.ID
 	}
-	return payload, nil
-}
-
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
+	items, err := s.repo.List(ctx, userID, limit+1, unreadOnly, afterAt, afterID)
 	if err != nil {
-		return Notification{}, err
+		return ListResponse{}, err
 	}
-	return mapStoredNotification(notification), nil
+	res := ListResponse{}
+	if len(items) > limit {
+		last := items[limit-1]
+		res.NextCursor = pagination.Cursor{At: last.CreatedAt, ID: last.ID}.Encode()
+		items = items[:limit]
+	}
+	res.Notifications = items
+	return res, nil
 }
 
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
+func (s *Service) UnreadCount(ctx context.Context, userID string) (int, error) {
+	return s.repo.UnreadCount(ctx, userID)
+}
+
+func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
+	ok, err := s.repo.MarkRead(ctx, userID, id)
 	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
-		}
-		return Notification{}, err
+		return err
 	}
-	return mapStoredNotification(notification), nil
+	if !ok {
+		return platformerrors.NotFound("not_found", "notification not found")
+	}
+	return nil
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
-	}
-}
-
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
-	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
-	}
-	return limit
-}
-
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
+	return s.repo.MarkAllRead(ctx, userID)
 }

@@ -1,61 +1,37 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, colors, spacing } from "../ui";
+import { StyleSheet, View } from "react-native";
+import { Text, spacing } from "../ui";
 
-type HeaderProps = {
-  action?: ReactNode;
-  leading?: ReactNode;
-  eyebrow?: string;
-  subtitle?: string;
-  title: string;
-  centered?: boolean;
-  style?: StyleProp<ViewStyle>;
-};
+type HeaderProps = { title: string; subtitle?: string; right?: ReactNode };
 
-export function Header({ action, centered = false, eyebrow, leading, subtitle, style, title }: HeaderProps) {
+/** Large in-screen title used by tab screens (stack screens use the navigator header). */
+export function Header({ title, subtitle, right }: HeaderProps) {
   return (
-    <View style={[styles.root, centered ? styles.rootCentered : null, style]}>
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
-      <View style={[styles.copy, centered ? styles.copyCentered : null]}>
-        {eyebrow ? (
-          <Text tone="secondary" variant="eyebrow" weight="bold">
-            {eyebrow}
-          </Text>
-        ) : null}
-        <Text style={styles.title} variant="title" weight="bold">
+    <View style={styles.row}>
+      <View style={styles.titles}>
+        <Text accessibilityRole="header" variant="title">
           {title}
         </Text>
-        {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text tone="muted" variant="bodySmall">
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
-      {action ? <View style={styles.action}>{action}</View> : null}
+      {right}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  row: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.lg
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm
   },
-  rootCentered: {
-    justifyContent: "center"
-  },
-  leading: {
-    paddingTop: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.sm
-  },
-  copyCentered: {
-    alignItems: "center"
-  },
-  action: {
-    paddingTop: spacing.md
-  },
-  title: {
-    color: colors.text
-  }
+  titles: { flex: 1, gap: 2 }
 });

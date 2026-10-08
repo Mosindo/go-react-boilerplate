@@ -9,5 +9,8 @@ export * from "./Loader";
 export * from "./MessageItem";
 export * from "./Notice";
 export * from "./NotificationItem";
+export * from "./Photo";
+export * from "./Sheet";
+export * from "./Stepper";
 export * from "./Text";
 export * from "./tokens";

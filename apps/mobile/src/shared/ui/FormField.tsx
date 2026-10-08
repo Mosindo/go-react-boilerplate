@@ -1,64 +1,48 @@
-import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import React, { forwardRef } from "react";
+import { StyleSheet, View, type TextInput } from "react-native";
+import { Input, type InputProps } from "./Input";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { spacing } from "./tokens";
 
-export type FormFieldProps = {
-  children: ReactNode;
-  containerStyle?: StyleProp<ViewStyle>;
+export type FormFieldProps = InputProps & {
+  label: string;
   error?: string | null;
-  helperText?: string;
-  label?: string;
-  required?: boolean;
+  hint?: string;
+  /** Shows "n/max" under the field when set. */
+  counter?: number;
 };
 
-export function FormField({
-  children,
-  containerStyle,
-  error,
-  helperText,
-  label,
-  required = false
-}: FormFieldProps) {
+export const FormField = forwardRef<TextInput, FormFieldProps>(function FormField({ label, error, hint, counter, value, ...props }, ref) {
   return (
-    <View style={[styles.container, containerStyle]}>
-      {label ? (
-        <View style={styles.labelRow}>
-          <Text tone="secondary" variant="label" weight="semibold">
-            {label}
+    <View style={styles.wrap}>
+      <Text variant="label" tone="muted">
+        {label}
+      </Text>
+      <Input ref={ref} accessibilityLabel={label} invalid={Boolean(error)} value={value} {...props} />
+      <View style={styles.footer}>
+        {error ? (
+          <Text accessibilityLiveRegion="polite" style={styles.flex} tone="danger" variant="caption">
+            {error}
           </Text>
-          {required ? (
-            <Text style={styles.required} tone="danger" variant="label" weight="bold">
-              *
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
-      {children}
-      {error ? (
-        <Text tone="danger" variant="caption" weight="medium">
-          {error}
-        </Text>
-      ) : helperText ? (
-        <Text tone="muted" variant="caption">
-          {helperText}
-        </Text>
-      ) : null}
+        ) : hint ? (
+          <Text style={styles.flex} tone="subtle" variant="caption">
+            {hint}
+          </Text>
+        ) : (
+          <View style={styles.flex} />
+        )}
+        {counter !== undefined ? (
+          <Text tone="subtle" variant="caption">
+            {(value ?? "").length}/{counter}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
-  container: {
-    width: "100%",
-    gap: spacing.sm
-  },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  required: {
-    color: colors.danger
-  }
+  wrap: { gap: spacing.xs },
+  footer: { flexDirection: "row", gap: spacing.sm, minHeight: 16 },
+  flex: { flex: 1 }
 });

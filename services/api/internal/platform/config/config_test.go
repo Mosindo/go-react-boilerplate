@@ -26,3 +26,18 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PORT", "")
+	t.Setenv("UPLOAD_DIR", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Port != "8080" || cfg.UploadDir != "./data/uploads" || cfg.SMTP.Host != "" {
+		t.Fatalf("unexpected defaults: %#v", cfg)
+	}
+}

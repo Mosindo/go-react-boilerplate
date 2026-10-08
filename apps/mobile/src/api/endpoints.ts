@@ -2,29 +2,37 @@ export const endpoints = {
   auth: {
     register: "/auth/register",
     login: "/auth/login",
-    me: "/me"
+    refresh: "/auth/refresh",
+    logout: "/auth/logout",
+    forgot: "/auth/password/forgot",
+    reset: "/auth/password/reset",
+    changePassword: "/me/password"
   },
-  users: {
-    list: "/users",
-    detail: (userId: string) => `/users/${userId}`
-  },
-  posts: {
-    list: "/posts",
-    create: "/posts",
-    detail: (postId: string) => `/posts/${postId}`
-  },
-  chat: {
-    chats: "/chats",
-    messages: (userId: string) => `/chats/${userId}/messages`
-  },
-  notifications: {
-    list: "/notifications",
-    create: "/notifications",
-    markRead: (notificationId: string) => `/notifications/${notificationId}/read`
-  },
-  billing: {
-    subscription: "/billing/subscription",
-    checkout: "/billing/checkout",
-    webhook: "/billing/webhook"
-  }
+  me: "/me",
+  profile: "/me/profile",
+  preferences: "/me/preferences",
+  location: "/me/location",
+  photos: "/me/photos",
+  photosOrder: "/me/photos/order",
+  photo: (id: string) => `/me/photos/${id}`,
+  interests: "/interests",
+  profileOf: (id: string) => `/profiles/${id}`,
+  discover: "/discover",
+  swipes: "/swipes",
+  matches: "/matches",
+  match: (id: string) => `/matches/${id}`,
+  conversations: "/conversations",
+  conversationsUnread: "/conversations/unread",
+  conversation: (id: string) => `/conversations/${id}`,
+  messages: (id: string) => `/conversations/${id}/messages`,
+  read: (id: string) => `/conversations/${id}/read`,
+  notifications: "/notifications",
+  notificationsUnread: "/notifications/unread-count",
+  notificationsReadAll: "/notifications/read-all",
+  notificationRead: (id: string) => `/notifications/${id}/read`,
+  blocks: "/blocks",
+  unblock: (id: string) => `/blocks/${id}`,
+  reports: "/reports",
+  wsTicket: "/ws/ticket",
+  ws: "/ws"
 } as const;

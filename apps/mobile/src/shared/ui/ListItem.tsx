@@ -1,89 +1,51 @@
 import React, { type ReactNode } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  View,
-  type PressableProps,
-  type StyleProp,
-  type ViewStyle
-} from "react-native";
-import { Card, type CardVariant } from "./Card";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../../theme";
+import type { IconName } from "./Button";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { spacing } from "./tokens";
 
-export type ListItemProps = Omit<PressableProps, "children" | "style"> & {
+type ListItemProps = {
   title: string;
   subtitle?: string;
-  leading?: ReactNode;
-  trailing?: ReactNode;
-  variant?: CardVariant;
-  disabled?: boolean;
-  style?: StyleProp<ViewStyle>;
+  icon?: IconName;
+  left?: ReactNode;
+  right?: ReactNode;
+  onPress?: () => void;
+  destructive?: boolean;
+  chevron?: boolean;
 };
 
-export function ListItem({
-  disabled = false,
-  leading,
-  onPress,
-  style,
-  subtitle,
-  title,
-  trailing,
-  variant = "default",
-  ...props
-}: ListItemProps) {
+/** Settings-style row. Pressable rows get a chevron unless a custom `right` is given. */
+export function ListItem({ title, subtitle, icon, left, right, onPress, destructive = false, chevron = true }: ListItemProps) {
+  const { colors } = useTheme();
+  const tone = destructive ? colors.danger : colors.text;
   const content = (
-    <Card padding="md" style={[styles.card, disabled ? styles.disabled : null, style]} variant={variant}>
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
-      <View style={styles.copy}>
-        <Text style={styles.title} variant="label" weight="bold">
+    <View style={[styles.row, { borderBottomColor: colors.border }]}>
+      {left ?? (icon ? <Ionicons color={destructive ? colors.danger : colors.textMuted} name={icon} size={22} /> : null)}
+      <View style={styles.body}>
+        <Text style={{ color: tone }} weight="medium">
           {title}
         </Text>
         {subtitle ? (
-          <Text numberOfLines={1} style={styles.subtitle} tone="muted">
+          <Text tone="muted" variant="bodySmall">
             {subtitle}
           </Text>
         ) : null}
       </View>
-      {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
-    </Card>
+      {right ?? (onPress && chevron ? <Ionicons color={colors.textSubtle} name="chevron-forward" size={18} /> : null)}
+    </View>
   );
-
-  if (!onPress) {
-    return content;
-  }
-
+  if (!onPress) return content;
   return (
-    <Pressable disabled={disabled} onPress={onPress} {...props}>
+    <Pressable accessibilityLabel={title} accessibilityRole="button" onPress={onPress} style={({ pressed }) => (pressed ? { opacity: 0.7 } : null)}>
       {content}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md
-  },
-  disabled: {
-    opacity: 0.7
-  },
-  leading: {
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  },
-  title: {
-    color: colors.text
-  },
-  subtitle: {
-    color: colors.textMuted
-  },
-  trailing: {
-    marginLeft: spacing.sm
-  }
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, minHeight: 56 },
+  body: { flex: 1, gap: 2 }
 });

@@ -1,12 +1,31 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lien",
+    "slug": "lien",
+    "scheme": "lien",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.lien.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Lien utilise vos photos pour composer votre profil.",
+        "NSLocationWhenInUseUsageDescription": "Lien utilise votre position approximative pour vous proposer des profils proches. Elle n'est jamais affichée avec précision."
+      }
+    },
+    "android": {
+      "package": "app.lien.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      ["expo-image-picker", { "photosPermission": "Lien utilise vos photos pour composer votre profil." }],
+      ["expo-location", { "locationWhenInUsePermission": "Lien utilise votre position approximative pour vous proposer des profils proches." }]
     ]
   }
 }

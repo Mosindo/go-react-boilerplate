@@ -1,0 +1,6 @@
+dist
+node_modules
+.expo
+test-results
+package-lock.json
+tamagui.config.ts

@@ -1,90 +1,48 @@
 import { useSyncExternalStore } from "react";
 
-type FeedbackState = {
-  error: string | null;
-  errors: string[];
-  loadingCount: number;
-  loadingLabel: string | null;
-  loadingLabels: string[];
-};
+export type ToastTone = "info" | "error" | "success";
+export type Toast = { id: number; message: string; tone: ToastTone };
 
-type Listener = () => void;
-
-let state: FeedbackState = {
-  error: null,
-  errors: [],
-  loadingCount: 0,
-  loadingLabel: null,
-  loadingLabels: []
-};
-
-const listeners = new Set<Listener>();
+let toasts: Toast[] = [];
+let nextId = 1;
+const listeners = new Set<() => void>();
 
 function emit() {
   listeners.forEach((listener) => listener());
 }
 
-function subscribe(listener: Listener) {
+/** Shows a short message; identical consecutive messages are collapsed. */
+export function showToast(message: string, tone: ToastTone = "info"): void {
+  if (!message || toasts.at(-1)?.message === message) return;
+  toasts = [...toasts.slice(-2), { id: nextId++, message, tone }];
+  emit();
+}
+
+export function showGlobalError(message: string): void {
+  showToast(message, "error");
+}
+
+export function dismissToast(id: number): void {
+  toasts = toasts.filter((toast) => toast.id !== id);
+  emit();
+}
+
+export function resetToasts(): void {
+  toasts = [];
+  emit();
+}
+
+function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-function getSnapshot(): FeedbackState {
-  return state;
-}
-
-export function beginGlobalLoading(label = "Working...") {
-  const nextLabels = [...state.loadingLabels, label];
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function endGlobalLoading() {
-  const nextLabels = state.loadingLabels.slice(0, -1);
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function showGlobalError(message: string) {
-  if (!message) {
-    return;
-  }
-
-  const nextErrors = state.errors.at(-1) === message ? state.errors : [...state.errors, message];
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
-  emit();
-}
-
-export function clearGlobalError() {
-  if (state.errors.length === 0) {
-    return;
-  }
-
-  const nextErrors = state.errors.slice(0, -1);
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
-  emit();
-}
-
-export function useGlobalFeedback() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+export function useToasts(): Toast[] {
+  return useSyncExternalStore(
+    subscribe,
+    () => toasts,
+    () => toasts
+  );
 }

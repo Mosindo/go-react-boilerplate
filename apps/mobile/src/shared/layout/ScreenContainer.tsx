@@ -1,58 +1,44 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, spacing } from "../ui";
-import { SafeAreaLayout } from "./SafeAreaLayout";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { useTheme } from "../../theme";
+import { spacing } from "../ui";
 
 type ScreenContainerProps = {
   children: ReactNode;
-  centered?: boolean;
-  contentMaxWidth?: number;
+  scroll?: boolean;
+  padded?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
-  edges?: ("top" | "right" | "bottom" | "left")[];
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
+  /** Pinned below the content (primary action of a form). */
+  footer?: ReactNode;
 };
 
-export function ScreenContainer({
-  centered = false,
-  children,
-  contentMaxWidth = 960,
-  contentStyle,
-  edges,
-  style,
-  testID
-}: ScreenContainerProps) {
+/** Page wrapper: themed background, optional scrolling, keyboard avoidance and a pinned footer. */
+export function ScreenContainer({ children, scroll = true, padded = true, contentStyle, footer }: ScreenContainerProps) {
+  const { colors } = useTheme();
+  const body = scroll ? (
+    <ScrollView
+      contentContainerStyle={[padded ? styles.padded : null, styles.grow, contentStyle]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    <View style={[styles.flex, padded ? styles.padded : null, contentStyle]}>{children}</View>
+  );
   return (
-    <SafeAreaLayout edges={edges} style={style}>
-      <View style={[styles.outer, centered ? styles.centered : null]}>
-        <View
-          style={[styles.content, centered ? styles.contentCentered : null, { maxWidth: contentMaxWidth }, contentStyle]}
-          testID={testID}
-        >
-          {children}
-        </View>
-      </View>
-    </SafeAreaLayout>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.flex, { backgroundColor: colors.background }]}>
+      <View style={[styles.flex, styles.page]}>{body}</View>
+      {footer ? <View style={[styles.footer, { borderTopColor: colors.border, backgroundColor: colors.background }]}>{footer}</View> : null}
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  outer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
-  },
-  centered: {
-    justifyContent: "center"
-  },
-  content: {
-    flex: 1,
-    width: "100%",
-    alignSelf: "center"
-  },
-  contentCentered: {
-    flex: 0
-  }
+  flex: { flex: 1 },
+  // Keeps lines readable on tablets and in the desktop browser.
+  page: { width: "100%", maxWidth: 560, alignSelf: "center" },
+  grow: { flexGrow: 1 },
+  padded: { padding: spacing.xl, gap: spacing.lg },
+  footer: { padding: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, alignItems: "center" }
 });

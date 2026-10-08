@@ -13,7 +13,7 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token", "code": "unauthorized"})
 			return
 		}
 
@@ -28,36 +28,29 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 			return secret, nil
 		})
 		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
 		expiresAt, err := claims.GetExpirationTime()
 		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
 		userID, ok := stringClaim(claims, "uid")
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
 		sessionID, ok := stringClaim(claims, "sid")
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
 		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}

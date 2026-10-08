@@ -1,4 +1,11 @@
-# go-react-saas Changelog
+# Changelog
+
+## Unreleased — Lien (application de rencontre)
+
+- Le boilerplate devient une application de rencontre gratuite : profils, photos, préférences, découverte, matchs, chat temps réel, notifications, blocage, signalement, suppression de compte.
+- API : nouveau schéma (`internal/platform/db/schema`, migrations versionnées), modules `profiles`, `photos`, `discovery`, `safety`, WebSocket, rate limiting, récupération de mot de passe.
+- App : refonte complète (design system clair/sombre, deck de swipe, chat, onboarding), build web, tests Jest et Playwright.
+- Retirés du chemin d'exécution : Stripe/abonnements, organisations, posts, commentaires, fichiers génériques.
 
 All notable changes to this project will be documented in this file.
 
