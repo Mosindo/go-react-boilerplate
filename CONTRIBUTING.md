@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Lumo (built on the `go-react-saas` boilerplate).
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Lumo is free forever: never add paywalls, boosts, like quotas or mandatory ads.
+- Keep shared platform code (`internal/platform`) free of dating-specific naming.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
