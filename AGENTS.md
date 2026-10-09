@@ -7,24 +7,19 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is now **Lumo**, a 100 % free dating app (no subscription, paywall, boost, like quota or mandatory ad - ever).
+The founder explicitly approved the dating domain, which supersedes the earlier "domain-agnostic boilerplate" rule for the modules below.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Core modules:
+- auth (accounts, sessions, recovery, account deletion)
+- profiles (profile, preferences, interests)
+- photos
+- matching (discovery, swipes, matches)
+- chat (+ real time)
+- safety (blocks, reports)
 - notifications
-- files
+
+Keep new code domain-clean: no billing, tenancy or content-feed concepts unless explicitly requested.
 
 ---
 
@@ -65,11 +60,11 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -117,6 +112,7 @@ Secrets:
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - see `.env.example` for the optional ones (`APP_ENV`, `UPLOAD_DIR`, `ALLOWED_ORIGINS`, `SMTP_*`)
 
 ---
 
@@ -130,12 +126,11 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, created_at)`
+- `swipes (target_id, action, created_at)`
 
 ---
 
@@ -143,20 +138,14 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing), `go vet ./...`
+- `DATABASE_URL_TEST=... go test -race ./...` (integration tests need PostgreSQL and skip silently without it)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/*_test.go`): health, auth lifecycle, password reset, profile/preferences validation, photos, discovery, like/match (incl. concurrent likes), unmatch, chat permissions/pagination/read state, blocking, reports, realtime, account deletion. `scripts/smoke-api.mjs` is the black-box smoke test.
 
 ---
 
@@ -178,8 +167,9 @@ Mandatory rules to avoid recurring environment issues:
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile, photo, preferences)
+  - discovery loads
+  - like -> match
   - chat send/read
   - notifications read flow
 

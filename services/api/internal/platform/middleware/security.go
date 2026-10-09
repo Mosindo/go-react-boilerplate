@@ -39,7 +39,8 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 			return
 		}
 
-		if _, ok := allowed[origin]; !ok {
+		_, wildcard := allowed["*"]
+		if _, ok := allowed[origin]; !ok && !wildcard {
 			if c.Request.Method == http.MethodOptions {
 				c.AbortWithStatus(http.StatusForbidden)
 				return
@@ -53,6 +54,7 @@ func CORS(allowedOrigins []string) gin.HandlerFunc {
 		headers.Set("Vary", "Origin")
 		headers.Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		headers.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
+		headers.Set("Access-Control-Expose-Headers", "Retry-After, X-Request-ID")
 		headers.Set("Access-Control-Max-Age", "600")
 
 		if c.Request.Method == http.MethodOptions {

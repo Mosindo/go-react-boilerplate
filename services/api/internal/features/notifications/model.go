@@ -2,34 +2,35 @@ package notifications
 
 import "time"
 
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
+
 type Notification struct {
-	ID        string
+	ID        string            `json:"id"`
+	Type      string            `json:"type"`
+	Title     string            `json:"title"`
+	Body      string            `json:"body"`
+	Data      map[string]string `json:"data"`
+	IsRead    bool              `json:"isRead"`
+	ReadAt    *time.Time        `json:"readAt"`
+	CreatedAt time.Time         `json:"createdAt"`
+}
+
+// NewNotification describes a notification to create. A non-empty DedupeKey
+// coalesces it with an existing *unread* notification of the same user and key
+// (used so a chat with 50 new messages shows one notification, not 50).
+type NewNotification struct {
 	UserID    string
 	Type      string
 	Title     string
 	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
-
-type NotificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
+	Data      map[string]string
+	DedupeKey string
 }
 
 type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
-}
-
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+	Notifications []Notification `json:"notifications"`
+	UnreadCount   int            `json:"unreadCount"`
 }

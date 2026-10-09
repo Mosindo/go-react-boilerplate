@@ -44,12 +44,6 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 			return
 		}
 
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
 		sessionID, ok := stringClaim(claims, "sid")
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
@@ -57,7 +51,6 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 		}
 
 		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}
