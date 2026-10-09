@@ -50,9 +50,9 @@ async function newUserContext(browser: Browser): Promise<{ ctx: BrowserContext; 
     permissions: ['geolocation'],
   });
   const page = await ctx.newPage();
-  page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+  page.on('pageerror', (e) => console.warn('[pageerror]', e.message));
   page.on('response', (r) => {
-    if (r.status() >= 400) console.log(`[http ${r.status()}] ${r.request().method()} ${r.url()}`);
+    if (r.status() >= 400) console.warn(`[http ${r.status()}] ${r.request().method()} ${r.url()}`);
   });
   return { ctx, page };
 }
@@ -312,6 +312,19 @@ test('two users: onboarding, match, realtime chat, safety', async ({ browser }, 
     // the session survives a full reload (tokens persisted, /me restored)
     await a.reload();
     await expect(a.getByTestId('tab-discover')).toBeVisible();
+
+    // an expired/invalid access token is transparently refreshed (POST /auth/refresh, rotation)
+    const before = await a.evaluate(() => JSON.parse(localStorage.getItem('lumo.auth.tokens')!));
+    await a.evaluate(() => {
+      const t = JSON.parse(localStorage.getItem('lumo.auth.tokens')!);
+      t.accessToken = 'expired.invalid.token';
+      localStorage.setItem('lumo.auth.tokens', JSON.stringify(t));
+    });
+    await a.reload();
+    await expect(a.getByTestId('tab-discover')).toBeVisible();
+    const after = await a.evaluate(() => JSON.parse(localStorage.getItem('lumo.auth.tokens')!));
+    expect(after.refreshToken).not.toBe(before.refreshToken);
+    expect(after.accessToken).not.toBe('expired.invalid.token');
   });
 
   await test.step('A edits profile, photos, privacy, notifications and password', async () => {
@@ -328,18 +341,18 @@ test('two users: onboarding, match, realtime chat, safety', async ({ browser }, 
     await expect(a.getByText('Bio modifiée par le test e2e')).toBeVisible();
     await shot(a, '11-a-my-preview');
     await a
-      .getByRole('button', { name: /Retour|Back|Profil/ })
+      .getByRole('link', { name: /Retour/ })
       .first()
       .click();
 
     await a.getByTestId('row-privacy').click();
-    const distance = a.getByRole('switch', { name: 'Afficher ma distance' });
+    const distance = a.getByTestId('toggle-showDistance').getByRole('switch');
     await distance.click();
     await expect(distance).not.toBeChecked();
     await a.reload();
     await a.getByTestId('tab-profile').click();
     await a.getByTestId('row-privacy').click();
-    await expect(a.getByRole('switch', { name: 'Afficher ma distance' })).not.toBeChecked();
+    await expect(a.getByTestId('toggle-showDistance').getByRole('switch')).not.toBeChecked();
 
     await a.goto('/');
     await a.getByTestId('tab-profile').click();

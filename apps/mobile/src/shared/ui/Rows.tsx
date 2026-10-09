@@ -96,7 +96,6 @@ export function ToggleRow({
       </View>
       <Switch
         testID={testID}
-        accessibilityRole="switch"
         accessibilityLabel={label}
         value={value}
         disabled={disabled}

@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && prettier --check .",
+    "lint": "eslint . --max-warnings 0 && prettier --check .",
     "format": "prettier --write . && eslint . --fix",
     "test": "jest",
     "build:web": "node e2e/run.mjs --build-only",

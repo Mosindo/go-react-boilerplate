@@ -6,9 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.lumo.mobile",
@@ -19,10 +17,7 @@
     },
     "android": {
       "package": "app.lumo.mobile",
-      "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "READ_MEDIA_IMAGES"
-      ]
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
     },
     "web": {
       "bundler": "metro",

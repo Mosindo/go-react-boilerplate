@@ -168,32 +168,34 @@ function SwipeCardImpl(
         </View>
       ) : null}
 
-      <View style={styles.zones}>
-        <Pressable
-          testID="card-prev"
-          accessibilityRole="button"
-          accessibilityLabel={fr.discover.previousPhoto}
-          onPress={prev}
-          disabled={!interactive}
-          style={styles.zoneSide}
-        />
-        <Pressable
-          testID="card-open"
-          accessibilityRole="button"
-          accessibilityLabel={fr.discover.openProfile}
-          onPress={onOpenProfile}
-          disabled={!interactive}
-          style={styles.zoneCenter}
-        />
-        <Pressable
-          testID="card-next"
-          accessibilityRole="button"
-          accessibilityLabel={fr.discover.nextPhoto}
-          onPress={next}
-          disabled={!interactive}
-          style={styles.zoneSide}
-        />
-      </View>
+      {interactive ? (
+        <View style={styles.zones}>
+          <Pressable
+            testID="card-prev"
+            accessibilityRole="button"
+            accessibilityLabel={fr.discover.previousPhoto}
+            onPress={prev}
+            disabled={!interactive}
+            style={styles.zoneSide}
+          />
+          <Pressable
+            testID="card-open"
+            accessibilityRole="button"
+            accessibilityLabel={fr.discover.openProfile}
+            onPress={onOpenProfile}
+            disabled={!interactive}
+            style={styles.zoneCenter}
+          />
+          <Pressable
+            testID="card-next"
+            accessibilityRole="button"
+            accessibilityLabel={fr.discover.nextPhoto}
+            onPress={next}
+            disabled={!interactive}
+            style={styles.zoneSide}
+          />
+        </View>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
