@@ -1,12 +1,52 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lumo",
+    "slug": "lumo",
+    "scheme": "lumo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.lumo.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Lumo a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil.",
+        "NSLocationWhenInUseUsageDescription": "Lumo utilise votre position approximative pour vous montrer des personnes près de chez vous."
+      }
+    },
+    "android": {
+      "package": "app.lumo.mobile",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "READ_MEDIA_IMAGES"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "Lumo",
+      "shortName": "Lumo",
+      "description": "Rencontres gratuites, pour de vrai"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lumo utilise votre position approximative pour vous montrer des personnes près de chez vous."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lumo a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
     ]
   }
 }

@@ -1,106 +1,107 @@
-import React, { useEffect } from "react";
-import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
-import AuthScreen from "./src/screens/AuthScreen";
-import { AuthProvider, useAuth } from "./src/hooks/useAuth";
-import { BottomNavigation, SafeAreaLayout } from "./src/shared/layout";
-import { clearGlobalError, ErrorView, LoadingView, useGlobalFeedback } from "./src/shared/feedback";
-import { colors, spacing } from "./src/shared/ui";
+import React, { useEffect } from 'react';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+  type Theme as NavTheme,
+} from '@react-navigation/native';
+import { focusManager, QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider } from './src/auth/AuthProvider';
+import { fr } from './src/i18n/fr';
+import { navigationRef } from './src/navigation/ref';
+import { RootNavigator } from './src/navigation/RootNavigator';
+import { queryClient } from './src/query/client';
+import { realtimeStatus } from './src/realtime/RealtimeProvider';
+import { MatchModal } from './src/screens/MatchModal';
+import { Text, ToastHost } from './src/shared/ui';
+import { MAX_CONTENT_WIDTH, ThemeProvider, spacing, useTheme } from './src/theme';
 
-function AppShell() {
-  const { accessToken, isAuthenticated, isBooting, user } = useAuth();
-  const globalFeedback = useGlobalFeedback();
-
+function useReactQueryAppFocus() {
   useEffect(() => {
-    if (!globalFeedback.error) {
-      return;
-    }
+    if (Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (s) => focusManager.setFocused(s === 'active'));
+    return () => sub.remove();
+  }, []);
+}
 
-    const timeoutId = setTimeout(() => {
-      clearGlobalError();
-    }, 5000);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [globalFeedback.error]);
-
-  if (isBooting) {
-    return (
-      <SafeAreaLayout style={styles.bootContainer}>
-        <StatusBar style="dark" />
-        <LoadingView fullScreen label="Restoring session..." />
-      </SafeAreaLayout>
-    );
-  }
-
-  if (!isAuthenticated || !accessToken || !user) {
-    return (
-      <>
-        <StatusBar style="dark" />
-        <AuthScreen />
-      </>
-    );
-  }
-
+function ConnectionBanner() {
+  const status = realtimeStatus.use();
+  const { colors } = useTheme();
+  if (status !== 'reconnecting') return null;
   return (
-    <>
-      <StatusBar style="dark" />
-      <BottomNavigation accessToken={accessToken} key={user.id} user={user} />
-      {globalFeedback.error ? (
-        <View pointerEvents="box-none" style={styles.bannerWrap}>
-          <ErrorView
-            actionLabel="Dismiss"
-            compact
-            message={globalFeedback.error}
-            onAction={clearGlobalError}
-            style={styles.banner}
-            title="Request issue"
-          />
-        </View>
-      ) : null}
-      {globalFeedback.loadingCount > 0 && !isBooting ? (
-        <View style={styles.overlay}>
-          <LoadingView label={globalFeedback.loadingLabel ?? "Working..."} style={styles.overlayCard} />
-        </View>
-      ) : null}
-    </>
+    <View
+      style={[styles.banner, { backgroundColor: colors.accent }]}
+      accessibilityLiveRegion="polite"
+      testID="reconnecting-banner"
+    >
+      <Text variant="caption" style={{ color: colors.onAccent }}>
+        {fr.realtime.reconnecting}
+      </Text>
+    </View>
+  );
+}
+
+function Shell() {
+  const { colors, dark } = useTheme();
+  useReactQueryAppFocus();
+  const navTheme: NavTheme = {
+    ...(dark ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(dark ? DarkTheme : DefaultTheme).colors,
+      primary: colors.primary,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      notification: colors.primary,
+    },
+  };
+  return (
+    // On wide screens (web) the app lives in a centred phone-width column.
+    <View style={[styles.outside, { backgroundColor: colors.outside }]}>
+      <View style={[styles.column, { backgroundColor: colors.background }]}>
+        <StatusBar style={dark ? 'light' : 'dark'} />
+        <NavigationContainer
+          ref={navigationRef}
+          theme={navTheme}
+          documentTitle={{ formatter: () => fr.app.name }}
+        >
+          <RootNavigator />
+        </NavigationContainer>
+        <ConnectionBanner />
+        <MatchModal />
+        <ToastHost />
+      </View>
+    </View>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <Shell />
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  bootContainer: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  bannerWrap: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl
-  },
-  banner: {},
-  overlay: {
-    position: "absolute",
-    top: 0,
+  outside: { flex: 1, alignItems: 'center' },
+  column: { flex: 1, width: '100%', maxWidth: MAX_CONTENT_WIDTH, overflow: 'hidden' },
+  banner: {
+    position: 'absolute',
+    left: 0,
     right: 0,
     bottom: 0,
-    left: 0,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xxl
+    alignItems: 'center',
+    padding: spacing.xs,
   },
-  overlayCard: {
-    width: "100%",
-    maxWidth: 320
-  }
 });

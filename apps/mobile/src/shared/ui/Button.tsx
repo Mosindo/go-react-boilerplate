@@ -1,170 +1,88 @@
-import React, { type ReactNode } from "react";
+import React from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
-  View,
   type PressableProps,
   type StyleProp,
-  type TextStyle,
-  type ViewStyle
-} from "react-native";
-import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
+  type ViewStyle,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { radius, spacing, useTheme } from '../../theme';
+import { Text } from './Text';
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
-export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
-  children?: ReactNode;
-  label?: string;
-  loading?: boolean;
+export type ButtonProps = Omit<PressableProps, 'style' | 'children'> & {
+  label: string;
   variant?: ButtonVariant;
-  size?: ButtonSize;
-  fullWidth?: boolean;
+  loading?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
   style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
+  compact?: boolean;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  }
-});
-
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
-};
-
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
-
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
-  primary: "inverse",
-  secondary: "primary",
-  destructive: "inverse",
-  success: "inverse",
-  outline: "default",
-  ghost: "secondary"
-};
-
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
-};
-
-export function Button({
-  children,
-  disabled,
-  fullWidth = false,
+function ButtonImpl({
   label,
+  variant = 'primary',
   loading = false,
-  size = "md",
+  disabled,
+  icon,
   style,
-  textStyle,
-  variant = "primary",
-  ...props
+  compact,
+  accessibilityLabel,
+  ...rest
 }: ButtonProps) {
-  const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
-  const labelNode = typeof children === "string" ? children : label;
-
+  const { colors } = useTheme();
+  const palette = {
+    primary: { bg: colors.primary, fg: colors.onPrimary, border: colors.primary },
+    secondary: { bg: colors.surface, fg: colors.text, border: colors.border },
+    ghost: { bg: 'transparent', fg: colors.primary, border: 'transparent' },
+    danger: { bg: colors.danger, fg: colors.onDanger, border: colors.danger },
+  }[variant];
+  const inactive = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={buttonDisabled}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled: !!inactive, busy: loading }}
+      disabled={inactive}
+      {...rest}
       style={({ pressed }) => [
         styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
-        fullWidth ? styles.fullWidth : null,
-        buttonDisabled ? styles.disabled : null,
-        pressed ? styles.pressed : null,
-        style
+        compact ? styles.compact : null,
+        { backgroundColor: palette.bg, borderColor: palette.border },
+        pressed ? { opacity: 0.85 } : null,
+        inactive ? { opacity: 0.5 } : null,
+        style,
       ]}
-      {...props}
     >
-      <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
-        {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
-            {labelNode}
+      {loading ? (
+        <ActivityIndicator color={palette.fg} />
+      ) : (
+        <>
+          {icon ? <Ionicons name={icon} size={18} color={palette.fg} style={styles.icon} /> : null}
+          <Text variant="bodyStrong" style={{ color: palette.fg }}>
+            {label}
           </Text>
-        ) : (
-          children
-        )}
-      </View>
+        </>
+      )}
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  base: {
+    minHeight: 50,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  compact: { minHeight: 40, paddingHorizontal: spacing.lg },
+  icon: { marginRight: spacing.sm },
+});
+
+export const Button = React.memo(ButtonImpl);
