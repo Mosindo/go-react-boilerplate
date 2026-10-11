@@ -1,0 +1,23 @@
+/** Text glyphs used as lightweight icons (no icon font dependency). Always paired with a label. */
+export const icons = {
+  close: '✕',
+  heart: '♥',
+  back: '‹',
+  chevron: '›',
+  more: '⋯',
+  check: '✓',
+  plus: '+',
+  minus: '−',
+  up: '↑',
+  down: '↓',
+  star: '★',
+  spark: '✦',
+  chat: '✉',
+  person: '☺',
+  bell: '♪',
+  info: 'i',
+  lock: '⚿',
+  pin: '⌖',
+  camera: '◉',
+  trash: '⌫',
+} as const;

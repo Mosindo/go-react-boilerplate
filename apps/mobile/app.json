@@ -1,12 +1,42 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Ember",
+    "slug": "ember",
+    "scheme": "ember",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.ember.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Ember a besoin d'accéder à vos photos pour que vous puissiez en ajouter à votre profil.",
+        "NSLocationWhenInUseUsageDescription": "Ember utilise votre position approximative, uniquement quand l'app est ouverte, pour vous montrer des personnes près de chez vous."
+      }
+    },
+    "android": {
+      "package": "app.ember.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ember a besoin d'accéder à vos photos pour que vous puissiez en ajouter à votre profil."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ember utilise votre position approximative, uniquement quand l'app est ouverte, pour vous montrer des personnes près de chez vous."
+        }
+      ]
     ]
   }
 }
