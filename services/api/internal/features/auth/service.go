@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	netmail "net/mail"
 	"strings"
@@ -198,7 +199,15 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 	body := fmt.Sprintf("Bonjour,\n\nPour choisir un nouveau mot de passe, ouvrez : %sreset-password?token=%s\n"+
 		"ou saisissez ce code dans l'application : %s\n\nCe code expire dans 1 heure. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n",
 		s.appLinkBase, token, token)
-	return s.mailer.Send(ctx, stored.User.Email, "Réinitialisation de votre mot de passe Ember", body)
+	// Sent asynchronously so response time never reveals whether the address is registered.
+	go func(to string) {
+		sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.mailer.Send(sendCtx, to, "Réinitialisation de votre mot de passe Ember", body); err != nil {
+			log.Printf(`{"event":"mail_error","operation":"auth.forgot","error":%q}`, err.Error())
+		}
+	}(stored.User.Email)
+	return nil
 }
 
 func (s *Service) ResetPassword(ctx context.Context, token, password string) error {

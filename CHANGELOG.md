@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Ember Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,8 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** the repository is now Ember, a free dating app. Legacy SaaS tables are dropped by migration `014`; Stripe billing, organizations, posts, comments and files modules were removed.
+- Migrations are tracked in `schema_migrations` and applied once, in transactions.
+
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Profiles, preferences, privacy, opt-in coarse location, photos with sanitisation and signed URLs.
+- Discovery deck, likes/passes, atomic matching, unmatch, "likes received".
+- Chat with unread counters, read receipts and WebSocket delivery; in-app notifications.
+- Blocks, reports, password recovery, change password, account deletion, rate limiting.
+- New Expo client (French UI, light/dark), demo seed command, smoke script, CI for API/mobile/Docker.
 
 ## [0.1.0] - 2026-03-17
 

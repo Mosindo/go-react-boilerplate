@@ -70,3 +70,15 @@ func requestIsHTTPS(c *gin.Context) bool {
 	}
 	return strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")), "https")
 }
+
+// BodyLimit caps request bodies: jsonLimit for JSON, multipartLimit for uploads.
+func BodyLimit(jsonLimit, multipartLimit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		limit := jsonLimit
+		if strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/") {
+			limit = multipartLimit
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		c.Next()
+	}
+}

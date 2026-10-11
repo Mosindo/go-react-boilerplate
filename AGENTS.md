@@ -7,24 +7,21 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is **Ember**, a 100 % free dating app (no subscription, paywall, boost, artificial like limit or ads).
+It originated as the `go-react-saas` boilerplate; the generic SaaS modules (billing, organizations, posts, comments,
+files) were intentionally removed.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
+Core modules:
+- auth (accounts, sessions, recovery, deletion)
+- users (profile, preferences, privacy, location)
+- photos
+- discovery (deck, swipes, matches)
 - chat
 - notifications
-- files
+- safety (blocks, reports)
+- realtime (WebSocket)
+
+Never add paid or locked features. Contract between API and client: `docs/API.md`.
 
 ---
 
@@ -66,11 +63,12 @@ Target structure:
 - `features/`
   - `auth/`
   - `users/`
-  - `files/`
+  - `photos/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
+  - `realtime/`
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +128,11 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `swipes (to_user_id, action, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `blocks (blocked_id)`
 
 ---
 
@@ -143,20 +140,17 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing), `go vet ./...`
+- `go test -race ./...` with `DATABASE_URL_TEST` set (integration tests wipe that database's `public` schema)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/integration_test.go`): health, auth lifecycle, password
+recovery, profile validation, photos, discovery rules + matching (incl. concurrency), chat + permissions, block /
+unmatch / report / notifications, account deletion, rate limiting, WebSocket delivery. `scripts/smoke-api.mjs` is the
+black-box smoke test.
 
 ---
 
@@ -171,15 +165,14 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
+  - register → onboarding (profile, preferences, photo)
+  - discover loads
+  - like → match
   - chat send/read
   - notifications read flow
 

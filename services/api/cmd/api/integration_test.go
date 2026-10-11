@@ -307,7 +307,12 @@ func TestPasswordRecoveryAndChange(t *testing.T) {
 
 	e.expect(http.StatusAccepted, "POST", "/auth/forgot-password", "", map[string]string{"email": "nobody@test.invalid"})
 	e.expect(http.StatusAccepted, "POST", "/auth/forgot-password", "", map[string]string{"email": email})
-	token := e.mailer.token()
+	var token string
+	for n := 0; n < 50 && token == ""; n++ { // the e-mail is sent asynchronously
+		if token = e.mailer.token(); token == "" {
+			time.Sleep(40 * time.Millisecond)
+		}
+	}
 	if token == "" {
 		t.Fatal("no reset token e-mailed")
 	}

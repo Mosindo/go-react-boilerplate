@@ -120,6 +120,7 @@ func setupRouter(a *app) (*gin.Engine, error) {
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
+	r.Use(middleware.BodyLimit(1<<20, 10<<20))
 	r.MaxMultipartMemory = 9 << 20
 
 	hub := platformrt.NewHub()
