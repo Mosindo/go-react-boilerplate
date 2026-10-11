@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { errorMessage } from '../../api';
@@ -32,6 +33,16 @@ export function DiscoverScreen({ navigation }: TabScreenProps<'Discover'>) {
   }));
 
   const hasCards = state.queue.length > 0;
+
+  // New people sign up while the deck sits empty: look again each time the tab regains focus.
+  // (Read through a ref so becoming exhausted while focused does not trigger a refetch loop.)
+  const exhausted = useRef(state.exhausted);
+  exhausted.current = state.exhausted;
+  useFocusEffect(
+    useCallback(() => {
+      if (exhausted.current) retry();
+    }, [retry]),
+  );
 
   let body: ReactNode;
   if (hasCards) {

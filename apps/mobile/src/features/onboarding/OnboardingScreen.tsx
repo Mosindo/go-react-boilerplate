@@ -34,8 +34,12 @@ import type { FieldErrors, OnboardingForm, OnboardingStep } from './logic';
 /** Loads the current profile (404 = nothing saved yet) and derives where to resume. */
 export function OnboardingScreen() {
   const profile = useOwnProfile();
-  if (profile.isPending) return <Loading />;
-  if (profile.isError && !isNotFound(profile.error)) {
+  // A first 404 followed by a refetch flips the query back to `pending`: once the wizard has
+  // started it must stay mounted, otherwise the user's progress would be reset.
+  const [started, setStarted] = useState(false);
+  if (!started && !profile.isPending) setStarted(true);
+  if (!started) return <Loading />;
+  if (profile.isError && !profile.data && !isNotFound(profile.error)) {
     return (
       <Screen edges={['top', 'bottom']}>
         <ErrorState message={errorMessage(profile.error)} onRetry={() => void profile.refetch()} />
@@ -212,7 +216,7 @@ function Wizard({ existing }: { existing: OwnProfile | null }) {
           onRetry={() => void photosProfile.refetch()}
         />
       ) : (
-        <PhotoManager photos={photosProfile.data.photos} />
+        <PhotoManager photos={photosProfile.data.photos} syncUser={false} />
       );
       break;
   }

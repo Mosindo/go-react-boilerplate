@@ -14,6 +14,7 @@ import { applyRealtimeEvent, refetchAfterReconnect } from './cache';
 import type { ConversationsData } from './cache';
 import { RealtimeClient } from './client';
 import { openWebSocket } from './socket';
+import { isOwnSwipeMatch } from './swipeGuard';
 
 /** Keeps one WebSocket open while signed in and funnels events into the query caches. */
 export function RealtimeProvider({
@@ -47,12 +48,15 @@ export function RealtimeProvider({
 
         if (effects.newMatch) {
           const conversation = effects.newMatch;
-          toast.show(fr.realtime.newMatch(conversation.user.firstName), 'success', {
-            label: fr.realtime.open,
-            onPress: () => {
-              if (navigationRef.isReady()) navigationRef.navigate('Chat', { conversation });
-            },
-          });
+          // The person who swiped last already sees the match modal.
+          if (!isOwnSwipeMatch(conversation.user.userId)) {
+            toast.show(fr.realtime.newMatch(conversation.user.firstName), 'success', {
+              label: fr.realtime.open,
+              onPress: () => {
+                if (navigationRef.isReady()) navigationRef.navigate('Chat', { conversation });
+              },
+            });
+          }
         } else if (effects.newNotification?.type === 'new_like') {
           toast.show(effects.newNotification.title, 'info');
         }

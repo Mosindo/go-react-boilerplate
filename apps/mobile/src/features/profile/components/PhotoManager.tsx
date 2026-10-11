@@ -16,9 +16,15 @@ import { movePhoto } from '../photoOrder';
 
 interface PhotoManagerProps {
   photos: Photo[];
+  /**
+   * Refresh the session user after each change (default). Onboarding turns it off: as soon as
+   * the first photo makes the profile complete, the app would leave the wizard before the
+   * person pressed "finish" or added more photos.
+   */
+  syncUser?: boolean;
 }
 
-export function PhotoManager({ photos }: PhotoManagerProps) {
+export function PhotoManager({ photos, syncUser = true }: PhotoManagerProps) {
   const { colors } = useTheme();
   const qc = useQueryClient();
   const toast = useToast();
@@ -65,7 +71,7 @@ export function PhotoManager({ photos }: PhotoManagerProps) {
 
   const syncAfterChange = async () => {
     await qc.invalidateQueries({ queryKey: queryKeys.ownProfile });
-    await refreshUser();
+    if (syncUser) await refreshUser();
   };
 
   const report = (result: PickResult): result is Extract<PickResult, { status: 'picked' }> => {

@@ -43,7 +43,10 @@ async function newActor(
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
+    if (msg.type() !== 'error') return;
+    // A fresh account has no profile yet: GET /me/profile answering 404 is the documented flow.
+    if (msg.location().url.endsWith('/me/profile') && msg.text().includes('404')) return;
+    errors.push(`console: ${msg.text()} (${msg.location().url})`);
   });
   return {
     label,
@@ -56,6 +59,9 @@ async function newActor(
     errors,
   };
 }
+
+/** A chat bubble (the conversation list preview shares the same text, so match the bubble label). */
+const bubble = (page: Page, body: string) => page.locator(`[aria-label$=": ${body}"]`);
 
 const shot = (actor: Actor, step: string) =>
   actor.page.screenshot({ path: path.join(SHOTS_DIR, `${run}-${actor.label}-${step}.png`) });
@@ -114,28 +120,46 @@ async function registerAndOnboard(actor: Actor, photo: string, birthYear: string
   const chooser = page.waitForEvent('filechooser');
   await page.getByTestId('photo-add').click();
   await (await chooser).setFiles(photo);
+  await shot(actor, '05-photos-uploaded');
   await expect(page.getByRole('button', { name: fr.photos.photoLabel(1, true) })).toBeVisible();
   await expect(page.getByTestId('onboarding-finish')).toBeEnabled();
   await shot(actor, '05-photos');
   await page.getByTestId('onboarding-finish').click();
 
-  await expect(page.getByTestId('discover-like')).toBeVisible();
+  // The first user to sign up finds an empty deck: both states prove Discover is reached.
+  await expect(
+    page.getByTestId('discover-like').or(page.getByText(fr.discover.emptyTitle)),
+  ).toBeVisible();
   await shot(actor, '06-discover');
 }
 
 /** Passes other people's cards (left by earlier runs) until `target`'s card is on top. */
 async function likeTarget(actor: Actor, target: Actor) {
   const { page } = actor;
+  // Leave and re-enter Discover so an exhausted deck looks for the people who just signed up.
+  await page.getByRole('link', { name: new RegExp(fr.tabs.likes) }).click();
+  await page.getByRole('link', { name: new RegExp(fr.tabs.discover) }).click();
   const card = page.getByLabel(fr.discover.openProfile(target.firstName), { exact: false });
-  for (let i = 0; i < 30; i++) {
-    await expect(page.getByTestId('discover-like')).toBeVisible();
-    if (await card.first().isVisible()) break;
-    await page.getByTestId('discover-pass').click();
+  const like = page.getByTestId('discover-like');
+  const pass = page.getByTestId('discover-pass');
+  // The deck renders the next card under the top one: a trial click only succeeds when the
+  // target's card is the top one (the hit target check fails when it is covered).
+  const onTop = () =>
+    card
+      .first()
+      .click({ trial: true, timeout: 500 })
+      .then(
+        () => true,
+        () => false,
+      );
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline && !(await onTop())) {
+    if ((await like.isVisible()) && (await pass.isEnabled())) await pass.click();
     await page.waitForTimeout(400);
   }
-  await expect(card.first()).toBeVisible();
+  expect(await onTop(), `${target.firstName} is the top card`).toBe(true);
   await shot(actor, '07-target-card');
-  await page.getByTestId('discover-like').click();
+  await like.click();
 }
 
 test('two new users register, match, chat in realtime and unmatch', async ({ browser }) => {
@@ -161,6 +185,9 @@ test('two new users register, match, chat in realtime and unmatch', async ({ bro
     await likeTarget(b, a);
     await expect(b.page.getByText(fr.match.title)).toBeVisible();
     await shot(b, '08-match');
+    // The one who swiped last has the modal: no duplicate "new match" toast on top of it.
+    await b.page.waitForTimeout(1000);
+    await expect(b.page.getByText(fr.realtime.newMatch(a.firstName))).toHaveCount(0);
 
     // A is notified live of the new match without reloading.
     await expect(a.page.getByText(fr.realtime.newMatch(b.firstName))).toBeVisible();
@@ -171,22 +198,22 @@ test('two new users register, match, chat in realtime and unmatch', async ({ bro
     const inputB = b.page.getByTestId('chat-input');
     await expect(inputB).toBeVisible();
 
-    await a.page.getByRole('tab', { name: /^Messages/ }).click();
-    await a.page.getByLabel(fr.chat.newMatchLabel(b.firstName)).click();
+    await a.page.getByRole('link', { name: new RegExp(fr.tabs.messages) }).click();
+    await a.page.getByRole('button', { name: fr.chat.newMatchLabel(b.firstName) }).click();
     const inputA = a.page.getByTestId('chat-input');
     await expect(inputA).toBeVisible();
 
     const hello = `Salut ${b.firstName}, ça va ? ${run}`;
     await inputA.fill(hello);
     await a.page.getByTestId('chat-send').click();
-    await expect(b.page.getByText(hello)).toBeVisible();
+    await expect(bubble(b.page, hello)).toBeVisible();
     await shot(b, '09-chat-received');
 
     const reply = `Très bien ${a.firstName} ! ${run}`;
     await inputB.fill(reply);
     await b.page.getByTestId('chat-send').click();
-    await expect(a.page.getByText(reply)).toBeVisible();
-    await expect(a.page.getByText(hello)).toBeVisible();
+    await expect(bubble(a.page, reply)).toBeVisible();
+    await expect(bubble(a.page, hello)).toBeVisible();
     await shot(a, '10-chat-reply');
 
     // A unmatches through the chat menu; B's conversation disappears live.
@@ -201,6 +228,10 @@ test('two new users register, match, chat in realtime and unmatch', async ({ bro
     for (const actor of [a, b]) {
       expect(actor.errors, `${actor.label} console/page errors`).toEqual([]);
     }
+  } catch (error) {
+    await Promise.allSettled([shot(a, 'FAIL'), shot(b, 'FAIL')]);
+    for (const actor of [a, b]) console.error(actor.label, actor.errors.slice(0, 5));
+    throw error;
   } finally {
     await a.context.close();
     await b.context.close();

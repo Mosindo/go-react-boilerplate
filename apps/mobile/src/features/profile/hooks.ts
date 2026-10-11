@@ -7,6 +7,8 @@ export function useOwnProfile() {
     queryKey: queryKeys.ownProfile,
     queryFn: () => profileApi.own(),
     retry: (count, error) => !isNotFound(error) && count < 2,
+    // A 404 leaves the query in an error state: without this, every new observer would refetch it.
+    retryOnMount: false,
   });
 }
 

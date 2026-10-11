@@ -24,8 +24,8 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function MainNavigator() {
   const options = useStackOptions();
   return (
-    <DeckProvider>
-      <MatchProvider navigationRef={navigationRef}>
+    <MatchProvider navigationRef={navigationRef}>
+      <DeckProvider>
         <RealtimeProvider navigationRef={navigationRef}>
           <Stack.Navigator screenOptions={options}>
             <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
@@ -82,7 +82,7 @@ export function MainNavigator() {
             />
           </Stack.Navigator>
         </RealtimeProvider>
-      </MatchProvider>
-    </DeckProvider>
+      </DeckProvider>
+    </MatchProvider>
   );
 }
