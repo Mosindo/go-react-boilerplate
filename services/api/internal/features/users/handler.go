@@ -1,136 +1,126 @@
 package users
 
 import (
-	"errors"
 	"net/http"
-	"strconv"
-	"strings"
 
-	"example.com/api/internal/platform/logger"
+	"example.com/api/internal/platform/httpx"
 	"github.com/gin-gonic/gin"
 )
 
-type Handler struct {
-	service *Service
-}
+type Handler struct{ service *Service }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
-}
+func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
-func (h *Handler) List(c *gin.Context) {
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "users.list.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing organization"})
-		return
-	}
-
-	limit := parseBoundedLimit(c.Query("limit"), 20, 100)
-	offset := parseNonNegativeInt(c.Query("offset"), 0)
-	users, err := h.service.ListWithPagination(c.Request.Context(), organizationID, limit, offset)
+func (h *Handler) Interests(c *gin.Context) {
+	list, err := h.service.Interests(c.Request.Context())
 	if err != nil {
-		logger.LogHandlerError(c, "users.list", http.StatusInternalServerError, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch users"})
+		httpx.Respond(c, "users.interests", err)
 		return
 	}
-
-	payload := make([]UserResponse, 0, len(users))
-	for _, user := range users {
-		payload = append(payload, UserResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		})
-	}
-
-	c.JSON(http.StatusOK, UsersResponse{Users: payload})
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.JSON(http.StatusOK, gin.H{"interests": list})
 }
 
-func (h *Handler) GetByID(c *gin.Context) {
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "users.get.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing organization"})
-		return
-	}
-
-	userID := strings.TrimSpace(c.Param("userId"))
-	if !isUUIDLike(userID) {
-		logger.LogHandlerError(c, "users.get.validate_user_id", http.StatusBadRequest, errors.New("invalid user id"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
-
-	user, err := h.service.GetByID(c.Request.Context(), organizationID, userID)
+func (h *Handler) GetOwnProfile(c *gin.Context) {
+	p, err := h.service.Own(c.Request.Context(), httpx.UserID(c))
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusNotFound
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not fetch user"})
-		}
-		logger.LogHandlerError(c, "users.get", status, err)
+		httpx.Respond(c, "users.own", err)
 		return
 	}
-
-	c.JSON(http.StatusOK, UserResponse{
-		ID:             user.ID,
-		Email:          user.Email,
-		OrganizationID: user.OrganizationID,
-		CreatedAt:      user.CreatedAt,
-	})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, p)
 }
 
-func parsePositiveInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+func (h *Handler) PutProfile(c *gin.Context) {
+	var in ProfileInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		httpx.BadRequest(c, "invalid profile payload")
+		return
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed <= 0 {
-		return fallback
+	p, err := h.service.SaveProfile(c.Request.Context(), httpx.UserID(c), in)
+	if err != nil {
+		httpx.Respond(c, "users.save_profile", err)
+		return
 	}
-	return parsed
+	c.JSON(http.StatusOK, p)
 }
 
-func isUUIDLike(v string) bool {
-	if len(v) != 36 {
-		return false
+func (h *Handler) PutLocation(c *gin.Context) {
+	var in LocationInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		httpx.BadRequest(c, "latitude and longitude are required")
+		return
 	}
-	hyphenPos := map[int]struct{}{8: {}, 13: {}, 18: {}, 23: {}}
-	for i := 0; i < len(v); i++ {
-		ch := v[i]
-		if _, ok := hyphenPos[i]; ok {
-			if ch != '-' {
-				return false
-			}
-			continue
-		}
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
-			return false
-		}
+	if err := h.service.SetLocation(c.Request.Context(), httpx.UserID(c), *in.Latitude, *in.Longitude); err != nil {
+		httpx.Respond(c, "users.location", err)
+		return
 	}
-	return true
+	c.Status(http.StatusNoContent)
 }
 
-func parseBoundedLimit(raw string, fallback, max int) int {
-	parsed := parsePositiveInt(raw, fallback)
-	if parsed > max {
-		return max
+func (h *Handler) DeleteLocation(c *gin.Context) {
+	if err := h.service.ClearLocation(c.Request.Context(), httpx.UserID(c)); err != nil {
+		httpx.Respond(c, "users.clear_location", err)
+		return
 	}
-	return parsed
+	c.Status(http.StatusNoContent)
 }
 
-func parseNonNegativeInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+func (h *Handler) GetPreferences(c *gin.Context) {
+	p, err := h.service.Preferences(c.Request.Context(), httpx.UserID(c))
+	if err != nil {
+		httpx.Respond(c, "users.preferences", err)
+		return
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed < 0 {
-		return fallback
+	c.JSON(http.StatusOK, p)
+}
+
+func (h *Handler) PutPreferences(c *gin.Context) {
+	var in Preferences
+	if err := c.ShouldBindJSON(&in); err != nil {
+		httpx.BadRequest(c, "invalid preferences payload")
+		return
 	}
-	return parsed
+	p, err := h.service.SavePreferences(c.Request.Context(), httpx.UserID(c), in)
+	if err != nil {
+		httpx.Respond(c, "users.save_preferences", err)
+		return
+	}
+	c.JSON(http.StatusOK, p)
+}
+
+func (h *Handler) GetPrivacy(c *gin.Context) {
+	p, err := h.service.Privacy(c.Request.Context(), httpx.UserID(c))
+	if err != nil {
+		httpx.Respond(c, "users.privacy", err)
+		return
+	}
+	c.JSON(http.StatusOK, p)
+}
+
+func (h *Handler) PutPrivacy(c *gin.Context) {
+	var in Privacy
+	if err := c.ShouldBindJSON(&in); err != nil {
+		httpx.BadRequest(c, "discoverable and showDistance are required")
+		return
+	}
+	if err := h.service.SavePrivacy(c.Request.Context(), httpx.UserID(c), *in.Discoverable, *in.ShowDistance); err != nil {
+		httpx.Respond(c, "users.save_privacy", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"discoverable": *in.Discoverable, "showDistance": *in.ShowDistance})
+}
+
+func (h *Handler) GetProfile(c *gin.Context) {
+	target, ok := httpx.UUIDParam(c, "userId")
+	if !ok {
+		return
+	}
+	p, err := h.service.Profile(c.Request.Context(), httpx.UserID(c), target)
+	if err != nil {
+		httpx.Respond(c, "users.profile", err)
+		return
+	}
+	c.Header("Cache-Control", "private, no-cache")
+	c.JSON(http.StatusOK, p)
 }
