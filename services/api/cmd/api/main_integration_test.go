@@ -27,10 +27,11 @@ import (
 const testSecret = "integration-secret-0123456789abcdef0123456789"
 
 type env struct {
-	t      *testing.T
-	pool   *pgxpool.Pool
-	router *gin.Engine
-	server *httptest.Server
+	uploadDir string
+	t         *testing.T
+	pool      *pgxpool.Pool
+	router    *gin.Engine
+	server    *httptest.Server
 }
 
 func newEnv(t *testing.T) *env {
@@ -53,13 +54,14 @@ func newEnv(t *testing.T) *env {
 	}
 	gin.SetMode(gin.TestMode)
 	log.SetOutput(io.Discard)
-	r, err := setupRouter(&app{dbPool: pool, jwtSecret: []byte(testSecret), uploadDir: t.TempDir()})
+	uploadDir := t.TempDir()
+	r, err := setupRouter(&app{dbPool: pool, jwtSecret: []byte(testSecret), uploadDir: uploadDir})
 	if err != nil {
 		t.Fatalf("router: %v", err)
 	}
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
-	return &env{t: t, pool: pool, router: r, server: srv}
+	return &env{t: t, pool: pool, router: r, server: srv, uploadDir: uploadDir}
 }
 
 type user struct {
@@ -186,6 +188,7 @@ func TestAuthLifecycle(t *testing.T) {
 
 	e.expect(e.do("POST", "/auth/register", "", map[string]string{"email": u.email, "password": "Password123"}), http.StatusConflict)
 	e.expect(e.do("POST", "/auth/register", "", map[string]string{"email": "bad", "password": "Password123"}), http.StatusBadRequest)
+	e.expect(e.do("POST", "/auth/register", "", map[string]string{"email": "long-pw@itest.invalid", "password": strings.Repeat("x", 73)}), http.StatusBadRequest)
 	e.expect(e.do("POST", "/auth/login", "", map[string]string{"email": u.email, "password": "wrong-password"}), http.StatusUnauthorized)
 	e.expect(e.do("GET", "/me", "", nil), http.StatusUnauthorized)
 	e.expect(e.do("GET", "/me", "garbage", nil), http.StatusUnauthorized)
@@ -672,11 +675,16 @@ func TestAccountDeletionErasesData(t *testing.T) {
 	r.json(t, &sw)
 	e.expect(e.do("POST", "/matches/"+*sw.MatchID+"/messages", ana.token, map[string]any{"body": "bonjour"}), http.StatusCreated)
 
+	filesBefore, _ := os.ReadDir(e.uploadDir)
 	e.expect(e.do("DELETE", "/me", ana.token, map[string]any{"password": "wrong-pass"}), http.StatusForbidden)
 	e.expect(e.do("DELETE", "/me", ana.token, map[string]any{"password": "Password123"}), http.StatusNoContent)
 
 	e.expect(e.do("GET", "/me", ana.token, nil), http.StatusUnauthorized)
 	e.expect(e.do("POST", "/auth/login", "", map[string]string{"email": ana.email, "password": "Password123"}), http.StatusUnauthorized)
+	filesAfter, _ := os.ReadDir(e.uploadDir)
+	if len(filesBefore)-len(filesAfter) != 2 { // full + thumbnail of Ana's single photo
+		t.Fatalf("photo files must be erased with the account: before=%d after=%d", len(filesBefore), len(filesAfter))
+	}
 	for table, col := range map[string]string{"profiles": "user_id", "photos": "user_id", "swipes": "swiper_id", "chat_messages": "sender_id", "user_notifications": "user_id"} {
 		var n int
 		if err := e.pool.QueryRow(context.Background(), fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE %s = $1`, table, col), ana.id).Scan(&n); err != nil {

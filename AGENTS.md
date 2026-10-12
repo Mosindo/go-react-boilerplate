@@ -1,30 +1,27 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Mellow (dating app, ex go-react-saas)
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository started as the `go-react-saas` boilerplate and is now a free dating application
+(Go API + Expo mobile client). The architecture must remain scalable, secure and maintainable.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+A 100 % free dating app: no subscription, paywall, paid boost, artificial like limit or mandatory ads.
+Never reintroduce monetisation or the former multi-tenant (organization) concept without founder approval.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Core modules (`services/api/internal/features`):
+- auth (accounts, sessions, password reset, account deletion)
+- profiles (profile, preferences, privacy, location)
+- photos (upload pipeline, signed media URLs)
+- discovery (candidate feed)
+- matching (swipes, matches)
+- messaging (chat inside a match, WebSocket push)
+- safety (blocks, reports)
+- alerts (in-app notifications)
 
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Legacy generic modules (`billing`, `chat`, `comments`, `files`, `notifications`, `posts`, `users`) and their
+migrations 002-006 / 008-013 are no longer wired into the router and are pending removal.
 
 ---
 
@@ -56,21 +53,13 @@ Core reusable modules:
 Target structure:
 
 `cmd/api/main.go`  
+`cmd/seed/main.go` (demo data, refuses `APP_ENV=production`)
 `internal/`
 - `platform/`
-  - `config/`
-  - `db/`
-  - `middleware/`
-  - `logger/`
-  - `errors/`
+  - `config/`, `db/` (tracked migrations), `middleware/` (auth, rate limit, CORS), `logger/`, `errors/`
+  - `realtime/` (WebSocket hub), `mediaurl/` (signed media URLs), `httpx/` (handler helpers)
 - `features/`
-  - `auth/`
-  - `users/`
-  - `files/`
-  - `chat/`
-  - `posts/`
-  - `comments/`
-  - `notifications/`
+  - `auth/`, `profiles/`, `photos/`, `discovery/`, `matching/`, `messaging/`, `safety/`, `alerts/`
 
 Each feature should contain:
 - `handler.go`
@@ -113,10 +102,13 @@ User input:
 
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
-  - `DATABASE_URL`
-  - `JWT_SECRET`
-  - `PORT` (default `8080`)
+- Expected environment variables: `DATABASE_URL`, `JWT_SECRET`, `PORT` (default `8080`), `UPLOAD_DIR`,
+  `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `MAIL_LOG_TOKENS` (dev only). See `.env.example`.
+
+Privacy:
+- Location is stored rounded to ~1 km and only exposed as a coarse distance bucket
+- Photos are only served through signed, expiring URLs
+- Every business rule (age gate, onboarding, blocks, membership) is enforced server-side
 
 ---
 
@@ -130,12 +122,13 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `swipes (swiper_id, target_id)` (primary key) and `(target_id, swiper_id) WHERE action = 'like'`
+- `matches (user_a, user_b)` (unique) and `(user_b)`
+- `match_members (user_id, match_id)`
+- `chat_messages (match_id, created_at, id)`
+- `user_notifications (user_id, created_at, id)`
+- `photos (user_id, position)`
+- `blocks (blocked_id, blocker_id)`
 
 ---
 
@@ -143,20 +136,17 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing), `go vet ./...`, `go test ./...` (with `DATABASE_URL`), `go build ./cmd/api`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test` healthy in `apps/mobile`
+- `node scripts/qa.js` runs all of the above
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`):
+- Health, auth lifecycle, password reset, profile validation, location privacy
+- The dating journey: discover -> like -> match -> chat (with WebSocket) -> report/block
+- Concurrent mutual likes, photo management, account deletion (data and files)
+Browser E2E: `npm run e2e:web` in `apps/mobile`; API smoke: `npm run e2e:smoke`.
 
 ---
 
@@ -176,11 +166,9 @@ Mandatory rules to avoid recurring environment issues:
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+  - register, onboarding (profile, photo, preferences)
+  - discovery loads, like, match
+  - chat send/read (realtime)
   - notifications read flow
 
 ---

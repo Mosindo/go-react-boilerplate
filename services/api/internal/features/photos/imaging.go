@@ -50,12 +50,12 @@ func process(data []byte) (processed, error) {
 	if err != nil {
 		return processed{}, ErrUnsupportedImage
 	}
-	if http.DetectContentType(data) == "image/jpeg" {
-		img = applyOrientation(img, jpegOrientation(data))
-	}
-
+	// Downscale first (cheap), then fix orientation on the small image.
 	full := fit(img, fullMaxSide)
-	thumb := fit(img, thumbMaxSide)
+	if http.DetectContentType(data) == "image/jpeg" {
+		full = applyOrientation(full, jpegOrientation(data))
+	}
+	thumb := fit(full, thumbMaxSide)
 	fullBytes, err := encodeJPEG(full)
 	if err != nil {
 		return processed{}, err
@@ -165,7 +165,7 @@ func exifOrientation(tiff []byte) int {
 }
 
 // applyOrientation rotates/flips pixels so the image displays upright once EXIF is stripped.
-func applyOrientation(src image.Image, o int) image.Image {
+func applyOrientation(src *image.RGBA, o int) *image.RGBA {
 	if o <= 1 || o > 8 {
 		return src
 	}

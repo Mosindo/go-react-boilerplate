@@ -36,6 +36,9 @@ type Mailer interface {
 	SendPasswordReset(ctx context.Context, email, token string) error
 }
 
+// dummyHash is compared against when a login targets an unknown account.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equaliser"), bcrypt.DefaultCost)
+
 type Service struct {
 	repo      Repository
 	jwtSecret []byte
@@ -98,6 +101,9 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizedEmail)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
+			// Spend the same time as a real check so response timing does not reveal
+			// which e-mail addresses are registered.
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 			return Tokens{}, User{}, ErrInvalidCredentials
 		}
 		return Tokens{}, User{}, err

@@ -62,8 +62,8 @@ export function validatePassword(value: string): string | null {
   if (value.length < 8) {
     return "Le mot de passe doit contenir au moins 8 caractères.";
   }
-  if (value.length > 128) {
-    return "Le mot de passe est trop long.";
+  if (new TextEncoder().encode(value).length > 72) {
+    return "Le mot de passe est trop long (72 octets maximum).";
   }
   return null;
 }

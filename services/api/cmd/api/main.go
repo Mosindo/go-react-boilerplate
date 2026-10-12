@@ -129,7 +129,7 @@ func setupRouter(a *app) (*gin.Engine, error) {
 	authLimit := middleware.RateLimit(0.2, 10, nil)                  // per IP
 	swipeLimit := middleware.RateLimit(5, 40, middleware.ByUser)     // per user
 	sendLimit := middleware.RateLimit(2, 20, middleware.ByUser)      // per user
-	uploadLimit := middleware.RateLimit(0.2, 6, middleware.ByUser)   // per user
+	uploadLimit := middleware.RateLimit(0.5, 12, middleware.ByUser)  // per user
 	reportLimit := middleware.RateLimit(1.0/6, 5, middleware.ByUser) // per user
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))

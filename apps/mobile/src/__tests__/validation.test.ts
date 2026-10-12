@@ -53,7 +53,8 @@ describe("field validators", () => {
   it("validates passwords", () => {
     expect(validatePassword("short")).not.toBeNull();
     expect(validatePassword("long-enough")).toBeNull();
-    expect(validatePassword("x".repeat(129))).not.toBeNull();
+    expect(validatePassword("x".repeat(73))).not.toBeNull();
+    expect(validatePassword("x".repeat(72))).toBeNull();
   });
 
   it("validates first names, accents included", () => {

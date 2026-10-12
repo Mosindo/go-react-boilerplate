@@ -1,27 +1,23 @@
-# go-react-saas Changelog
+# Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
+## Unreleased — dating application
 
 ### Added
-- Placeholder for upcoming unreleased changes.
-
-## [0.1.0] - 2026-03-17
-
-### Added
-- Introduced a standardized documentation set with `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `docs/ARCHITECTURE.md`.
-- Added a generic changelog for future platform releases.
+- Dating product: profiles, preferences, photos, discovery, swipes and matches, match-scoped realtime chat, notifications, blocking and reporting, password recovery, account deletion.
+- Demo data command (`cmd/seed`) using the reserved `demo.invalid` domain.
+- Tracked database migrations with an advisory lock; migrations 014-017.
+- Mobile design system with light/dark themes, Playwright browser E2E, API smoke test, Jest tests, ESLint and Prettier.
+- `node scripts/qa.js` cross-platform quality gate; new CI workflow with PostgreSQL service and E2E job.
 
 ### Changed
-- Converted the repository from a single-product application into `go-react-saas`, a reusable fullstack boilerplate.
-- Repositioned the repository as `go-react-saas`, a reusable fullstack boilerplate for social, forum, SaaS, marketplace, and community products.
-- Updated project descriptions, examples, and documentation to use generic module language.
-- Aligned the documentation with the feature-first backend and generic frontend shell.
+- Sessions are validated against the database on every request (logout, reset, suspension and deletion take effect immediately).
+- Passwords are limited to 72 bytes (bcrypt limit); login timing no longer reveals unknown accounts.
+- Gin only trusts proxies listed in `TRUSTED_PROXIES`.
+- Docker image runs as a non-root user and stores photos on a volume.
 
 ### Removed
-- Removed legacy status and daily log documents tied to earlier single-product tracking.
-- Removed remaining product-specific naming from repository-level documentation.
+- Stripe billing and the organization (tenant) concept from the routes, configuration and mobile app.
+- Tamagui and the generic boilerplate screens / UI kit; Maestro and PowerShell QA scripts (replaced by Playwright and Node scripts).
+
+### Pending
+- Legacy Go modules (`billing`, `chat`, `comments`, `files`, `notifications`, `posts`, `users`) and migrations 002-006 / 008-013 are unreferenced and await a validated deletion.
