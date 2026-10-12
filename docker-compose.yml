@@ -1,8 +1,8 @@
-name: go-react-boilerplate
+name: mellow
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -22,18 +22,21 @@ services:
       context: ./services/api
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value (32+ characters)}
+      PORT: "8080"
+      UPLOAD_DIR: /data/uploads
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Development convenience: logs password-reset tokens. Never enable in production.
+      MAIL_LOG_TOKENS: ${MAIL_LOG_TOKENS:-false}
     ports:
       - "18080:8080"
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
-
-
+  uploads_data:

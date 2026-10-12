@@ -1,16 +1,19 @@
+# Same stack as the root docker-compose.yml, runnable from ./infra.
+name: mellow
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: app
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -18,16 +21,22 @@ services:
   api:
     build:
       context: ../services/api
-      dockerfile: Dockerfile
     environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value (32+ characters)}
       PORT: "8080"
-      DATABASE_URL: postgresql://app:app@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      UPLOAD_DIR: /data/uploads
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      MAIL_LOG_TOKENS: ${MAIL_LOG_TOKENS:-false}
     ports:
       - "18080:8080"
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  uploads_data:
