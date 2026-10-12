@@ -7,24 +7,36 @@ import (
 )
 
 type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string
+	Email     string
+	CreatedAt time.Time
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    string `json:"email" binding:"required,max=254"`
 	Password string `json:"password" binding:"required,min=8,max=128"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    string `json:"email" binding:"required,max=254"`
 	Password string `json:"password" binding:"required,max=128"`
 }
 
 type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,max=254"`
+}
+
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required,max=256"`
+	NewPassword string `json:"newPassword" binding:"required,min=8,max=128"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=128"`
 }
 
 type LogoutRequest struct {
@@ -51,8 +63,7 @@ type Tokens struct {
 }
 
 type AccessTokenClaims struct {
-	UserID         string `json:"uid"`
-	OrganizationID string `json:"oid"`
-	SessionID      string `json:"sid"`
+	UserID    string `json:"uid"`
+	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
 }
