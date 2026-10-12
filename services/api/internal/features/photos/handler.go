@@ -142,5 +142,7 @@ func (h *Handler) Serve(c *gin.Context) {
 	c.Header("Cache-Control", "private, max-age=21600")
 	c.Header("Content-Disposition", "inline")
 	c.Header("Content-Security-Policy", "default-src 'none'")
+	// The signed URL is the capability; allow web clients on another origin to display it.
+	c.Header("Cross-Origin-Resource-Policy", "cross-origin")
 	c.Data(http.StatusOK, "image/jpeg", data)
 }

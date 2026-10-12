@@ -57,3 +57,5 @@ apps/mobile/.e2e/
 # API runtime data
 services/api/data/
 services/api/api
+dist-e2e/
+apps/mobile/e2e/web/failure.png

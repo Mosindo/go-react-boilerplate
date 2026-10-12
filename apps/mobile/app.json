@@ -1,12 +1,41 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Mellow",
+    "slug": "mellow-dating",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "app.mellow.dating",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Votre position (arrondie à environ 1 km) sert uniquement à afficher des profils proches de vous.",
+        "NSPhotoLibraryUsageDescription": "Vos photos sont utilisées pour votre profil."
+      }
+    },
+    "android": {
+      "package": "app.mellow.dating",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Votre position (arrondie à environ 1 km) sert uniquement à afficher des profils proches de vous."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Vos photos sont utilisées pour votre profil."
+        }
+      ],
+      "expo-secure-store",
+      "expo-asset"
     ]
   }
 }
