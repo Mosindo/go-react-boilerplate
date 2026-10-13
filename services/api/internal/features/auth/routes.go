@@ -9,7 +9,7 @@ import (
 
 func RegisterRoutes(r gin.IRouter, h *Handler, requireUser gin.HandlerFunc, limiter *middleware.RateLimiter) {
 	authLimit := limiter.ByIP("auth", 20, time.Minute)
-	recoveryLimit := limiter.ByIP("recovery", 5, 10*time.Minute)
+	recoveryLimit := limiter.ByIP("recovery", 10, 10*time.Minute)
 
 	r.POST("/auth/register", authLimit, h.Register)
 	r.POST("/auth/login", authLimit, h.Login)

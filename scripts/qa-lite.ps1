@@ -83,6 +83,28 @@ try {
     }
   }
 
+  Run-Step "Mobile lint (npm run lint)" {
+    Push-Location ".\apps\mobile"
+    try {
+      npm run lint -- --max-warnings 0 | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "lint exited with code $LASTEXITCODE" }
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
+  Run-Step "Mobile unit and UI tests (npm test)" {
+    Push-Location ".\apps\mobile"
+    try {
+      npm test -- --ci | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "jest exited with code $LASTEXITCODE" }
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
   Run-Step "Smoke API + mobile critique" {
     & (Join-Path $repoRoot "scripts/smoke-all.ps1") -ApiBaseUrl $ApiBaseUrl
     if ($LASTEXITCODE -ne 0) { throw "smoke-all exited with code $LASTEXITCODE" }
@@ -94,7 +116,7 @@ finally {
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $header = @(
-  "go-react-saas QA Lite Report",
+  "Lueur QA Lite Report",
   "Generated: $stamp",
   "API Base URL: $ApiBaseUrl",
   ""

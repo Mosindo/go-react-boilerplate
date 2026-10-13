@@ -34,6 +34,7 @@ const (
 	refreshTokenTTL = 30 * 24 * time.Hour
 	resetCodeTTL    = 30 * time.Minute
 	maxResetTries   = 5
+	resetCooldown   = time.Minute
 	resetAlphabet   = "ABCDEFGHJKMNPQRSTUVWXYZ23456789" // no ambiguous characters
 	resetCodeLength = 8
 )
@@ -211,6 +212,10 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 			return nil
 		}
 		return err
+	}
+	// Cooldown: a burst of requests cannot be used to flood someone's inbox.
+	if existing, err := s.repo.GetPasswordReset(ctx, stored.User.ID); err == nil && time.Since(existing.CreatedAt) < resetCooldown {
+		return nil
 	}
 	code, err := randomCode(resetCodeLength)
 	if err != nil {

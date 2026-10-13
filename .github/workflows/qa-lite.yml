@@ -10,7 +10,7 @@ jobs:
   qa-lite:
     runs-on: ubuntu-latest
     env:
-      JWT_SECRET: ci-jwt-secret-32-chars-minimum-value
+      JWT_SECRET: qa-lite-0123456789-abcdefghijklmnopqrstuvwxyz
 
     steps:
       - name: Checkout

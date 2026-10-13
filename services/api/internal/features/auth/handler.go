@@ -3,18 +3,21 @@ package auth
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
+	"example.com/api/internal/platform/middleware"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
 	service *Service
+	limiter *middleware.RateLimiter
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, limiter *middleware.RateLimiter) *Handler {
+	return &Handler{service: service, limiter: limiter}
 }
 
 func (h *Handler) Register(c *gin.Context) {
@@ -43,6 +46,12 @@ func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BadRequest(c, "email and password are required")
+		return
+	}
+	// Per-account throttle on top of the per-IP one: slows distributed guessing against one account.
+	if ok, _ := h.limiter.Allow("login:"+normalizeEmail(req.Email), 10, 15*time.Minute); !ok {
+		c.Header("Retry-After", "900")
+		httpx.Error(c, http.StatusTooManyRequests, "too many attempts for this account, try again later")
 		return
 	}
 	tokens, user, err := h.service.Login(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())

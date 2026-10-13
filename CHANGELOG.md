@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -8,7 +8,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Lueur, a free dating application built on the boilerplate: profiles, photos (validated and re-encoded), preferences, geographic discovery with approximate distance, atomic likes and matches, realtime chat with read receipts, notifications, blocking, reporting, account recovery and account deletion.
+- Tracked, embedded SQL migrations (`schema_migrations`) with legacy-database baselining; migrations `014` (dating schema) and `015` (SaaS cleanup).
+- Rate limiting, strict JWT claims (issuer, mandatory expiry, HS256 only), refresh-token rotation with replay protection, body size limits and trusted-proxy configuration.
+- `cmd/seed` demo data (`@seed.invalid` accounts, refused in production).
+- French-language Expo client (iOS, Android, web) with light/dark themes, swipe deck, onboarding and settings.
+- ESLint, Prettier, Jest/Testing Library UI tests, Playwright browser E2E and a restructured CI pipeline (Go with PostgreSQL, mobile, E2E, Docker).
+
+### Changed
+- Product is no longer a generic SaaS boilerplate: README and architecture documentation describe Lueur.
+- Docker image runs as a non-root user and ships the `seed` binary; PostgreSQL 16 is bound to localhost in Compose.
+
+### Removed
+- Stripe billing, organizations, posts, comments, votes, files, the public user directory, and the unused Tamagui dependency.
 
 ## [0.1.0] - 2026-03-17
 

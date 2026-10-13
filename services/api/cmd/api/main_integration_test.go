@@ -31,8 +31,9 @@ import (
 const testSecret = "integration-secret-0123456789abcdef-xyz"
 
 type captureMailer struct {
-	mu   sync.Mutex
-	last map[string]string
+	mu    sync.Mutex
+	last  map[string]string
+	count map[string]int
 }
 
 func (m *captureMailer) Send(_ context.Context, to, _ string, body string) error {
@@ -42,6 +43,10 @@ func (m *captureMailer) Send(_ context.Context, to, _ string, body string) error
 		m.last = map[string]string{}
 	}
 	m.last[to] = body
+	if m.count == nil {
+		m.count = map[string]int{}
+	}
+	m.count[to]++
 	return nil
 }
 
@@ -881,6 +886,11 @@ func TestPasswordRecovery(t *testing.T) {
 	if code == "" {
 		t.Fatal("recovery code was not sent")
 	}
+	// A second request inside the cooldown must not send another message.
+	e.do("POST", "/auth/password/forgot", "", map[string]string{"email": u.Email})
+	if n := e.mail.count[u.Email]; n != 1 {
+		t.Fatalf("expected a single recovery email during the cooldown, got %d", n)
+	}
 	if r := e.do("POST", "/auth/password/reset", "", map[string]string{"email": u.Email, "code": "WRONGCODE", "newPassword": "NewPassword9"}); r.Status != 400 {
 		t.Fatalf("wrong code: %d", r.Status)
 	}
@@ -904,6 +914,7 @@ func TestPasswordRecovery(t *testing.T) {
 	}
 
 	// Brute force: after 5 wrong guesses even the right code is refused.
+	_, _ = e.pool.Exec(context.Background(), `UPDATE password_resets SET created_at = NOW() - INTERVAL '5 minutes' WHERE user_id = $1`, u.ID)
 	e.do("POST", "/auth/password/forgot", "", map[string]string{"email": u.Email})
 	code = e.mail.codeFor(u.Email)
 	for i := 0; i < 5; i++ {
@@ -931,4 +942,30 @@ func TestRateLimitingOnAuth(t *testing.T) {
 	if !limited {
 		t.Fatal("login must be rate limited per IP")
 	}
+}
+
+func TestLoginIsThrottledPerAccount(t *testing.T) {
+	e := setup(t)
+	u := e.register("thr")
+	throttled := false
+	for i := 0; i < 12; i++ {
+		// A fresh router per attempt resets the per-IP limiter, isolating the per-account one.
+		e.router = rebuildSharedAccountLimiter(e, i)
+		if r := e.do("POST", "/auth/login", "", map[string]string{"email": u.Email, "password": "Wrong12345"}); r.Status == http.StatusTooManyRequests {
+			throttled = true
+			break
+		}
+	}
+	if !throttled {
+		t.Fatal("repeated attempts on one account must be throttled even across IPs")
+	}
+}
+
+var sharedAccountLimiter *middleware.RateLimiter
+
+func rebuildSharedAccountLimiter(e *env, i int) *gin.Engine {
+	if i == 0 {
+		sharedAccountLimiter = middleware.NewRateLimiter()
+	}
+	return setupRouter(&app{dbPool: e.pool, jwtSecret: []byte(testSecret), mailer: e.mail, hub: e.hub, limiter: sharedAccountLimiter})
 }

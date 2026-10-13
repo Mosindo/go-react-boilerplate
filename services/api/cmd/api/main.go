@@ -127,7 +127,7 @@ func setupRouter(a *app) *gin.Engine {
 	safetyService := safetyfeature.NewService(safetyfeature.NewPGRepository(a.dbPool), a.hub)
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
-	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, a.limiter)
+	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService, a.limiter), requireUser, a.limiter)
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser, a.limiter)
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser, a.limiter)
 	discoverfeature.RegisterRoutes(r, discoverfeature.NewHandler(discoverService), requireUser, a.limiter)

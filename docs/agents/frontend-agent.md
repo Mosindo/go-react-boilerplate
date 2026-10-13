@@ -3,7 +3,7 @@
 ## Responsibility
 
 - Integrate React Query into the mobile frontend
-- Implement auth hooks such as `useAuth`, `useLogin`, `useRegister`, and `useCurrentUser`
+- Implement auth hooks such as `useAuth` (sign in, sign up, sign out, delete account)
 - Connect hooks through the existing API client abstraction
 - Handle loading, error, and session state coherently
 

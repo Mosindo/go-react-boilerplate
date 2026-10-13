@@ -1,30 +1,28 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Lueur`, a free dating application (Go API + Expo client) built from the `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+The product is a 100 % free dating app:
+- no subscription, no paywall, no paid boost, no artificially limited likes, no mandatory ads
+- accounts, profiles, photos, preferences, discovery, likes, matches, realtime chat, notifications
+- blocking, reporting, privacy controls, account deletion
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Product decisions are documented in `README.md` ("Décisions produit"). Do not add payment or quota features.
 
-Core reusable modules:
+Core feature modules (backend `internal/features`):
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- discover
+- matches
 - chat
 - notifications
-- files
+- safety
 
 ---
 
@@ -65,12 +63,13 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discover/`
+  - `matches/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,14 +127,14 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
+Required indexes (see migration `014`):
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `likes (to_user_id, action)`
+- `profiles (latitude)`
 
 ---
 
@@ -146,17 +145,18 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Run Go integration tests against a real database: `DATABASE_URL_TEST=postgres://… go test ./...`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth lifecycle, recovery and account deletion
+- Profiles, photos, preferences and the age gate
+- Discovery filters, likes and matches (including concurrent likes)
+- Conversations, permissions and realtime delivery
+- Blocking, reporting, notifications
 
 ---
 
@@ -175,11 +175,11 @@ Mandatory rules to avoid recurring environment issues:
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
+- A frontend is only "ready" after a real smoke test (`npm run e2e:smoke`, `npm run e2e:web`):
+  - register and onboarding
   - login
-  - users load
-  - posts load
+  - discovery loads
+  - like and match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +207,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing payment/subscription features, or exposing exact locations or the user directory
 
 ---
 

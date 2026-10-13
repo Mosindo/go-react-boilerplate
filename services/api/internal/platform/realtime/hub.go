@@ -89,12 +89,6 @@ func (h *Hub) Disconnect(userID string) {
 	}
 }
 
-func (h *Hub) Online(userID string) bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.clients[userID]) > 0
-}
-
 // Discard is a Publisher that drops everything (tests, jobs).
 type Discard struct{}
 
