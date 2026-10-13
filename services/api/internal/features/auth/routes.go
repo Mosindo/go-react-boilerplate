@@ -1,11 +1,22 @@
 package auth
 
-import "github.com/gin-gonic/gin"
+import (
+	"time"
 
-func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc) {
-	r.POST("/auth/register", handler.Register)
-	r.POST("/auth/login", handler.Login)
-	r.POST("/auth/refresh", handler.Refresh)
-	r.POST("/auth/logout", handler.Logout)
-	r.GET("/me", requireUser, handler.Me)
+	"example.com/api/internal/platform/middleware"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterRoutes(r gin.IRouter, h *Handler, requireUser gin.HandlerFunc, limiter *middleware.RateLimiter) {
+	authLimit := limiter.ByIP("auth", 20, time.Minute)
+	recoveryLimit := limiter.ByIP("recovery", 5, 10*time.Minute)
+
+	r.POST("/auth/register", authLimit, h.Register)
+	r.POST("/auth/login", authLimit, h.Login)
+	r.POST("/auth/refresh", authLimit, h.Refresh)
+	r.POST("/auth/logout", h.Logout)
+	r.POST("/auth/password/forgot", recoveryLimit, h.ForgotPassword)
+	r.POST("/auth/password/reset", recoveryLimit, h.ResetPassword)
+	r.GET("/me", requireUser, h.Me)
+	r.DELETE("/me", requireUser, limiter.ByUser("delete-account", 5, time.Hour), h.DeleteAccount)
 }

@@ -1,59 +1,68 @@
 package chat
 
-import "time"
+import (
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+	"example.com/api/internal/features/profiles"
+)
+
+const (
+	MaxMessageRunes     = 2000
+	DefaultMessageLimit = 30
+	MaxMessageLimit     = 100
+	DefaultListLimit    = 30
+	MaxListLimit        = 50
+)
+
+type Message struct {
+	ID             int64     `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
+	// Read is true once the other participant has read the message.
+	Read bool `json:"read"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
-}
-
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
-}
-
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
+type MessagePreview struct {
+	Body      string    `json:"body"`
+	SenderID  string    `json:"senderId"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
+type StoredConversation struct {
+	ID            string
+	MatchID       string
+	OtherUserID   string
+	LastMessageAt time.Time
+	UnreadCount   int
+	LastMessage   MessagePreview
 }
 
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
+type Conversation struct {
+	ID          string                 `json:"id"`
+	MatchID     string                 `json:"matchId"`
+	Profile     profiles.PublicProfile `json:"profile"`
+	LastMessage MessagePreview         `json:"lastMessage"`
+	UnreadCount int                    `json:"unreadCount"`
+	UpdatedAt   time.Time              `json:"updatedAt"`
 }
 
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type ConversationsResponse struct {
+	Conversations []Conversation `json:"conversations"`
+	NextBefore    *time.Time     `json:"nextBefore"`
 }
 
-type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+type MessagesResponse struct {
+	Messages []Message `json:"messages"`
+	// NextBefore is the id to pass as `before` to load older messages, or null.
+	NextBefore *int64 `json:"nextBefore"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+type SendRequest struct {
+	Body string `json:"body"`
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+type ReadResult struct {
+	ReadAt time.Time `json:"readAt"`
 }

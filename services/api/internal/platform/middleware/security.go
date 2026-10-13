@@ -70,3 +70,18 @@ func requestIsHTTPS(c *gin.Context) bool {
 	}
 	return strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")), "https")
 }
+
+// BodyLimit caps request bodies. Upload routes set their own larger limit and
+// are exempted by prefix.
+func BodyLimit(maxBytes int64, exemptPrefixes ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		for _, prefix := range exemptPrefixes {
+			if strings.HasPrefix(c.Request.URL.Path, prefix) {
+				c.Next()
+				return
+			}
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		c.Next()
+	}
+}

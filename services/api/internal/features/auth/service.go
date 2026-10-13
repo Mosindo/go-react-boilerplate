@@ -4,12 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
+	"example.com/api/internal/platform/mailer"
+	"example.com/api/internal/platform/middleware"
+	"example.com/api/internal/platform/realtime"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -19,33 +24,51 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrUserNotFound        = errors.New("user not found")
+	ErrAccountSuspended    = errors.New("account suspended")
+	ErrInvalidResetCode    = errors.New("invalid or expired code")
+	ErrWeakPassword        = errors.New("password must contain letters and digits")
 )
 
 const (
 	accessTokenTTL  = 15 * time.Minute
 	refreshTokenTTL = 30 * 24 * time.Hour
+	resetCodeTTL    = 30 * time.Minute
+	maxResetTries   = 5
+	resetAlphabet   = "ABCDEFGHJKMNPQRSTUVWXYZ23456789" // no ambiguous characters
+	resetCodeLength = 8
 )
+
+// dummyHash is compared against when the email is unknown so that response
+// time does not reveal which emails are registered.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing"), bcrypt.DefaultCost)
 
 type Service struct {
 	repo      Repository
 	jwtSecret []byte
+	mailer    mailer.Mailer
+	events    realtime.Publisher
 }
 
-func NewService(repo Repository, jwtSecret []byte) *Service {
-	return &Service{
-		repo:      repo,
-		jwtSecret: jwtSecret,
+func NewService(repo Repository, jwtSecret []byte, m mailer.Mailer, events realtime.Publisher) *Service {
+	if m == nil {
+		m = mailer.LogMailer{}
 	}
+	if events == nil {
+		events = realtime.Discard{}
+	}
+	return &Service{repo: repo, jwtSecret: jwtSecret, mailer: m, events: events}
 }
 
 func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
-	normalizedEmail := normalizeEmail(email)
+	if err := validatePassword(password); err != nil {
+		return Tokens{}, User{}, err
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
 
-	created, err := s.repo.CreateUser(ctx, normalizedEmail, string(hash))
+	created, err := s.repo.CreateUser(ctx, normalizeEmail(email), string(hash))
 	if err != nil {
 		if errors.Is(err, ErrRepositoryEmailExists) {
 			return Tokens{}, User{}, ErrEmailExists
@@ -58,16 +81,14 @@ func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAd
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
-
 	return tokens, user, nil
 }
 
 func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
-	normalizedEmail := normalizeEmail(email)
-
-	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizedEmail)
+	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizeEmail(email))
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 			return Tokens{}, User{}, ErrInvalidCredentials
 		}
 		return Tokens{}, User{}, err
@@ -76,19 +97,22 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	if err := bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(password)); err != nil {
 		return Tokens{}, User{}, ErrInvalidCredentials
 	}
+	if stored.User.Status != "active" {
+		return Tokens{}, User{}, ErrAccountSuspended
+	}
 
 	user := toUser(stored.User)
 	tokens, err := s.issueSessionTokens(ctx, user, userAgent, ipAddress)
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
-
+	_ = s.repo.TouchActivity(ctx, user.ID)
 	return tokens, user, nil
 }
 
 func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddress string) (Tokens, User, error) {
-	tokenHash := hashRefreshToken(strings.TrimSpace(refreshToken))
-	session, err := s.repo.GetActiveSessionByTokenHash(ctx, tokenHash)
+	currentHash := hashSecret(strings.TrimSpace(refreshToken))
+	session, err := s.repo.GetActiveSessionByTokenHash(ctx, currentHash)
 	if err != nil {
 		if errors.Is(err, ErrRepositorySessionGone) {
 			return Tokens{}, User{}, ErrInvalidRefreshToken
@@ -103,21 +127,16 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 		}
 		return Tokens{}, User{}, err
 	}
+	if userRecord.Status != "active" {
+		return Tokens{}, User{}, ErrAccountSuspended
+	}
 
-	refreshSecret, err := generateRefreshToken()
+	nextSecret, err := randomToken(32)
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
-	nextExpiry := time.Now().Add(refreshTokenTTL)
-	rotatedSession, err := s.repo.RotateSessionToken(
-		ctx,
-		session.ID,
-		hashRefreshToken(refreshSecret),
-		userAgent,
-		ipAddress,
-		nextExpiry,
-		time.Now(),
-	)
+	now := time.Now()
+	rotated, err := s.repo.RotateSessionToken(ctx, session.ID, currentHash, hashSecret(nextSecret), userAgent, ipAddress, now.Add(refreshTokenTTL), now)
 	if err != nil {
 		if errors.Is(err, ErrRepositorySessionGone) {
 			return Tokens{}, User{}, ErrInvalidRefreshToken
@@ -126,23 +145,19 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	}
 
 	user := toUser(userRecord)
-	accessToken, err := signAccessToken(s.jwtSecret, user, rotatedSession.ID)
+	accessToken, err := signAccessToken(s.jwtSecret, user, rotated.ID)
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
-
-	return Tokens{
-		AccessToken:  accessToken,
-		RefreshToken: refreshSecret,
-	}, user, nil
+	_ = s.repo.TouchActivity(ctx, user.ID)
+	return Tokens{AccessToken: accessToken, RefreshToken: nextSecret}, user, nil
 }
 
 func (s *Service) Logout(ctx context.Context, refreshToken string) error {
-	tokenHash := hashRefreshToken(strings.TrimSpace(refreshToken))
+	tokenHash := hashSecret(strings.TrimSpace(refreshToken))
 	if tokenHash == "" {
 		return ErrInvalidRefreshToken
 	}
-
 	err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash, time.Now())
 	if err != nil && !errors.Is(err, ErrRepositorySessionGone) {
 		return err
@@ -158,66 +173,166 @@ func (s *Service) Me(ctx context.Context, userID string) (User, error) {
 		}
 		return User{}, err
 	}
+	if stored.Status != "active" {
+		return User{}, ErrAccountSuspended
+	}
 	return toUser(stored), nil
 }
 
+// DeleteAccount permanently removes the account and all associated data after
+// re-checking the password.
+func (s *Service) DeleteAccount(ctx context.Context, userID, password string) error {
+	hash, err := s.repo.GetPasswordHash(ctx, userID)
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+		return ErrInvalidCredentials
+	}
+	if err := s.repo.DeleteUser(ctx, userID); err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+	s.events.Disconnect(userID)
+	return nil
+}
+
+// RequestPasswordReset always succeeds from the caller's perspective so it
+// cannot be used to discover which emails have an account.
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizeEmail(email))
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return nil
+		}
+		return err
+	}
+	code, err := randomCode(resetCodeLength)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.SavePasswordReset(ctx, stored.User.ID, hashSecret(code), time.Now().Add(resetCodeTTL)); err != nil {
+		return err
+	}
+	body := fmt.Sprintf("Your recovery code is %s\n\nIt expires in %d minutes. If you did not ask for it, ignore this message: your password has not changed.", code, int(resetCodeTTL.Minutes()))
+	return s.mailer.Send(ctx, stored.User.Email, "Your account recovery code", body)
+}
+
+func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword string) error {
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizeEmail(email))
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrInvalidResetCode
+		}
+		return err
+	}
+	reset, err := s.repo.GetPasswordReset(ctx, stored.User.ID)
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrInvalidResetCode
+		}
+		return err
+	}
+	if time.Now().After(reset.ExpiresAt) || reset.Attempts >= maxResetTries {
+		return ErrInvalidResetCode
+	}
+	given := hashSecret(strings.ToUpper(strings.TrimSpace(code)))
+	if subtle.ConstantTimeCompare([]byte(given), []byte(reset.CodeHash)) != 1 {
+		_ = s.repo.IncrementResetAttempts(ctx, stored.User.ID)
+		return ErrInvalidResetCode
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.ConsumePasswordReset(ctx, stored.User.ID, string(hash)); err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrInvalidResetCode
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Service) issueSessionTokens(ctx context.Context, user User, userAgent, ipAddress string) (Tokens, error) {
-	refreshToken, err := generateRefreshToken()
+	refreshToken, err := randomToken(32)
 	if err != nil {
 		return Tokens{}, err
 	}
-
-	session, err := s.repo.CreateSession(
-		ctx,
-		user.ID,
-		hashRefreshToken(refreshToken),
-		userAgent,
-		ipAddress,
-		time.Now().Add(refreshTokenTTL),
-	)
+	session, err := s.repo.CreateSession(ctx, user.ID, hashSecret(refreshToken), userAgent, ipAddress, time.Now().Add(refreshTokenTTL))
 	if err != nil {
 		return Tokens{}, err
 	}
-
 	accessToken, err := signAccessToken(s.jwtSecret, user, session.ID)
 	if err != nil {
 		return Tokens{}, err
 	}
-
-	return Tokens{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+	return Tokens{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
 func signAccessToken(secret []byte, user User, sessionID string) (string, error) {
 	now := time.Now()
-	claims := AccessTokenClaims{
-		UserID:         user.ID,
-		OrganizationID: user.OrganizationID,
-		SessionID:      sessionID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(accessTokenTTL)),
-			IssuedAt:  jwt.NewNumericDate(now),
-		},
+	claims := jwt.MapClaims{
+		"uid": user.ID,
+		"sid": sessionID,
+		"iss": middleware.TokenIssuer,
+		"iat": jwt.NewNumericDate(now),
+		"exp": jwt.NewNumericDate(now.Add(accessTokenTTL)),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(secret)
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
 }
 
-func generateRefreshToken() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+// validatePassword requires at least one letter and one digit (length is
+// enforced by request binding and bcrypt's 72-byte limit).
+func validatePassword(password string) error {
+	var letter, digit bool
+	for _, r := range password {
+		switch {
+		case r >= '0' && r <= '9':
+			digit = true
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r > 127:
+			letter = true
+		}
+	}
+	if !letter || !digit || len(password) < 8 || len(password) > 72 {
+		return ErrWeakPassword
+	}
+	return nil
+}
+
+func randomToken(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(bytes), nil
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func hashRefreshToken(refreshToken string) string {
-	if strings.TrimSpace(refreshToken) == "" {
+func randomCode(length int) (string, error) {
+	buf := make([]byte, length)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	out := make([]byte, length)
+	for i, b := range buf {
+		out[i] = resetAlphabet[int(b)%len(resetAlphabet)]
+	}
+	return string(out), nil
+}
+
+func hashSecret(secret string) string {
+	if strings.TrimSpace(secret) == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(refreshToken))
+	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -226,10 +341,5 @@ func normalizeEmail(email string) string {
 }
 
 func toUser(stored StoredUser) User {
-	return User{
-		ID:             stored.ID,
-		Email:          stored.Email,
-		OrganizationID: stored.OrganizationID,
-		CreatedAt:      stored.CreatedAt,
-	}
+	return User{ID: stored.ID, Email: stored.Email, CreatedAt: stored.CreatedAt}
 }
