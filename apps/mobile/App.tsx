@@ -1,106 +1,90 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
-import AuthScreen from "./src/screens/AuthScreen";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "./src/hooks/useAuth";
-import { BottomNavigation, SafeAreaLayout } from "./src/shared/layout";
-import { clearGlobalError, ErrorView, LoadingView, useGlobalFeedback } from "./src/shared/feedback";
-import { colors, spacing } from "./src/shared/ui";
+import { useOwnProfile } from "./src/hooks/queries";
+import { RealtimeProvider } from "./src/hooks/useRealtime";
+import { queryClient } from "./src/lib/queryClient";
+import { AppNavigator } from "./src/navigation/AppNavigator";
+import AuthScreen from "./src/screens/AuthScreen";
+import OnboardingScreen from "./src/screens/OnboardingScreen";
+import { ErrorView, LoadingView, Toasts } from "./src/shared/feedback";
+import { SafeAreaLayout } from "./src/shared/layout";
+import { ThemeProvider, useTheme } from "./src/theme";
 
-function AppShell() {
-  const { accessToken, isAuthenticated, isBooting, user } = useAuth();
-  const globalFeedback = useGlobalFeedback();
+function SignedIn({ userId }: { userId: string }) {
+  const profile = useOwnProfile();
+  // The wizard stays open until the user finishes it, even though the profile
+  // becomes "complete" (photo + preferences) before the last steps.
+  const [wizard, setWizard] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!globalFeedback.error) {
-      return;
+    if (wizard === null && profile.isSuccess) {
+      setWizard(!profile.data?.isComplete);
     }
+  }, [profile.data, profile.isSuccess, wizard]);
 
-    const timeoutId = setTimeout(() => {
-      clearGlobalError();
-    }, 5000);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [globalFeedback.error]);
-
-  if (isBooting) {
+  if (profile.isError) {
     return (
-      <SafeAreaLayout style={styles.bootContainer}>
-        <StatusBar style="dark" />
-        <LoadingView fullScreen label="Restoring session..." />
+      <SafeAreaLayout>
+        <ErrorView message="Impossible de charger votre profil." onAction={() => void profile.refetch()} />
       </SafeAreaLayout>
     );
   }
-
-  if (!isAuthenticated || !accessToken || !user) {
+  if (wizard === null) {
     return (
-      <>
-        <StatusBar style="dark" />
-        <AuthScreen />
-      </>
+      <SafeAreaLayout>
+        <LoadingView />
+      </SafeAreaLayout>
     );
+  }
+  if (wizard) {
+    return <OnboardingScreen onDone={() => setWizard(false)} />;
+  }
+  return (
+    <RealtimeProvider userId={userId}>
+      <AppNavigator />
+    </RealtimeProvider>
+  );
+}
+
+function AppShell() {
+  const { scheme } = useTheme();
+  const { isAuthenticated, isBooting, user } = useAuth();
+
+  let content: React.ReactNode;
+  if (isBooting) {
+    content = (
+      <SafeAreaLayout>
+        <LoadingView label="Chargement…" />
+      </SafeAreaLayout>
+    );
+  } else if (!isAuthenticated || !user) {
+    content = <AuthScreen />;
+  } else {
+    content = <SignedIn key={user.id} userId={user.id} />;
   }
 
   return (
     <>
-      <StatusBar style="dark" />
-      <BottomNavigation accessToken={accessToken} key={user.id} user={user} />
-      {globalFeedback.error ? (
-        <View pointerEvents="box-none" style={styles.bannerWrap}>
-          <ErrorView
-            actionLabel="Dismiss"
-            compact
-            message={globalFeedback.error}
-            onAction={clearGlobalError}
-            style={styles.banner}
-            title="Request issue"
-          />
-        </View>
-      ) : null}
-      {globalFeedback.loadingCount > 0 && !isBooting ? (
-        <View style={styles.overlay}>
-          <LoadingView label={globalFeedback.loadingLabel ?? "Working..."} style={styles.overlayCard} />
-        </View>
-      ) : null}
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      {content}
+      <Toasts />
     </>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <AppShell />
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  bootContainer: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  bannerWrap: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl
-  },
-  banner: {},
-  overlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xxl
-  },
-  overlayCard: {
-    width: "100%",
-    maxWidth: 320
-  }
-});

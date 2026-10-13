@@ -1,33 +1,82 @@
-export const colors = {
-  primary: "#4c6fff",
-  primarySoft: "#e8edff",
-  primaryBorder: "#cad5ff",
-  primaryForeground: "#ffffff",
-  secondary: "#475467",
-  secondarySoft: "#eef2f6",
-  background: "#f6f8fc",
-  backgroundElevated: "#ffffff",
-  surface: "#ffffff",
-  surfaceMuted: "#f8fafc",
-  surfaceSubtle: "#eef2f6",
-  surfaceAccent: "#eef3ff",
-  border: "#e3e8f2",
-  borderStrong: "#c9d3e1",
-  text: "#101828",
-  textMuted: "#667085",
-  textSubtle: "#98a2b3",
-  success: "#027a48",
-  successSoft: "#ecfdf3",
-  successBorder: "#abefc6",
-  warning: "#b54708",
-  warningSoft: "#fff6e0",
-  warningBorder: "#fedf89",
-  danger: "#d92d20",
-  dangerSoft: "#fef3f2",
-  dangerBorder: "#fecdca",
-  inverse: "#ffffff",
-  overlay: "rgba(15, 23, 42, 0.38)"
-} as const;
+import type { TextStyle, ViewStyle } from "react-native";
+
+export type Colors = {
+  primary: string;
+  primarySoft: string;
+  primaryForeground: string;
+  accent: string;
+  background: string;
+  surface: string;
+  surfaceMuted: string;
+  border: string;
+  text: string;
+  textMuted: string;
+  textSubtle: string;
+  success: string;
+  successSoft: string;
+  warning: string;
+  warningSoft: string;
+  danger: string;
+  dangerSoft: string;
+  like: string;
+  pass: string;
+  overlay: string;
+  bubbleMine: string;
+  bubbleMineText: string;
+  bubbleTheirs: string;
+};
+
+export const lightColors: Colors = {
+  primary: "#D8502F",
+  primarySoft: "#FCE9E2",
+  primaryForeground: "#FFFFFF",
+  accent: "#5B2A4E",
+  background: "#FBF7F2",
+  surface: "#FFFFFF",
+  surfaceMuted: "#F3ECE5",
+  border: "#E7DDD3",
+  text: "#2B1F1B",
+  textMuted: "#6F5F57",
+  textSubtle: "#9A8B82",
+  success: "#2F7D4F",
+  successSoft: "#E4F3EA",
+  warning: "#A35A0B",
+  warningSoft: "#FDF0DB",
+  danger: "#C0322B",
+  dangerSoft: "#FBE7E5",
+  like: "#D8502F",
+  pass: "#6F5F57",
+  overlay: "rgba(24, 14, 10, 0.45)",
+  bubbleMine: "#D8502F",
+  bubbleMineText: "#FFFFFF",
+  bubbleTheirs: "#F0E7DF"
+};
+
+export const darkColors: Colors = {
+  primary: "#F0764F",
+  primarySoft: "#3A211A",
+  primaryForeground: "#1A0F0B",
+  accent: "#D9A3C9",
+  background: "#161110",
+  surface: "#211A18",
+  surfaceMuted: "#2B2220",
+  border: "#3A2F2B",
+  text: "#F6EDE7",
+  textMuted: "#BBAAA1",
+  textSubtle: "#8C7C73",
+  success: "#6CC28D",
+  successSoft: "#1B2E23",
+  warning: "#E5A04A",
+  warningSoft: "#33270F",
+  danger: "#F27E76",
+  dangerSoft: "#3A1C1A",
+  like: "#F0764F",
+  pass: "#BBAAA1",
+  overlay: "rgba(0, 0, 0, 0.6)",
+  bubbleMine: "#F0764F",
+  bubbleMineText: "#1A0F0B",
+  bubbleTheirs: "#2E2522"
+};
 
 export const spacing = {
   xxs: 4,
@@ -42,10 +91,10 @@ export const spacing = {
 
 export const radii = {
   xs: 8,
-  sm: 10,
-  md: 14,
-  lg: 20,
-  xl: 28,
+  sm: 12,
+  md: 16,
+  lg: 22,
+  xl: 30,
   pill: 999
 } as const;
 
@@ -67,95 +116,31 @@ export const fontWeights = {
 } as const;
 
 export const typography = {
-  body: {
-    fontSize: 15,
-    lineHeight: 24,
-    letterSpacing: -0.1
-  },
-  label: {
-    fontSize: 13,
-    lineHeight: 18,
-    letterSpacing: 0.1
-  },
-  title: {
-    fontSize: fontSizes.xxl,
-    lineHeight: 40,
-    letterSpacing: -1
-  },
-  heading: {
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.5
-  },
-  caption: {
-    fontSize: fontSizes.xs,
-    lineHeight: 16,
-    letterSpacing: 0
-  },
-  eyebrow: {
-    fontSize: fontSizes.xxs,
-    lineHeight: 16,
-    letterSpacing: 1.3,
-    textTransform: "uppercase" as const
-  },
-  button: {
-    fontSize: 15,
-    lineHeight: 20,
-    letterSpacing: -0.2
-  }
-} as const;
+  body: { fontSize: 16, lineHeight: 23 },
+  label: { fontSize: 13, lineHeight: 18, letterSpacing: 0.2 },
+  title: { fontSize: fontSizes.xxl, lineHeight: 42, letterSpacing: -1 },
+  heading: { fontSize: 22, lineHeight: 28, letterSpacing: -0.4 },
+  caption: { fontSize: fontSizes.xs, lineHeight: 16 },
+  eyebrow: { fontSize: fontSizes.xxs, lineHeight: 16, letterSpacing: 1.4, textTransform: "uppercase" as const },
+  button: { fontSize: 16, lineHeight: 20, letterSpacing: -0.1 }
+} as const satisfies Record<string, TextStyle>;
 
 export const controls = {
-  button: {
-    sm: 40,
-    md: 50,
-    lg: 56
-  },
-  input: {
-    md: 52,
-    multiline: 128
-  },
-  avatar: {
-    sm: 40,
-    md: 44,
-    lg: 56
-  }
+  button: { sm: 40, md: 50, lg: 56 },
+  input: { md: 52, multiline: 120 },
+  avatar: { sm: 40, md: 52, lg: 72 }
 } as const;
 
-export const shadows = {
-  card: {
-    shadowColor: "#0b1220",
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4
-  },
-  floating: {
-    shadowColor: "#0b1220",
-    shadowOpacity: 0.12,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8
-  },
-  focus: {
-    shadowColor: "#4c6fff",
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0
-  }
-} as const;
+export function cardShadow(scheme: "light" | "dark"): ViewStyle {
+  return scheme === "dark"
+    ? { elevation: 0 }
+    : {
+        shadowColor: "#3b1f12",
+        shadowOpacity: 0.1,
+        shadowRadius: 22,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 4
+      };
+}
 
-export const ui = {
-  colors,
-  spacing,
-  radii,
-  fontSizes,
-  fontWeights,
-  typography,
-  controls,
-  shadows
-} as const;
-
-export type ColorToken = keyof typeof colors;
 export type TypographyToken = keyof typeof typography;

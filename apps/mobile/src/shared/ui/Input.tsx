@@ -1,72 +1,46 @@
-import React, { useState } from "react";
-import {
-  StyleSheet,
-  TextInput as RNTextInput,
-  type StyleProp,
-  type TextInputProps as RNTextInputProps,
-  type TextStyle,
-  type ViewStyle
-} from "react-native";
-import { FormField } from "./FormField";
-import { colors, controls, radii, shadows, spacing, typography } from "./tokens";
+import React, { forwardRef, useState } from "react";
+import { StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
+import { useTheme } from "../../theme";
+import { Text } from "./Text";
+import { controls, radii, spacing } from "./tokens";
 
-export type InputProps = Omit<RNTextInputProps, "style"> & {
+export type InputProps = TextInputProps & {
   label?: string;
-  helperText?: string;
+  hint?: string;
   error?: string | null;
-  style?: StyleProp<TextStyle>;
   containerStyle?: StyleProp<ViewStyle>;
 };
 
-const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    backgroundColor: colors.backgroundElevated,
-    color: colors.text,
-    ...typography.body,
-    minHeight: controls.input.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md
-  },
-  multiline: {
-    minHeight: controls.input.multiline,
-    textAlignVertical: "top"
-  },
-  inputFocused: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-    ...shadows.focus
-  },
-  inputError: {
-    borderColor: colors.danger
-  },
-  inputDisabled: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.borderStrong,
-    color: colors.textMuted
-  }
-});
-
-export function Input({
-  containerStyle,
-  error,
-  helperText,
-  label,
-  multiline,
-  style,
-  onBlur,
-  onFocus,
-  ...props
-}: InputProps) {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  { label, hint, error, containerStyle, multiline, style, onFocus, onBlur, ...props },
+  ref
+) {
+  const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
-  const disabled = props.editable === false;
 
   return (
-    <FormField containerStyle={containerStyle} error={error} helperText={helperText} label={label}>
-      <RNTextInput
+    <View style={[styles.container, containerStyle]}>
+      {label ? (
+        <Text tone="muted" variant="label" weight="semibold">
+          {label}
+        </Text>
+      ) : null}
+      <TextInput
+        accessibilityLabel={props.accessibilityLabel ?? label}
         multiline={multiline}
+        placeholderTextColor={colors.textSubtle}
+        ref={ref}
+        style={[
+          styles.input,
+          {
+            minHeight: multiline ? controls.input.multiline : controls.input.md,
+            backgroundColor: colors.surface,
+            color: colors.text,
+            borderColor: error ? colors.danger : focused ? colors.primary : colors.border,
+            textAlignVertical: multiline ? "top" : "center"
+          },
+          style
+        ]}
         onBlur={(event) => {
           setFocused(false);
           onBlur?.(event);
@@ -75,18 +49,28 @@ export function Input({
           setFocused(true);
           onFocus?.(event);
         }}
-        placeholderTextColor={colors.textMuted}
-        selectionColor={colors.primary}
-        style={[
-          styles.input,
-          multiline ? styles.multiline : null,
-          focused && !disabled ? styles.inputFocused : null,
-          error ? styles.inputError : null,
-          disabled ? styles.inputDisabled : null,
-          style
-        ]}
         {...props}
       />
-    </FormField>
+      {error ? (
+        <Text accessibilityLiveRegion="polite" tone="danger" variant="caption">
+          {error}
+        </Text>
+      ) : hint ? (
+        <Text tone="subtle" variant="caption">
+          {hint}
+        </Text>
+      ) : null}
+    </View>
   );
-}
+});
+
+const styles = StyleSheet.create({
+  container: { gap: spacing.xs },
+  input: {
+    borderWidth: 1.5,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    fontSize: 16
+  }
+});

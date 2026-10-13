@@ -1,6 +1,6 @@
 import React, { type ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, colors, spacing } from "../ui";
+import { Text, spacing } from "../ui";
 
 type HeaderProps = {
   action?: ReactNode;
@@ -8,54 +8,30 @@ type HeaderProps = {
   eyebrow?: string;
   subtitle?: string;
   title: string;
-  centered?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
-export function Header({ action, centered = false, eyebrow, leading, subtitle, style, title }: HeaderProps) {
+export function Header({ action, eyebrow, leading, subtitle, style, title }: HeaderProps) {
   return (
-    <View style={[styles.root, centered ? styles.rootCentered : null, style]}>
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
-      <View style={[styles.copy, centered ? styles.copyCentered : null]}>
+    <View style={[styles.root, style]}>
+      {leading}
+      <View style={styles.copy}>
         {eyebrow ? (
-          <Text tone="secondary" variant="eyebrow" weight="bold">
+          <Text tone="primary" variant="eyebrow" weight="bold">
             {eyebrow}
           </Text>
         ) : null}
-        <Text style={styles.title} variant="title" weight="bold">
+        <Text accessibilityRole="header" variant="heading" weight="bold">
           {title}
         </Text>
         {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
       </View>
-      {action ? <View style={styles.action}>{action}</View> : null}
+      {action}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.lg
-  },
-  rootCentered: {
-    justifyContent: "center"
-  },
-  leading: {
-    paddingTop: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.sm
-  },
-  copyCentered: {
-    alignItems: "center"
-  },
-  action: {
-    paddingTop: spacing.md
-  },
-  title: {
-    color: colors.text
-  }
+  root: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingBottom: spacing.md },
+  copy: { flex: 1, gap: spacing.xxs }
 });

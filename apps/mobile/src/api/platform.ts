@@ -1,179 +1,160 @@
-import { type AuthUser } from "./auth";
 import { apiRequest } from "./client";
 import { endpoints } from "./endpoints";
+import type {
+  AppNotification,
+  BlockedUser,
+  ChatMessage,
+  Conversation,
+  Interest,
+  Match,
+  OwnProfile,
+  Preferences,
+  ProfileInput,
+  PublicProfile,
+  ReportReason,
+  SwipeAction,
+  SwipeResult
+} from "./types";
 
-export type PlatformUser = AuthUser;
-
-export type Post = {
-  id: string;
-  authorUserId: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ChatMessage = {
-  id: string;
-  senderUserId: string;
-  recipientUserId: string;
-  content: string;
-  createdAt: string;
-};
-
-export type ChatSummary = {
-  user: PlatformUser;
-  lastMessage?: {
-    content: string;
-    createdAt: string;
-  };
-};
-
-export type Notification = {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  body: string;
-  isRead: boolean;
-  createdAt: string;
-  readAt?: string;
-};
-
-export type BillingSubscription = {
-  id?: string;
-  organizationId: string;
-  provider: string;
-  status: string;
-  stripeCustomerId?: string;
-  stripeSubscriptionId?: string;
-  stripeCheckoutSessionId?: string;
-  currentPeriodStart?: string;
-  currentPeriodEnd?: string;
-  cancelAtPeriodEnd: boolean;
-  canceledAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-export type BillingCheckoutSession = {
-  sessionId: string;
-  checkoutUrl: string;
-  organizationId: string;
-  status: string;
-};
-
-type UsersResponse = {
-  users: PlatformUser[];
-};
-
-type PostsResponse = {
-  posts: Post[];
-};
-
-type ChatsResponse = {
-  chats: ChatSummary[];
-};
-
-type ChatMessagesResponse = {
-  messages: ChatMessage[];
-};
-
-type NotificationsResponse = {
-  notifications: Notification[];
-};
-
-export type CreateNotificationInput = {
-  type: string;
-  title: string;
-  body: string;
-};
-
-function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `Bearer ${token}` };
+function withQuery(path: string, params: Record<string, string | number | undefined | null>): string {
+  const query = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+    .join("&");
+  return query ? `${path}?${query}` : path;
 }
 
-export async function listUsers(token: string): Promise<PlatformUser[]> {
-  const payload = await apiRequest<UsersResponse>(endpoints.users.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.users;
+// Profile ---------------------------------------------------------------
+
+export async function fetchInterests(): Promise<Interest[]> {
+  return (await apiRequest<{ interests: Interest[] }>(endpoints.profile.interests)).interests;
 }
 
-export async function listPosts(token: string): Promise<Post[]> {
-  const payload = await apiRequest<PostsResponse>(endpoints.posts.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.posts;
+export function fetchOwnProfile(): Promise<OwnProfile> {
+  return apiRequest<OwnProfile>(endpoints.profile.own);
 }
 
-export async function createPost(token: string, title: string, body: string): Promise<Post> {
-  return apiRequest<Post>(endpoints.posts.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ title, body })
-  });
+export function saveProfile(input: ProfileInput): Promise<OwnProfile> {
+  return apiRequest<OwnProfile>(endpoints.profile.own, { method: "PUT", json: input });
 }
 
-export async function listChats(token: string): Promise<ChatSummary[]> {
-  const payload = await apiRequest<ChatsResponse>(endpoints.chat.chats, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.chats;
+export function savePreferences(input: Preferences): Promise<OwnProfile> {
+  return apiRequest<OwnProfile>(endpoints.profile.preferences, { method: "PUT", json: input });
 }
 
-export async function listChatMessages(token: string, userId: string): Promise<ChatMessage[]> {
-  const payload = await apiRequest<ChatMessagesResponse>(endpoints.chat.messages(userId), {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.messages;
+export function saveLocation(coords: { latitude: number; longitude: number } | null): Promise<OwnProfile> {
+  return apiRequest<OwnProfile>(endpoints.profile.location, { method: "PUT", json: coords ?? {} });
 }
 
-export async function sendChatMessage(token: string, userId: string, content: string): Promise<ChatMessage> {
-  return apiRequest<ChatMessage>(endpoints.chat.messages(userId), {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ content })
-  });
+export async function fetchPublicProfile(userId: string): Promise<PublicProfile> {
+  return (await apiRequest<{ profile: PublicProfile }>(endpoints.profile.public(userId))).profile;
 }
 
-export async function listNotifications(token: string): Promise<Notification[]> {
-  const payload = await apiRequest<NotificationsResponse>(endpoints.notifications.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.notifications;
+// Photos ----------------------------------------------------------------
+
+export type UploadFile = { uri: string; name: string; type: string };
+
+async function toFormData(file: UploadFile): Promise<FormData> {
+  const form = new FormData();
+  if (file.uri.startsWith("blob:") || file.uri.startsWith("data:")) {
+    // Web: the picker returns an object/data URL.
+    const blob = await (await fetch(file.uri)).blob();
+    form.append("file", blob, file.name);
+  } else {
+    // React Native: the form-data shim accepts { uri, name, type }.
+    form.append("file", { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  }
+  return form;
 }
 
-export async function createNotification(token: string, input: CreateNotificationInput): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(input)
-  });
+export async function uploadPhoto(file: UploadFile): Promise<void> {
+  await apiRequest(endpoints.photos.list, { method: "POST", form: await toFormData(file), timeoutMs: 60_000 });
 }
 
-export async function markNotificationRead(token: string, notificationId: string): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.markRead(notificationId), {
-    method: "POST",
-    headers: authHeaders(token)
-  });
+export async function replacePhoto(photoId: string, file: UploadFile): Promise<void> {
+  await apiRequest(endpoints.photos.item(photoId), { method: "PUT", form: await toFormData(file), timeoutMs: 60_000 });
 }
 
-export async function getBillingSubscription(token: string): Promise<BillingSubscription> {
-  return apiRequest<BillingSubscription>(endpoints.billing.subscription, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
+export function deletePhoto(photoId: string): Promise<void> {
+  return apiRequest(endpoints.photos.item(photoId), { method: "DELETE" });
 }
 
-export async function createBillingCheckout(token: string): Promise<BillingCheckoutSession> {
-  return apiRequest<BillingCheckoutSession>(endpoints.billing.checkout, {
-    method: "POST",
-    headers: authHeaders(token)
-  });
+export async function reorderPhotos(ids: string[]): Promise<void> {
+  await apiRequest(endpoints.photos.order, { method: "PUT", json: { ids } });
+}
+
+// Discovery & matching ----------------------------------------------------
+
+export async function fetchDiscover(limit = 10): Promise<PublicProfile[]> {
+  return (await apiRequest<{ profiles: PublicProfile[] }>(withQuery(endpoints.discover, { limit }))).profiles;
+}
+
+export function swipe(userId: string, action: SwipeAction): Promise<SwipeResult> {
+  return apiRequest<SwipeResult>(endpoints.likes, { method: "POST", json: { userId, action } });
+}
+
+export async function fetchMatches(): Promise<Match[]> {
+  return (await apiRequest<{ matches: Match[] }>(withQuery(endpoints.matches.list, { limit: 50 }))).matches;
+}
+
+export function unmatch(matchId: string): Promise<void> {
+  return apiRequest(endpoints.matches.item(matchId), { method: "DELETE" });
+}
+
+// Chat ----------------------------------------------------------------------
+
+export async function fetchConversations(): Promise<Conversation[]> {
+  return (await apiRequest<{ conversations: Conversation[] }>(withQuery(endpoints.conversations.list, { limit: 50 }))).conversations;
+}
+
+export type MessagePage = { messages: ChatMessage[]; nextBefore: number | null };
+
+export function fetchMessages(conversationId: string, before?: number | null): Promise<MessagePage> {
+  return apiRequest<MessagePage>(withQuery(endpoints.conversations.messages(conversationId), { limit: 30, before }));
+}
+
+export function sendMessage(conversationId: string, body: string): Promise<ChatMessage> {
+  return apiRequest<ChatMessage>(endpoints.conversations.messages(conversationId), { method: "POST", json: { body } });
+}
+
+export async function markConversationRead(conversationId: string): Promise<void> {
+  await apiRequest(endpoints.conversations.read(conversationId), { method: "POST" });
+}
+
+export function hideConversation(conversationId: string): Promise<void> {
+  return apiRequest(endpoints.conversations.item(conversationId), { method: "DELETE" });
+}
+
+// Notifications ---------------------------------------------------------------
+
+export type NotificationsPage = { notifications: AppNotification[]; unreadCount: number };
+
+export function fetchNotifications(): Promise<NotificationsPage> {
+  return apiRequest<NotificationsPage>(withQuery(endpoints.notifications.list, { limit: 50 }));
+}
+
+export function markNotificationRead(id: string): Promise<void> {
+  return apiRequest(endpoints.notifications.read(id), { method: "POST" });
+}
+
+export function markAllNotificationsRead(): Promise<void> {
+  return apiRequest(endpoints.notifications.readAll, { method: "POST" });
+}
+
+// Safety ------------------------------------------------------------------------
+
+export function blockUser(userId: string): Promise<void> {
+  return apiRequest(endpoints.safety.blocks, { method: "POST", json: { userId } });
+}
+
+export function unblockUser(userId: string): Promise<void> {
+  return apiRequest(endpoints.safety.unblock(userId), { method: "DELETE" });
+}
+
+export async function fetchBlocked(): Promise<BlockedUser[]> {
+  return (await apiRequest<{ blocks: BlockedUser[] }>(endpoints.safety.blocks)).blocks;
+}
+
+export function reportUser(userId: string, reason: ReportReason, details: string, alsoBlock: boolean): Promise<void> {
+  return apiRequest(endpoints.safety.reports, { method: "POST", json: { userId, reason, details, alsoBlock } });
 }

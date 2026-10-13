@@ -1,73 +1,49 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
-import { Card } from "./Card";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../../theme";
+import { formatListTime } from "../../lib/format";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { radii, spacing } from "./tokens";
 
-export type NotificationItemProps = {
+type NotificationItemProps = {
+  type: "match" | "message";
+  title: string;
   body: string;
-  createdAtLabel: string;
+  createdAt: string;
   isRead: boolean;
   onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
-  title: string;
-  type: string;
 };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ type, title, body, createdAt, isRead, onPress }: NotificationItemProps) {
+  const { colors } = useTheme();
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
-        </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
+    <Pressable
+      accessibilityLabel={`${title}. ${body}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { backgroundColor: isRead ? "transparent" : colors.primarySoft, opacity: pressed ? 0.85 : 1 }]}
+    >
+      <View style={[styles.icon, { backgroundColor: colors.surface }]}>
+        <Ionicons color={colors.primary} name={type === "match" ? "heart" : "chatbubble"} size={20} />
+      </View>
+      <View style={styles.copy}>
+        <Text numberOfLines={1} weight={isRead ? "medium" : "bold"}>
+          {title}
         </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
+        <Text numberOfLines={2} tone="muted" variant="label">
+          {body}
         </Text>
-      </Card>
+      </View>
+      <Text tone="subtle" variant="caption">
+        {formatListTime(createdAt)}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.sm
-  },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radii.md },
+  icon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  copy: { flex: 1, gap: 2 }
 });

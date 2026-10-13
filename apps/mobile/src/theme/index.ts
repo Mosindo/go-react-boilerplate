@@ -1,28 +1,24 @@
-import { colors } from "../shared/ui";
-import { tokens } from "./tokens";
+import type React from "react";
+import { createContext, createElement, useContext, useMemo } from "react";
+import { useColorScheme } from "react-native";
+import { darkColors, lightColors, type Colors } from "../shared/ui/tokens";
 
-export { tokens };
+export type ThemeValue = {
+  scheme: "light" | "dark";
+  colors: Colors;
+};
 
-export const themes = {
-  light: {
-    background: colors.background,
-    backgroundStrong: colors.backgroundElevated,
-    backgroundHover: colors.surfaceMuted,
-    backgroundPress: colors.surfaceSubtle,
-    color: colors.text,
-    colorMuted: colors.textMuted,
-    colorHover: colors.text,
-    colorPress: colors.text,
-    borderColor: colors.border,
-    borderColorHover: colors.borderStrong,
-    borderColorPress: colors.borderStrong,
-    primary: colors.primary,
-    primaryHover: colors.primary,
-    primaryPress: colors.primary,
-    success: colors.success,
-    warning: colors.warning,
-    danger: colors.danger,
-    muted: colors.surfaceMuted,
-    accent: colors.surfaceAccent
-  }
-} as const;
+const ThemeContext = createContext<ThemeValue>({ scheme: "light", colors: lightColors });
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const system = useColorScheme();
+  const value = useMemo<ThemeValue>(
+    () => (system === "dark" ? { scheme: "dark", colors: darkColors } : { scheme: "light", colors: lightColors }),
+    [system]
+  );
+  return createElement(ThemeContext.Provider, { value }, children);
+}
+
+export function useTheme(): ThemeValue {
+  return useContext(ThemeContext);
+}

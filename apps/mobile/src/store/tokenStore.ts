@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 export type AuthTokens = {
@@ -5,60 +6,85 @@ export type AuthTokens = {
   refreshToken: string;
 };
 
-const TOKENS_KEY = "boilerplate.auth.tokens";
+const TOKENS_KEY = "app.auth.tokens";
 let memoryTokens: AuthTokens | null = null;
+const listeners = new Set<(tokens: AuthTokens | null) => void>();
 
-export async function saveTokens(tokens: AuthTokens): Promise<void> {
-  memoryTokens = tokens;
+function notify() {
+  listeners.forEach((listener) => listener(memoryTokens));
+}
+
+/** Subscribe to token changes (login, silent refresh, forced sign-out). */
+export function subscribeTokens(listener: (tokens: AuthTokens | null) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+// SecureStore is unavailable on web: fall back to localStorage there.
+async function persist(value: string | null): Promise<void> {
   try {
-    await SecureStore.setItemAsync(TOKENS_KEY, JSON.stringify(tokens));
+    if (Platform.OS === "web") {
+      if (value === null) {
+        globalThis.localStorage?.removeItem(TOKENS_KEY);
+      } else {
+        globalThis.localStorage?.setItem(TOKENS_KEY, value);
+      }
+      return;
+    }
+    if (value === null) {
+      await SecureStore.deleteItemAsync(TOKENS_KEY);
+    } else {
+      await SecureStore.setItemAsync(TOKENS_KEY, value);
+    }
   } catch {
-    // Fallback keeps the session in memory when secure storage is unavailable.
+    // The session then lives in memory only.
   }
 }
 
-export async function getTokens(): Promise<AuthTokens | null> {
+async function readPersisted(): Promise<string | null> {
   try {
-    const serializedTokens = await SecureStore.getItemAsync(TOKENS_KEY);
-    if (serializedTokens) {
-      const parsedTokens = JSON.parse(serializedTokens) as Partial<AuthTokens>;
-      if (parsedTokens.accessToken && typeof parsedTokens.refreshToken === "string") {
-        memoryTokens = {
-          accessToken: parsedTokens.accessToken,
-          refreshToken: parsedTokens.refreshToken
-        };
-        return memoryTokens;
-      }
+    if (Platform.OS === "web") {
+      return globalThis.localStorage?.getItem(TOKENS_KEY) ?? null;
     }
+    return await SecureStore.getItemAsync(TOKENS_KEY);
   } catch {
-    // Ignore and fallback to memory.
+    return null;
+  }
+}
+
+export async function saveTokens(tokens: AuthTokens): Promise<void> {
+  memoryTokens = tokens;
+  await persist(JSON.stringify(tokens));
+  notify();
+}
+
+export async function loadTokens(): Promise<AuthTokens | null> {
+  if (memoryTokens) {
+    return memoryTokens;
+  }
+  const raw = await readPersisted();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<AuthTokens>;
+      if (typeof parsed.accessToken === "string" && typeof parsed.refreshToken === "string") {
+        memoryTokens = { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken };
+      }
+    } catch {
+      memoryTokens = null;
+    }
   }
   return memoryTokens;
 }
 
-export async function getAccessToken(): Promise<string | null> {
-  const tokens = await getTokens();
-  return tokens?.accessToken ?? null;
+/** Synchronous access for code that cannot await (image headers, sockets). */
+export function peekTokens(): AuthTokens | null {
+  return memoryTokens;
 }
 
 export async function clearTokens(): Promise<void> {
   memoryTokens = null;
-  try {
-    await SecureStore.deleteItemAsync(TOKENS_KEY);
-  } catch {
-    // Ignore cleanup errors on unsupported platforms.
-  }
-}
-
-// Backward-compatible helpers for older call sites that still expect token-only storage.
-export async function saveToken(token: string): Promise<void> {
-  await saveTokens({ accessToken: token, refreshToken: "" });
-}
-
-export async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
-
-export async function clearToken(): Promise<void> {
-  await clearTokens();
+  await persist(null);
+  notify();
 }

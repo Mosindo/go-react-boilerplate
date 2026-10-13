@@ -163,7 +163,7 @@ func (r *PGRepository) InsertMessage(ctx context.Context, userID, conversationID
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO notifications (user_id, type, title, body, data)
 		SELECT $2::uuid, 'message', p.first_name, $4,
-		       jsonb_build_object('conversationId', $1::text, 'userId', $3::text)
+		       jsonb_build_object('conversationId', $1::text, 'userId', $3::text, 'name', p.first_name)
 		FROM profiles p WHERE p.user_id = $3::uuid
 		ON CONFLICT (user_id, (data->>'conversationId')) WHERE type = 'message' AND read_at IS NULL
 		DO UPDATE SET body = EXCLUDED.body, created_at = NOW()

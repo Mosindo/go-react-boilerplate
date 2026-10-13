@@ -1,231 +1,124 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  QueryClient,
-  QueryClientProvider,
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseMutationResult,
-  type UseQueryResult
-} from "@tanstack/react-query";
-import {
+  deleteAccount as deleteAccountRequest,
   login as loginRequest,
   logout as logoutRequest,
   me,
-  refreshSession as refreshSessionRequest,
   register as registerRequest,
-  type AuthSession,
-  type AuthUser
+  type AuthSession
 } from "../api/auth";
-import {
-  beginGlobalLoading,
-  clearGlobalError,
-  endGlobalLoading
-} from "../shared/feedback";
-import { clearTokens, getTokens, saveTokens, type AuthTokens } from "../store/tokenStore";
-
-type AuthCredentials = {
-  email: string;
-  password: string;
-};
+import { isApiError } from "../api/client";
+import type { AuthUser } from "../api/types";
+import { resetFeedback } from "../shared/feedback";
+import { clearTokens, loadTokens, peekTokens, saveTokens, subscribeTokens, type AuthTokens } from "../store/tokenStore";
 
 type AuthContextValue = {
-  accessToken: string | null;
-  refreshToken: string | null;
   user: AuthUser | null;
   isBooting: boolean;
   isAuthenticated: boolean;
-  isLoggingOut: boolean;
-  authError: string | null;
-  currentUserQuery: UseQueryResult<AuthUser, Error>;
-  applySession: (session: AuthSession) => Promise<void>;
-  clearAuthError: () => void;
-  logout: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
 };
 
-const CURRENT_USER_QUERY_KEY = ["auth", "current-user"] as const;
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-      refetchOnWindowFocus: false
-    },
-    mutations: {
-      retry: 0
-    }
-  }
-});
-
+const CURRENT_USER_KEY = ["auth", "current-user"] as const;
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function toStoredTokens(session: AuthSession): AuthTokens {
-  return {
-    accessToken: session.accessToken,
-    refreshToken: session.refreshToken
-  };
-}
-
-function formatAuthError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error) || !error.message) {
-    return fallback;
-  }
-  return error.message;
-}
-
-function AuthProviderInner({ children }: { children: React.ReactNode }) {
-  const queryClientInstance = useQueryClient();
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [tokens, setTokens] = useState<AuthTokens | null>(null);
   const [bootstrapping, setBootstrapping] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [refreshAttemptedFor, setRefreshAttemptedFor] = useState<string | null>(null);
 
-  const currentUserQuery = useQuery<AuthUser, Error>({
-    queryKey: [...CURRENT_USER_QUERY_KEY, tokens?.accessToken ?? "guest"],
-    enabled: !bootstrapping && Boolean(tokens?.accessToken),
-    queryFn: () => me(),
-    retry: false
-  });
-
-  const clearSession = useCallback(async () => {
-    await clearTokens();
-    setTokens(null);
-    setAuthError(null);
-    setRefreshAttemptedFor(null);
-    queryClientInstance.removeQueries({ queryKey: CURRENT_USER_QUERY_KEY });
-  }, [queryClientInstance]);
-
-  const applySession = useCallback(
-    async (session: AuthSession) => {
-      await saveTokens(toStoredTokens(session));
-      setTokens(toStoredTokens(session));
-      setAuthError(null);
-      clearGlobalError();
-      setRefreshAttemptedFor(null);
-      queryClientInstance.setQueryData([...CURRENT_USER_QUERY_KEY, session.accessToken], session.user);
-    },
-    [queryClientInstance]
-  );
-
-  const clearAuthError = useCallback(() => {
-    setAuthError(null);
-  }, []);
-
-  const refreshCurrentSession = useCallback(async () => {
-    if (!tokens?.refreshToken) {
-      await clearSession();
-      return false;
-    }
-
-    beginGlobalLoading("Refreshing session...");
-    try {
-      const nextSession = await refreshSessionRequest(tokens.refreshToken);
-      await applySession(nextSession);
-      return true;
-    } catch (error) {
-      await clearSession();
-      setAuthError(formatAuthError(error, "Your session expired. Please login again."));
-      return false;
-    } finally {
-      endGlobalLoading();
-    }
-  }, [applySession, clearSession, tokens?.refreshToken]);
-
-  const logout = useCallback(async () => {
-    setIsLoggingOut(true);
-    beginGlobalLoading("Signing out...");
-    try {
-      if (tokens?.refreshToken) {
-        await logoutRequest(tokens.refreshToken);
-      }
-    } catch {
-      // Best-effort logout. Local cleanup still wins.
-    } finally {
-      await clearSession();
-      setIsLoggingOut(false);
-      endGlobalLoading();
-    }
-  }, [clearSession, tokens?.refreshToken]);
-
+  // The token store is the single source of truth: silent refreshes and forced
+  // sign-outs performed by the API client reach the UI through this listener.
   useEffect(() => {
     let active = true;
-
-    async function bootstrap() {
-      try {
-        const restored = await getTokens();
-        if (!active) {
-          return;
-        }
-        setTokens(restored);
-      } catch {
-        if (active) {
-          setTokens(null);
-        }
-      } finally {
-        if (active) {
-          setBootstrapping(false);
-        }
+    const unsubscribe = subscribeTokens((next) => {
+      if (active) {
+        setTokens(next);
       }
-    }
-
-    bootstrap();
-
+    });
+    loadTokens()
+      .then((restored) => active && setTokens(restored))
+      .finally(() => active && setBootstrapping(false));
     return () => {
       active = false;
+      unsubscribe();
     };
   }, []);
 
+  const isSignedIn = Boolean(tokens?.refreshToken);
+
+  const userQuery = useQuery<AuthUser, Error>({
+    queryKey: CURRENT_USER_KEY,
+    enabled: !bootstrapping && isSignedIn,
+    queryFn: me,
+    retry: false,
+    staleTime: Infinity
+  });
+
+  // A definitive rejection of the session (e.g. deleted or suspended account) ends it.
   useEffect(() => {
-    if (bootstrapping || !tokens?.accessToken || !currentUserQuery.isError) {
-      return;
+    if (userQuery.isError && isApiError(userQuery.error) && (userQuery.error.status === 401 || userQuery.error.status === 403)) {
+      void clearTokens();
     }
+  }, [userQuery.isError, userQuery.error]);
 
-    if (tokens.refreshToken && refreshAttemptedFor !== tokens.refreshToken) {
-      setRefreshAttemptedFor(tokens.refreshToken);
-      void refreshCurrentSession();
-      return;
+  useEffect(() => {
+    if (!bootstrapping && !isSignedIn) {
+      queryClient.clear();
+      resetFeedback();
     }
+  }, [bootstrapping, isSignedIn, queryClient]);
 
-    void clearSession();
-    setAuthError("Your session expired. Please login again.");
-  }, [
-    bootstrapping,
-    clearSession,
-    currentUserQuery.isError,
-    refreshAttemptedFor,
-    refreshCurrentSession,
-    tokens?.accessToken,
-    tokens?.refreshToken
-  ]);
+  const applySession = useCallback(
+    async (session: AuthSession) => {
+      queryClient.clear();
+      queryClient.setQueryData(CURRENT_USER_KEY, session.user);
+      await saveTokens({ accessToken: session.accessToken, refreshToken: session.refreshToken });
+    },
+    [queryClient]
+  );
+
+  const signIn = useCallback(async (email: string, password: string) => applySession(await loginRequest(email, password)), [applySession]);
+  const signUp = useCallback(
+    async (email: string, password: string) => applySession(await registerRequest(email, password)),
+    [applySession]
+  );
+
+  const signOut = useCallback(async () => {
+    const refreshToken = peekTokens()?.refreshToken;
+    try {
+      if (refreshToken) {
+        await logoutRequest(refreshToken);
+      }
+    } catch {
+      // Best effort: local cleanup always wins.
+    }
+    await clearTokens();
+  }, []);
+
+  const deleteAccount = useCallback(async (password: string) => {
+    await deleteAccountRequest(password);
+    await clearTokens();
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      accessToken: tokens?.accessToken ?? null,
-      refreshToken: tokens?.refreshToken ?? null,
-      user: currentUserQuery.data ?? null,
-      isBooting: bootstrapping || (!!tokens?.accessToken && currentUserQuery.isLoading),
-      isAuthenticated: Boolean(tokens?.accessToken && currentUserQuery.data),
-      isLoggingOut,
-      authError,
-      currentUserQuery,
-      applySession,
-      clearAuthError,
-      logout
+      user: isSignedIn ? (userQuery.data ?? null) : null,
+      isBooting: bootstrapping || (isSignedIn && userQuery.isLoading),
+      isAuthenticated: isSignedIn && Boolean(userQuery.data),
+      signIn,
+      signUp,
+      signOut,
+      deleteAccount
     }),
-    [applySession, authError, bootstrapping, clearAuthError, currentUserQuery, isLoggingOut, logout, tokens]
+    [bootstrapping, deleteAccount, isSignedIn, signIn, signOut, signUp, userQuery.data, userQuery.isLoading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProviderInner>{children}</AuthProviderInner>
-    </QueryClientProvider>
-  );
 }
 
 export function useAuth(): AuthContextValue {
@@ -234,46 +127,4 @@ export function useAuth(): AuthContextValue {
     throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
-}
-
-export function useCurrentUser(): UseQueryResult<AuthUser, Error> {
-  return useAuth().currentUserQuery;
-}
-
-export function useLogin(): UseMutationResult<AuthSession, Error, AuthCredentials> {
-  const { applySession, clearAuthError } = useAuth();
-
-  return useMutation<AuthSession, Error, AuthCredentials>({
-    mutationFn: async ({ email, password }) => {
-      clearAuthError();
-      beginGlobalLoading("Signing in...");
-      try {
-        return await loginRequest(email, password);
-      } finally {
-        endGlobalLoading();
-      }
-    },
-    onSuccess: async (session) => {
-      await applySession(session);
-    }
-  });
-}
-
-export function useRegister(): UseMutationResult<AuthSession, Error, AuthCredentials> {
-  const { applySession, clearAuthError } = useAuth();
-
-  return useMutation<AuthSession, Error, AuthCredentials>({
-    mutationFn: async ({ email, password }) => {
-      clearAuthError();
-      beginGlobalLoading("Creating account...");
-      try {
-        return await registerRequest(email, password);
-      } finally {
-        endGlobalLoading();
-      }
-    },
-    onSuccess: async (session) => {
-      await applySession(session);
-    }
-  });
 }

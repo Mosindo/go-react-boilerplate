@@ -128,7 +128,7 @@ func createMatch(ctx context.Context, tx pgx.Tx, a, b string) (MatchRef, error) 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO notifications (user_id, type, title, body, data)
 		SELECT x.user_id, 'match', 'Nouveau match', 'Vous avez un match avec ' || p.first_name,
-		       jsonb_build_object('matchId', $1::text, 'conversationId', $2::text, 'userId', x.other_id::text)
+		       jsonb_build_object('matchId', $1::text, 'conversationId', $2::text, 'userId', x.other_id::text, 'name', p.first_name)
 		FROM (VALUES ($3::uuid, $4::uuid), ($4::uuid, $3::uuid)) AS x(user_id, other_id)
 		JOIN profiles p ON p.user_id = x.other_id
 	`, ref.ID, ref.ConversationID, a, b); err != nil {

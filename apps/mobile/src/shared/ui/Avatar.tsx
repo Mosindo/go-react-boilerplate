@@ -1,79 +1,31 @@
-import React, { useMemo } from "react";
-import { Image, StyleSheet, View, type ImageStyle, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { useTheme } from "../../theme";
+import { PhotoImage } from "./PhotoImage";
 import { Text } from "./Text";
-import { colors, controls } from "./tokens";
+import { controls } from "./tokens";
 
-export type AvatarProps = {
+type AvatarProps = {
+  photoId?: string | null;
   name?: string;
-  size?: number;
-  style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
-  uri?: string | null;
+  size?: keyof typeof controls.avatar | number;
 };
 
-function getInitials(name?: string): string {
-  if (!name) {
-    return "?";
-  }
+export function Avatar({ photoId, name, size = "md" }: AvatarProps) {
+  const { colors } = useTheme();
+  const px = typeof size === "number" ? size : controls.avatar[size];
+  const shape = { width: px, height: px, borderRadius: px / 2 };
 
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (parts.length === 0) {
-    return "?";
-  }
-
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-
-  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
-}
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    overflow: "hidden"
-  },
-  image: {
-    width: "100%",
-    height: "100%"
-  }
-});
-
-export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri }: AvatarProps) {
-  const initials = useMemo(() => getInitials(name), [name]);
-
-  return (
-    <View
-      style={[
-        styles.container,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2
-        },
-        style
-      ]}
-    >
-      {uri ? (
-        <Image source={{ uri }} style={styles.image as StyleProp<ImageStyle>} />
-      ) : (
-        <Text
-          style={textStyle}
-          tone="primary"
-          variant={size >= controls.avatar.lg ? "heading" : "label"}
-          weight="bold"
-        >
-          {initials}
+  if (!photoId) {
+    return (
+      <View accessibilityLabel={name} style={[styles.fallback, shape, { backgroundColor: colors.primarySoft }]}>
+        <Text tone="primary" weight="bold">
+          {name?.trim().charAt(0).toUpperCase() || "?"}
         </Text>
-      )}
-    </View>
-  );
+      </View>
+    );
+  }
+  return <PhotoImage accessibilityLabel={name} photoId={photoId} size="thumb" style={shape} />;
 }
+
+const styles = StyleSheet.create({ fallback: { alignItems: "center", justifyContent: "center" } });

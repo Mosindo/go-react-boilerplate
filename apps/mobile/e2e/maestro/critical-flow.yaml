@@ -1,48 +1,48 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lueur critical flow
 ---
+# Prepared by `npm run e2e:ui:setup`: Alice is a complete member and Bob has already liked her.
 - launchApp:
     clearState: true
 
-- assertVisible: Login
 - tapOn:
-    id: auth-email-input
+    id: auth-email
 - inputText: ${TEST_EMAIL}
 - tapOn:
-    id: auth-password-input
+    id: auth-password
 - inputText: ${TEST_PASSWORD}
 - tapOn:
-    id: auth-submit-button
+    id: auth-submit
 
+# Discovery -> like -> match
+- extendedWaitUntil:
+    visible:
+      id: swipe-like
+    timeout: 20000
+- tapOn:
+    id: swipe-like
 - assertVisible:
-    id: home-screen
+    id: match-modal
+- tapOn:
+    id: match-send-message
 
+# Conversation
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
+    id: chat-input
+- inputText: Bonjour depuis Maestro
 - tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
+    id: chat-send
+- assertVisible: Bonjour depuis Maestro
 - tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
+    id: chat-back
 
-- tapOn: Chat
-- assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
+# Other tabs
 - tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
+    id: tab-messages
+- assertVisible: ${CONTACT_NAME}
 - tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
-
-- tapOn: Notifications
-- assertVisible:
-    id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
-- assertVisible:
-    id: profile-screen
+    id: tab-notifications
+- assertVisible: Nouveau match
+- tapOn:
+    id: tab-profile
+- assertVisible: Mon profil
