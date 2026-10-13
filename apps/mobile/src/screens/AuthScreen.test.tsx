@@ -1,5 +1,6 @@
 import React from "react";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { requestPasswordReset, resetPassword } from "../api/auth";
 import { ApiError } from "../api/client";
 import { renderWithProviders } from "../test-utils";
 import AuthScreen from "./AuthScreen";
@@ -8,7 +9,10 @@ const mockSignIn = jest.fn();
 const mockSignUp = jest.fn();
 
 jest.mock("../hooks/useAuth", () => ({ useAuth: () => ({ signIn: mockSignIn, signUp: mockSignUp }) }));
-jest.mock("../api/auth", () => ({ requestPasswordReset: jest.fn(), resetPassword: jest.fn() }));
+jest.mock("../api/auth", () => ({
+  requestPasswordReset: jest.fn().mockResolvedValue(undefined),
+  resetPassword: jest.fn().mockResolvedValue(undefined)
+}));
 
 describe("AuthScreen", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -54,5 +58,25 @@ describe("AuthScreen", () => {
     fireEvent.changeText(screen.getByTestId("auth-password"), "Password123");
     fireEvent.press(screen.getByTestId("auth-submit"));
     await waitFor(() => expect(mockSignUp).toHaveBeenCalledWith("new@example.com", "Password123"));
+  });
+
+  it("walks through account recovery: request a code, then choose a new password", async () => {
+    renderWithProviders(<AuthScreen />);
+    fireEvent.press(screen.getByText("Mot de passe oublié ?"));
+    fireEvent.changeText(screen.getByTestId("auth-email"), "Ana@Example.com");
+    fireEvent.press(screen.getByTestId("auth-submit"));
+    await waitFor(() => expect(requestPasswordReset).toHaveBeenCalledWith("ana@example.com"));
+    expect(await screen.findByRole("header", { name: "Nouveau mot de passe" })).toBeTruthy();
+
+    fireEvent.changeText(screen.getByTestId("auth-code"), "ABCD2345");
+    fireEvent.changeText(screen.getByTestId("auth-password"), "short");
+    fireEvent.press(screen.getByTestId("auth-submit"));
+    expect(screen.getByText("Le mot de passe doit contenir au moins 8 caractères.")).toBeTruthy();
+    expect(resetPassword).not.toHaveBeenCalled();
+
+    fireEvent.changeText(screen.getByTestId("auth-password"), "NewPassword9");
+    fireEvent.press(screen.getByTestId("auth-submit"));
+    await waitFor(() => expect(resetPassword).toHaveBeenCalledWith("ana@example.com", "ABCD2345", "NewPassword9"));
+    expect(await screen.findByText("Mot de passe modifié. Vous pouvez vous connecter.")).toBeTruthy();
   });
 });
