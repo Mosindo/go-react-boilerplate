@@ -14,6 +14,9 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// migrationLockID is an arbitrary application-wide advisory lock key.
+const migrationLockID int64 = 727_001
+
 func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -76,13 +79,59 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	sort.Strings(files)
 
+	// A dedicated connection holds the advisory lock so concurrent API
+	// instances never apply the same migration twice.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationLockID); err != nil {
+		return fmt.Errorf("lock migrations: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", migrationLockID)
+	}()
+
+	if _, err := conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			name TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
 	for _, file := range files {
+		name := file[len("migrations/"):]
+
+		var applied bool
+		if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = $1)", name).Scan(&applied); err != nil {
+			return fmt.Errorf("check migration %s: %w", name, err)
+		}
+		if applied {
+			continue
+		}
+
 		sqlBytes, err := migrationsFS.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read embedded migration %s: %w", file, err)
 		}
-		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
-			return fmt.Errorf("exec migration %s: %w", file, err)
+
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", name, err)
+		}
+		if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("exec migration %s: %w", name, err)
+		}
+		if _, err := tx.Exec(ctx, "INSERT INTO schema_migrations (name) VALUES ($1)", name); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("record migration %s: %w", name, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %s: %w", name, err)
 		}
 	}
 

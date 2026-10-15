@@ -1,35 +1,37 @@
 package notifications
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
-type Notification struct {
-	ID        string
-	UserID    string
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
+
+// Notification is what other modules ask to send; DedupeKey, when set,
+// coalesces repeated unread notifications (e.g. one per conversation).
+type NewNotification struct {
 	Type      string
 	Title     string
 	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
+	Data      map[string]any
+	DedupeKey string
 }
 
-type NotificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
+type Notification struct {
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Title     string          `json:"title"`
+	Body      string          `json:"body"`
+	Data      json.RawMessage `json:"data"`
+	IsRead    bool            `json:"isRead"`
+	CreatedAt time.Time       `json:"createdAt"`
+	ReadAt    *time.Time      `json:"readAt,omitempty"`
 }
 
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
-}
-
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+type ListResponse struct {
+	Notifications []Notification `json:"notifications"`
+	UnreadCount   int            `json:"unreadCount"`
 }

@@ -18,10 +18,9 @@ var (
 )
 
 type StoredUser struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string
+	Email     string
+	CreatedAt time.Time
 }
 
 type StoredUserWithPassword struct {
@@ -30,12 +29,11 @@ type StoredUserWithPassword struct {
 }
 
 type StoredSession struct {
-	ID             string
-	UserID         string
-	OrganizationID string
-	ExpiresAt      time.Time
-	CreatedAt      time.Time
-	LastUsedAt     *time.Time
+	ID         string
+	UserID     string
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
 }
 
 type Repository interface {
@@ -46,6 +44,15 @@ type Repository interface {
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	IsSessionActive(ctx context.Context, userID, sessionID string) (bool, error)
+	RevokeAllSessions(ctx context.Context, userID string) error
+	GetPasswordHash(ctx context.Context, userID string) (string, error)
+	UpdatePassword(ctx context.Context, userID, passwordHash string) error
+	CreatePasswordReset(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
+	GetActivePasswordReset(ctx context.Context, userID string) (StoredPasswordReset, error)
+	RecordPasswordResetAttempt(ctx context.Context, resetID string) error
+	CompletePasswordReset(ctx context.Context, resetID, userID, passwordHash string) error
+	DeleteUser(ctx context.Context, userID string) error
 }
 
 type PGRepository struct {
@@ -59,14 +66,10 @@ func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
 func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash string) (StoredUser, error) {
 	var user StoredUser
 	err := r.dbPool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, organization_id)
-		VALUES (
-			$1,
-			$2,
-			(SELECT id FROM organizations WHERE slug = 'default')
-		)
-		RETURNING id, email, organization_id, created_at
-	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+		INSERT INTO users (email, password_hash)
+		VALUES ($1, $2)
+		RETURNING id, email, created_at
+	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return StoredUser{}, ErrRepositoryEmailExists
@@ -79,10 +82,10 @@ func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash strin
 func (r *PGRepository) GetUserAuthByEmail(ctx context.Context, email string) (StoredUserWithPassword, error) {
 	var user StoredUserWithPassword
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, password_hash, created_at
+		SELECT id, email, password_hash, created_at
 		FROM users
 		WHERE email = $1
-	`, email).Scan(&user.User.ID, &user.User.Email, &user.User.OrganizationID, &user.PasswordHash, &user.User.CreatedAt)
+	`, email).Scan(&user.User.ID, &user.User.Email, &user.PasswordHash, &user.User.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUserWithPassword{}, ErrRepositoryNotFound
@@ -95,10 +98,10 @@ func (r *PGRepository) GetUserAuthByEmail(ctx context.Context, email string) (St
 func (r *PGRepository) GetUserByID(ctx context.Context, userID string) (StoredUser, error) {
 	var user StoredUser
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, created_at
+		SELECT id, email, created_at
 		FROM users
 		WHERE id = $1
-	`, userID).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+	`, userID).Scan(&user.ID, &user.Email, &user.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUser{}, ErrRepositoryNotFound
@@ -129,19 +132,13 @@ func (r *PGRepository) CreateSession(ctx context.Context, userID, tokenHash, use
 		}
 		return StoredSession{}, err
 	}
-
-	user, err := r.GetUserByID(ctx, session.UserID)
-	if err != nil {
-		return StoredSession{}, err
-	}
-	session.OrganizationID = user.OrganizationID
 	return session, nil
 }
 
 func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error) {
 	var session StoredSession
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT s.id, s.user_id, u.organization_id, s.expires_at, s.created_at, s.last_used_at
+		SELECT s.id, s.user_id, s.expires_at, s.created_at, s.last_used_at
 		FROM sessions s
 		INNER JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1
@@ -150,7 +147,6 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 	`, tokenHash).Scan(
 		&session.ID,
 		&session.UserID,
-		&session.OrganizationID,
 		&session.ExpiresAt,
 		&session.CreatedAt,
 		&session.LastUsedAt,
@@ -189,12 +185,6 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 		}
 		return StoredSession{}, err
 	}
-
-	user, err := r.GetUserByID(ctx, session.UserID)
-	if err != nil {
-		return StoredSession{}, err
-	}
-	session.OrganizationID = user.OrganizationID
 	return session, nil
 }
 

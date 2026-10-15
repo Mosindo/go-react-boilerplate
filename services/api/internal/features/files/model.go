@@ -2,33 +2,34 @@ package files
 
 import "time"
 
-type File struct {
-	ID          string
-	OwnerUserID string
-	Filename    string
-	MimeType    string
-	SizeBytes   int64
-	StorageKey  string
-	CreatedAt   time.Time
+const (
+	// MaxPhotos is the number of photos a profile can hold.
+	MaxPhotos = 6
+	// MaxUploadBytes bounds the raw upload; clients compress well below this.
+	MaxUploadBytes = 10 << 20
+
+	// Decompression-bomb guards, checked on the image header before decoding.
+	maxDimension = 12000
+	maxPixels    = 40_000_000
+	minDimension = 200
+
+	fullSize  = 1080
+	thumbSize = 360
+
+	jpegQuality = 82
+)
+
+type Photo struct {
+	ID         string
+	UserID     string
+	StorageKey string
+	Position   int
+	Width      int
+	Height     int
+	SizeBytes  int
+	CreatedAt  time.Time
 }
 
-type FileResponse struct {
-	ID          string    `json:"id"`
-	OwnerUserID string    `json:"ownerUserId"`
-	Filename    string    `json:"filename"`
-	MimeType    string    `json:"mimeType"`
-	SizeBytes   int64     `json:"sizeBytes"`
-	StorageKey  string    `json:"storageKey"`
-	CreatedAt   time.Time `json:"createdAt"`
-}
-
-type FilesResponse struct {
-	Files []FileResponse `json:"files"`
-}
-
-type CreateFileRequest struct {
-	Filename   string `json:"filename" binding:"required,max=255"`
-	MimeType   string `json:"mimeType" binding:"required,max=255"`
-	SizeBytes  int64  `json:"sizeBytes" binding:"min=0,max=104857600"`
-	StorageKey string `json:"storageKey" binding:"required,max=512"`
+type ReorderRequest struct {
+	IDs []string `json:"ids" binding:"required,min=1,max=6,dive,uuid"`
 }

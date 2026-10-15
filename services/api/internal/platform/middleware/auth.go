@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,11 +10,15 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker reports whether the session behind an access token is still
+// valid, so logout, password change and account deletion take effect at once.
+type SessionChecker func(ctx context.Context, userID, sessionID string) (bool, error)
+
+func RequireUser(secret []byte, isActive SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token", "code": "unauthorized"})
 			return
 		}
 
@@ -28,36 +33,41 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 			return secret, nil
 		})
 		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
 		expiresAt, err := claims.GetExpirationTime()
 		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
 		userID, ok := stringClaim(claims, "uid")
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
 		sessionID, ok := stringClaim(claims, "sid")
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "code": "unauthorized"})
 			return
 		}
 
+		if isActive != nil {
+			active, err := isActive(c.Request.Context(), userID, sessionID)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service unavailable", "code": "unavailable"})
+				return
+			}
+			if !active {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "session expired", "code": "session_expired"})
+				return
+			}
+		}
+
 		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}

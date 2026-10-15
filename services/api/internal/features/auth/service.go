@@ -10,16 +10,23 @@ import (
 	"strings"
 	"time"
 
+	"example.com/api/internal/platform/mailer"
+
+	platformerrors "example.com/api/internal/platform/errors"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	ErrEmailExists         = errors.New("email already exists")
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrInvalidRefreshToken = errors.New("invalid refresh token")
-	ErrUserNotFound        = errors.New("user not found")
+	ErrEmailExists         = platformerrors.Conflict("email_exists", "an account already exists for this email")
+	ErrInvalidCredentials  = platformerrors.Unauthorized("invalid_credentials", "email or password is incorrect")
+	ErrInvalidRefreshToken = platformerrors.Unauthorized("invalid_refresh_token", "your session has expired, please sign in again")
+	ErrUserNotFound        = platformerrors.Unauthorized("user_not_found", "account not found")
 )
+
+// dummyPasswordHash is compared against when the email is unknown so that login
+// takes the same time whether or not the account exists.
+var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("not-a-real-password"), bcrypt.DefaultCost)
 
 const (
 	accessTokenTTL  = 15 * time.Minute
@@ -29,6 +36,8 @@ const (
 type Service struct {
 	repo      Repository
 	jwtSecret []byte
+	mailer    mailer.Mailer
+	hooks     AccountHooks
 }
 
 func NewService(repo Repository, jwtSecret []byte) *Service {
@@ -40,12 +49,18 @@ func NewService(repo Repository, jwtSecret []byte) *Service {
 
 func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
 	normalizedEmail := normalizeEmail(email)
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if !validEmail(normalizedEmail) {
+		return Tokens{}, User{}, ErrInvalidEmail
+	}
+	if err := validatePassword(password); err != nil {
+		return Tokens{}, User{}, err
+	}
+	hash, err := hashPassword(password)
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
 
-	created, err := s.repo.CreateUser(ctx, normalizedEmail, string(hash))
+	created, err := s.repo.CreateUser(ctx, normalizedEmail, hash)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryEmailExists) {
 			return Tokens{}, User{}, ErrEmailExists
@@ -68,6 +83,7 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizedEmail)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
+			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password))
 			return Tokens{}, User{}, ErrInvalidCredentials
 		}
 		return Tokens{}, User{}, err
@@ -193,9 +209,8 @@ func (s *Service) issueSessionTokens(ctx context.Context, user User, userAgent, 
 func signAccessToken(secret []byte, user User, sessionID string) (string, error) {
 	now := time.Now()
 	claims := AccessTokenClaims{
-		UserID:         user.ID,
-		OrganizationID: user.OrganizationID,
-		SessionID:      sessionID,
+		UserID:    user.ID,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(accessTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -227,9 +242,8 @@ func normalizeEmail(email string) string {
 
 func toUser(stored StoredUser) User {
 	return User{
-		ID:             stored.ID,
-		Email:          stored.Email,
-		OrganizationID: stored.OrganizationID,
-		CreatedAt:      stored.CreatedAt,
+		ID:        stored.ID,
+		Email:     stored.Email,
+		CreatedAt: stored.CreatedAt,
 	}
 }

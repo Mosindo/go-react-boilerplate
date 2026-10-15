@@ -2,11 +2,12 @@ package files
 
 import (
 	"errors"
+	"io"
 	"net/http"
-	"strconv"
-	"strings"
+	"time"
 
-	"example.com/api/internal/platform/logger"
+	platformerrors "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/httpx"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,159 +19,143 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
+// readUpload extracts the multipart "file" field with a hard size cap.
+func readUpload(c *gin.Context) ([]byte, bool) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxUploadBytes+(1<<20))
+	header, err := c.FormFile("file")
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			httpx.Fail(c, "files.upload", ErrImageTooLarge)
+			return nil, false
+		}
+		httpx.Fail(c, "files.upload", platformerrors.BadRequest("missing_file", "a 'file' field is required"))
+		return nil, false
+	}
+	if header.Size > MaxUploadBytes {
+		httpx.Fail(c, "files.upload", ErrImageTooLarge)
+		return nil, false
+	}
+	f, err := header.Open()
+	if err != nil {
+		httpx.Fail(c, "files.upload", platformerrors.BadRequest("missing_file", "could not read the file"))
+		return nil, false
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, MaxUploadBytes+1))
+	if err != nil {
+		httpx.Fail(c, "files.upload", err)
+		return nil, false
+	}
+	if len(data) > MaxUploadBytes {
+		httpx.Fail(c, "files.upload", ErrImageTooLarge)
+		return nil, false
+	}
+	return data, true
+}
+
 func (h *Handler) List(c *gin.Context) {
-	userID := c.GetString("userID")
-	limit := parseBoundedLimit(c.Query("limit"), 20, 100)
-	offset := parseNonNegativeInt(c.Query("offset"), 0)
-	files, err := h.service.ListByOwner(c.Request.Context(), userID, limit, offset)
+	photos, err := h.service.List(c.Request.Context(), httpx.UserID(c))
 	if err != nil {
-		logger.LogHandlerError(c, "files.list", http.StatusInternalServerError, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch files"})
+		httpx.Fail(c, "photos.list", err)
 		return
 	}
-
-	payload := make([]FileResponse, 0, len(files))
-	for _, file := range files {
-		payload = append(payload, mapFileResponse(file))
-	}
-
-	c.JSON(http.StatusOK, FilesResponse{Files: payload})
+	httpx.NoStore(c)
+	c.JSON(http.StatusOK, gin.H{"photos": photos})
 }
 
-func (h *Handler) Create(c *gin.Context) {
-	userID := c.GetString("userID")
-
-	var req CreateFileRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "files.create.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+func (h *Handler) Upload(c *gin.Context) {
+	data, ok := readUpload(c)
+	if !ok {
 		return
 	}
-
-	file, err := h.service.Create(c.Request.Context(), userID, req.Filename, req.MimeType, req.SizeBytes, req.StorageKey)
+	photos, err := h.service.Upload(c.Request.Context(), httpx.UserID(c), data)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrFilenameRequired):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "filename required"})
-		case errors.Is(err, ErrMimeTypeRequired):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "mime type required"})
-		case errors.Is(err, ErrStorageKeyNeeded):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "storage key required"})
-		case errors.Is(err, ErrInvalidFileSize):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "invalid file size"})
-		case errors.Is(err, ErrFilenameTooLong):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "filename too long"})
-		case errors.Is(err, ErrMimeTypeTooLong):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "mime type too long"})
-		case errors.Is(err, ErrStorageKeyTooLong):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "storage key too long"})
-		case errors.Is(err, ErrFileTooLarge):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "file too large"})
-		default:
-			c.JSON(status, gin.H{"error": "could not create file"})
-		}
-		logger.LogHandlerError(c, "files.create", status, err)
+		httpx.Fail(c, "photos.upload", err)
 		return
 	}
-
-	status := http.StatusCreated
-	c.JSON(status, mapFileResponse(file))
-	logger.LogHandlerEvent(c, "files.create.success", status, map[string]string{"file_id": file.ID})
+	httpx.NoStore(c)
+	c.JSON(http.StatusCreated, gin.H{"photos": photos})
 }
 
-func (h *Handler) GetByID(c *gin.Context) {
-	userID := c.GetString("userID")
-	fileID := strings.TrimSpace(c.Param("fileId"))
-	if !isUUIDLike(fileID) {
-		logger.LogHandlerError(c, "files.get.validate_file_id", http.StatusBadRequest, errors.New("invalid file id"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file id"})
+func (h *Handler) Replace(c *gin.Context) {
+	if !httpx.IsUUID(c.Param("photoId")) {
+		httpx.Fail(c, "photos.replace", ErrPhotoNotFound)
 		return
 	}
-
-	file, err := h.service.GetByID(c.Request.Context(), userID, fileID)
+	data, ok := readUpload(c)
+	if !ok {
+		return
+	}
+	photos, err := h.service.Replace(c.Request.Context(), httpx.UserID(c), c.Param("photoId"), data)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrFileNotFound):
-			status = http.StatusNotFound
-			c.JSON(status, gin.H{"error": "file not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not fetch file"})
-		}
-		logger.LogHandlerError(c, "files.get", status, err)
+		httpx.Fail(c, "photos.replace", err)
 		return
 	}
-
-	c.JSON(http.StatusOK, mapFileResponse(file))
+	httpx.NoStore(c)
+	c.JSON(http.StatusOK, gin.H{"photos": photos})
 }
 
-func mapFileResponse(file File) FileResponse {
-	return FileResponse{
-		ID:          file.ID,
-		OwnerUserID: file.OwnerUserID,
-		Filename:    file.Filename,
-		MimeType:    file.MimeType,
-		SizeBytes:   file.SizeBytes,
-		StorageKey:  file.StorageKey,
-		CreatedAt:   file.CreatedAt,
+func (h *Handler) Delete(c *gin.Context) {
+	if !httpx.IsUUID(c.Param("photoId")) {
+		httpx.Fail(c, "photos.delete", ErrPhotoNotFound)
+		return
 	}
+	photos, err := h.service.Delete(c.Request.Context(), httpx.UserID(c), c.Param("photoId"))
+	if err != nil {
+		httpx.Fail(c, "photos.delete", err)
+		return
+	}
+	httpx.NoStore(c)
+	c.JSON(http.StatusOK, gin.H{"photos": photos})
 }
 
-func parsePositiveInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+func (h *Handler) Reorder(c *gin.Context) {
+	var req ReorderRequest
+	if !httpx.Bind(c, &req) {
+		return
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed <= 0 {
-		return fallback
+	photos, err := h.service.Reorder(c.Request.Context(), httpx.UserID(c), req.IDs)
+	if err != nil {
+		httpx.Fail(c, "photos.reorder", err)
+		return
 	}
-	return parsed
+	httpx.NoStore(c)
+	c.JSON(http.StatusOK, gin.H{"photos": photos})
 }
 
-func parseBoundedLimit(raw string, fallback, max int) int {
-	parsed := parsePositiveInt(raw, fallback)
-	if parsed > max {
-		return max
+func (h *Handler) SetMain(c *gin.Context) {
+	if !httpx.IsUUID(c.Param("photoId")) {
+		httpx.Fail(c, "photos.set_main", ErrPhotoNotFound)
+		return
 	}
-	return parsed
+	photos, err := h.service.SetMain(c.Request.Context(), httpx.UserID(c), c.Param("photoId"))
+	if err != nil {
+		httpx.Fail(c, "photos.set_main", err)
+		return
+	}
+	httpx.NoStore(c)
+	c.JSON(http.StatusOK, gin.H{"photos": photos})
 }
 
-func parseNonNegativeInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+// File serves image bytes for a signed URL. The signature, not a bearer
+// token, authorizes it, so plain image components can load it.
+func (h *Handler) File(c *gin.Context) {
+	if !httpx.IsUUID(c.Param("photoId")) {
+		httpx.Fail(c, "photos.file", ErrPhotoNotFound)
+		return
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed < 0 {
-		return fallback
+	f, err := h.service.Open(c.Request.Context(), c.Param("photoId"), c.Query("size"), c.Query("exp"), c.Query("sig"))
+	if err != nil {
+		httpx.Fail(c, "photos.file", err)
+		return
 	}
-	return parsed
-}
+	defer f.Close()
 
-func isUUIDLike(v string) bool {
-	if len(v) != 36 {
-		return false
-	}
-	hyphenPos := map[int]struct{}{8: {}, 13: {}, 18: {}, 23: {}}
-	for i := 0; i < len(v); i++ {
-		ch := v[i]
-		if _, ok := hyphenPos[i]; ok {
-			if ch != '-' {
-				return false
-			}
-			continue
-		}
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
-			return false
-		}
-	}
-	return true
+	c.Header("Content-Type", "image/jpeg")
+	c.Header("Cache-Control", "private, max-age=86400")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Disposition", "inline")
+	c.Header("Cross-Origin-Resource-Policy", "cross-origin")
+	http.ServeContent(c.Writer, c.Request, "", time.Time{}, f)
 }

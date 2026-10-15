@@ -3,30 +3,33 @@ package files
 import (
 	"context"
 	"errors"
-	"time"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	ErrFileNotFound = errors.New("file not found")
+	ErrRepositoryNotFound   = errors.New("files: photo not found")
+	ErrRepositoryLimit      = errors.New("files: photo limit reached")
+	ErrRepositoryBadReorder = errors.New("files: reorder must list every photo exactly once")
 )
 
-type StoredFile struct {
-	ID          string
-	OwnerUserID string
-	Filename    string
-	MimeType    string
-	SizeBytes   int64
-	StorageKey  string
-	CreatedAt   time.Time
+type NewPhoto struct {
+	StorageKey string
+	Width      int
+	Height     int
+	SizeBytes  int
 }
 
 type Repository interface {
-	ListFilesByOwner(ctx context.Context, ownerUserID string, limit, offset int) ([]StoredFile, error)
-	CreateFile(ctx context.Context, ownerUserID, filename, mimeType string, sizeBytes int64, storageKey string) (StoredFile, error)
-	GetFileByID(ctx context.Context, ownerUserID, fileID string) (StoredFile, error)
+	ListByUsers(ctx context.Context, userIDs []string) ([]Photo, error)
+	Get(ctx context.Context, photoID string) (Photo, error)
+	Add(ctx context.Context, userID string, p NewPhoto) (Photo, error)
+	Replace(ctx context.Context, userID, photoID string, p NewPhoto) (oldKey string, err error)
+	Delete(ctx context.Context, userID, photoID string) (key string, err error)
+	Reorder(ctx context.Context, userID string, orderedIDs []string) error
+	KeysForUser(ctx context.Context, userID string) ([]string, error)
 }
 
 type PGRepository struct {
@@ -37,76 +40,212 @@ func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
 	return &PGRepository{dbPool: dbPool}
 }
 
-func (r *PGRepository) ListFilesByOwner(ctx context.Context, ownerUserID string, limit, offset int) ([]StoredFile, error) {
+const photoColumns = `id, user_id, storage_key, position, width, height, size_bytes, created_at`
+
+func scanPhoto(row pgx.Row) (Photo, error) {
+	var p Photo
+	err := row.Scan(&p.ID, &p.UserID, &p.StorageKey, &p.Position, &p.Width, &p.Height, &p.SizeBytes, &p.CreatedAt)
+	return p, err
+}
+
+func (r *PGRepository) ListByUsers(ctx context.Context, userIDs []string) ([]Photo, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
 	rows, err := r.dbPool.Query(ctx, `
-		SELECT id, owner_user_id, filename, mime_type, size_bytes, storage_key, created_at
-		FROM files
-		WHERE owner_user_id = $1
-		ORDER BY created_at DESC, id DESC
-		LIMIT $2 OFFSET $3
-	`, ownerUserID, limit, offset)
+		SELECT `+photoColumns+`
+		FROM photos
+		WHERE user_id = ANY($1)
+		ORDER BY user_id, position
+	`, userIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	files := make([]StoredFile, 0)
+	var photos []Photo
 	for rows.Next() {
-		var file StoredFile
-		if err := rows.Scan(&file.ID, &file.OwnerUserID, &file.Filename, &file.MimeType, &file.SizeBytes, &file.StorageKey, &file.CreatedAt); err != nil {
+		p, err := scanPhoto(rows)
+		if err != nil {
 			return nil, err
 		}
-		files = append(files, file)
+		photos = append(photos, p)
 	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return files, nil
+	return photos, rows.Err()
 }
 
-func (r *PGRepository) CreateFile(ctx context.Context, ownerUserID, filename, mimeType string, sizeBytes int64, storageKey string) (StoredFile, error) {
-	var file StoredFile
-	err := r.dbPool.QueryRow(ctx, `
-		INSERT INTO files (owner_user_id, filename, mime_type, size_bytes, storage_key)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, owner_user_id, filename, mime_type, size_bytes, storage_key, created_at
-	`, ownerUserID, filename, mimeType, sizeBytes, storageKey).Scan(
-		&file.ID,
-		&file.OwnerUserID,
-		&file.Filename,
-		&file.MimeType,
-		&file.SizeBytes,
-		&file.StorageKey,
-		&file.CreatedAt,
-	)
-	if err != nil {
-		return StoredFile{}, err
+func (r *PGRepository) Get(ctx context.Context, photoID string) (Photo, error) {
+	p, err := scanPhoto(r.dbPool.QueryRow(ctx, `SELECT `+photoColumns+` FROM photos WHERE id = $1`, photoID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Photo{}, ErrRepositoryNotFound
 	}
-	return file, nil
+	return p, err
 }
 
-func (r *PGRepository) GetFileByID(ctx context.Context, ownerUserID, fileID string) (StoredFile, error) {
-	var file StoredFile
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, owner_user_id, filename, mime_type, size_bytes, storage_key, created_at
-		FROM files
-		WHERE id = $1
-		  AND owner_user_id = $2
-	`, fileID, ownerUserID).Scan(
-		&file.ID,
-		&file.OwnerUserID,
-		&file.Filename,
-		&file.MimeType,
-		&file.SizeBytes,
-		&file.StorageKey,
-		&file.CreatedAt,
-	)
+// lockUser serializes photo mutations of one user so positions stay dense.
+func lockUser(ctx context.Context, tx pgx.Tx, userID string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "photos:"+userID)
+	return err
+}
+
+func (r *PGRepository) Add(ctx context.Context, userID string, np NewPhoto) (Photo, error) {
+	tx, err := r.dbPool.Begin(ctx)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return StoredFile{}, ErrFileNotFound
+		return Photo{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockUser(ctx, tx, userID); err != nil {
+		return Photo{}, err
+	}
+
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM photos WHERE user_id = $1`, userID).Scan(&count); err != nil {
+		return Photo{}, err
+	}
+	if count >= MaxPhotos {
+		return Photo{}, ErrRepositoryLimit
+	}
+
+	p, err := scanPhoto(tx.QueryRow(ctx, `
+		INSERT INTO photos (user_id, storage_key, position, width, height, size_bytes)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING `+photoColumns,
+		userID, np.StorageKey, count, np.Width, np.Height, np.SizeBytes))
+	if err != nil {
+		return Photo{}, err
+	}
+	return p, tx.Commit(ctx)
+}
+
+func (r *PGRepository) Replace(ctx context.Context, userID, photoID string, np NewPhoto) (string, error) {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockUser(ctx, tx, userID); err != nil {
+		return "", err
+	}
+
+	var oldKey string
+	err = tx.QueryRow(ctx, `SELECT storage_key FROM photos WHERE id = $1 AND user_id = $2 FOR UPDATE`, photoID, userID).Scan(&oldKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositoryNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE photos SET storage_key = $3, width = $4, height = $5, size_bytes = $6
+		WHERE id = $1 AND user_id = $2
+	`, photoID, userID, np.StorageKey, np.Width, np.Height, np.SizeBytes); err != nil {
+		return "", err
+	}
+	return oldKey, tx.Commit(ctx)
+}
+
+func (r *PGRepository) Delete(ctx context.Context, userID, photoID string) (string, error) {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockUser(ctx, tx, userID); err != nil {
+		return "", err
+	}
+
+	var key string
+	var position int
+	err = tx.QueryRow(ctx, `
+		DELETE FROM photos WHERE id = $1 AND user_id = $2 RETURNING storage_key, position
+	`, photoID, userID).Scan(&key, &position)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositoryNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE photos SET position = position - 1 WHERE user_id = $1 AND position > $2
+	`, userID, position); err != nil {
+		return "", err
+	}
+	return key, tx.Commit(ctx)
+}
+
+func (r *PGRepository) Reorder(ctx context.Context, userID string, orderedIDs []string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockUser(ctx, tx, userID); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(ctx, `SELECT id FROM photos WHERE user_id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	var current []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
 		}
-		return StoredFile{}, err
+		current = append(current, id)
 	}
-	return file, nil
+	rows.Close()
+	if rows.Err() != nil {
+		return rows.Err()
+	}
+	if !sameSet(current, orderedIDs) {
+		return ErrRepositoryBadReorder
+	}
+
+	positions := make([]int32, len(orderedIDs))
+	for i := range orderedIDs {
+		positions[i] = int32(i)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE photos p SET position = v.pos
+		FROM unnest($2::uuid[], $3::int[]) AS v(id, pos)
+		WHERE p.id = v.id AND p.user_id = $1
+	`, userID, orderedIDs, positions); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *PGRepository) KeysForUser(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.dbPool.Query(ctx, `SELECT storage_key FROM photos WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	x := append([]string(nil), a...)
+	y := append([]string(nil), b...)
+	sort.Strings(x)
+	sort.Strings(y)
+	for i := range x {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
 }
