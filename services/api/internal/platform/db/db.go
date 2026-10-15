@@ -137,3 +137,44 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 
 	return nil
 }
+
+// PurgeExpired removes sessions and recovery codes that can no longer be used.
+// Rows are kept for a grace period so recent activity stays inspectable.
+func PurgeExpired(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	var total int64
+	for _, statement := range []string{
+		`DELETE FROM sessions WHERE LEAST(expires_at, COALESCE(revoked_at, expires_at)) < NOW() - INTERVAL '7 days'`,
+		`DELETE FROM password_resets WHERE expires_at < NOW() - INTERVAL '1 day'`,
+	} {
+		tag, err := pool.Exec(ctx, statement)
+		if err != nil {
+			return total, fmt.Errorf("purge expired rows: %w", err)
+		}
+		total += tag.RowsAffected()
+	}
+	return total, nil
+}
+
+// StartMaintenance runs PurgeExpired once at startup and then every 6 hours until ctx ends.
+func StartMaintenance(ctx context.Context, pool *pgxpool.Pool, logf func(format string, args ...any)) {
+	run := func() {
+		if n, err := PurgeExpired(ctx, pool); err != nil {
+			logf("maintenance failed: %v", err)
+		} else if n > 0 {
+			logf("maintenance removed %d expired rows", n)
+		}
+	}
+	go func() {
+		run()
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
+}

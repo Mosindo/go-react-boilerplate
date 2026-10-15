@@ -77,6 +77,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	db.StartMaintenance(ctx, pool, log.Printf)
+
 	store, err := blob.NewLocalStore(cfg.UploadDir)
 	if err != nil {
 		log.Fatal(err)

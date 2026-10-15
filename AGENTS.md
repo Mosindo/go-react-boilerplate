@@ -1,30 +1,30 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Alma
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Alma`, a free dating application (Go API + Expo mobile app) built from the `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Alma is a modern dating app that is 100% free for its users:
+- no subscription, paywall, paid boost, artificial like limit or mandatory ads
+- no essential feature locked behind a payment
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Core modules (`services/api/internal/features`):
+- auth (sessions, recovery, account deletion)
+- users (profile, preferences, interests, location, privacy)
+- files (photos: validation, re-encoding, signed URLs)
+- matching (discovery, likes, matches)
+- chat (match-bound conversations, read state, realtime)
 - notifications
-- files
+- safety (blocks, reports)
+
+Product rules that must keep holding:
+- everything important is verified server-side (age 18+, eligibility, permissions, uniqueness)
+- exact coordinates are never exposed; only an approximate distance is
+- a user can only read conversations they belong to
+- deleting an account deletes the data and the files
 
 ---
 
@@ -145,18 +145,21 @@ Before any backend delivery:
 
 - `gofmt ./...`
 - `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `go vet ./...`
+- `go build ./cmd/api ./cmd/seed`
+- Integration tests need PostgreSQL: set `DATABASE_URL_TEST` (they are skipped otherwise, never rely on that)
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
 - Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Profile, preferences and photos (`/me/profile`, `/me/preferences`, `/photos`)
+- Discovery and matching (`/discover`, `/swipes`, `/matches/:userId`)
+- Chat (`/chats`, `/chats/:id/messages`, `/chats/:id/read`)
 - Notifications (`/notifications`)
+- Safety (`/blocks`, `/reports`) and account deletion (`DELETE /me`)
 
 ---
 
@@ -207,7 +210,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Introducing paid features (subscriptions, boosts, paywalls, like quotas) or ads: the product is free by design
 
 ---
 

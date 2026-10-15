@@ -1,9 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { API_BASE_URL } from "../api/client";
-import { endpoints } from "../api/endpoints";
 import { markConversationRead, requestSocketTicket } from "../api/platform";
+import { openRealtimeSocket, parseRealtimeEvent } from "../api/realtime";
 import type { MatchInfo, RealtimeEvent } from "../api/types";
 import { appendMessage, queryKeys, setPeerLastRead } from "./queries";
 import { useAuth } from "./useAuth";
@@ -23,22 +22,6 @@ type RealtimeContextValue = {
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
 const MAX_BACKOFF_MS = 30_000;
-
-function socketUrl(ticket: string): string {
-  return `${API_BASE_URL.replace(/^http/, "ws")}${endpoints.realtime.socket}?ticket=${encodeURIComponent(ticket)}`;
-}
-
-function parseEvent(raw: unknown): RealtimeEvent | null {
-  if (typeof raw !== "string") {
-    return null;
-  }
-  try {
-    const event = JSON.parse(raw) as { type?: unknown; data?: unknown };
-    return typeof event.type === "string" ? (event as RealtimeEvent) : null;
-  } catch {
-    return null;
-  }
-}
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { status, user } = useAuth();
@@ -118,14 +101,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (closed) {
           return;
         }
-        socket = new WebSocket(socketUrl(ticket));
+        socket = openRealtimeSocket(ticket);
         socket.onopen = () => {
           attempt = 0;
           setConnected(true);
           resync();
         };
         socket.onmessage = (message) => {
-          const event = parseEvent(message.data);
+          const event = parseRealtimeEvent(message.data);
           if (event) {
             handle(event);
           }

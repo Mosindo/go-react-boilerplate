@@ -1,6 +1,7 @@
 package main
 
 import (
+	"example.com/api/internal/platform/db"
 	"net/http"
 	"testing"
 	"time"
@@ -105,4 +106,31 @@ func TestPasswordRecoveryOverHTTP(t *testing.T) {
 	e.mustStatus(e.do(http.MethodPost, "/auth/password/reset", "", map[string]string{"email": p.Email, "code": code, "newPassword": "BrandNewPass1"}), http.StatusNoContent, "reset")
 	e.mustStatus(e.do(http.MethodPost, "/auth/login", "", map[string]string{"email": p.Email, "password": "BrandNewPass1"}), http.StatusOK, "login with new password")
 	e.mustStatus(e.do(http.MethodGet, "/me", p.Token, nil), http.StatusUnauthorized, "old session after reset")
+}
+
+func TestPurgeExpiredRemovesOnlyDeadRows(t *testing.T) {
+	e := newEnv(t)
+	p := e.register("purge")
+	ctx := contextBackground()
+
+	// One long-dead session and one live session for the same user.
+	if _, err := e.pool.Exec(ctx, `
+		INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, 'dead-hash-purge-test', NOW() - INTERVAL '30 days')
+	`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := db.PurgeExpired(ctx, e.pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed < 1 {
+		t.Fatalf("expected the expired session to be purged, removed=%d", removed)
+	}
+	var dead, live int
+	_ = e.pool.QueryRow(ctx, `SELECT COUNT(*) FROM sessions WHERE token_hash = 'dead-hash-purge-test'`).Scan(&dead)
+	_ = e.pool.QueryRow(ctx, `SELECT COUNT(*) FROM sessions WHERE user_id = $1`, p.ID).Scan(&live)
+	if dead != 0 || live != 1 {
+		t.Fatalf("expected only the live session to remain, dead=%d live=%d", dead, live)
+	}
+	e.mustStatus(e.do(http.MethodGet, "/me", p.Token, nil), http.StatusOK, "live session still works")
 }
