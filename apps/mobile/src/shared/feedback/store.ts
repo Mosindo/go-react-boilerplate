@@ -1,90 +1,61 @@
 import { useSyncExternalStore } from "react";
 
-type FeedbackState = {
-  error: string | null;
-  errors: string[];
-  loadingCount: number;
-  loadingLabel: string | null;
-  loadingLabels: string[];
+export type ToastTone = "info" | "success" | "danger";
+
+export type Toast = {
+  id: number;
+  message: string;
+  tone: ToastTone;
+  actionLabel?: string;
+  onAction?: () => void;
 };
 
-type Listener = () => void;
+type ToastInput = Omit<Toast, "id" | "tone"> & { tone?: ToastTone };
 
-let state: FeedbackState = {
-  error: null,
-  errors: [],
-  loadingCount: 0,
-  loadingLabel: null,
-  loadingLabels: []
-};
+let toasts: Toast[] = [];
+let nextId = 1;
+const listeners = new Set<() => void>();
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
-const listeners = new Set<Listener>();
-
-function emit() {
+function emit(): void {
   listeners.forEach((listener) => listener());
 }
 
-function subscribe(listener: Listener) {
+export function dismissToast(id: number): void {
+  const timer = timers.get(id);
+  if (timer) {
+    clearTimeout(timer);
+    timers.delete(id);
+  }
+  toasts = toasts.filter((toast) => toast.id !== id);
+  emit();
+}
+
+/** Shows a short banner. The latest toast wins so messages never pile up. */
+export function showToast(input: ToastInput, durationMs = 4500): number {
+  const id = nextId++;
+  toasts.forEach((toast) => dismissToast(toast.id));
+  toasts = [{ tone: "info", ...input, id }];
+  timers.set(
+    id,
+    setTimeout(() => dismissToast(id), durationMs)
+  );
+  emit();
+  return id;
+}
+
+export const showError = (message: string) => showToast({ message, tone: "danger" });
+export const showSuccess = (message: string) => showToast({ message, tone: "success" }, 3000);
+
+function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  return () => listeners.delete(listener);
 }
 
-function getSnapshot(): FeedbackState {
-  return state;
-}
-
-export function beginGlobalLoading(label = "Working...") {
-  const nextLabels = [...state.loadingLabels, label];
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function endGlobalLoading() {
-  const nextLabels = state.loadingLabels.slice(0, -1);
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function showGlobalError(message: string) {
-  if (!message) {
-    return;
-  }
-
-  const nextErrors = state.errors.at(-1) === message ? state.errors : [...state.errors, message];
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
-  emit();
-}
-
-export function clearGlobalError() {
-  if (state.errors.length === 0) {
-    return;
-  }
-
-  const nextErrors = state.errors.slice(0, -1);
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
-  emit();
-}
-
-export function useGlobalFeedback() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+export function useToasts(): Toast[] {
+  return useSyncExternalStore(
+    subscribe,
+    () => toasts,
+    () => toasts
+  );
 }

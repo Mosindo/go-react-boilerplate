@@ -1,77 +1,64 @@
-import React, { useMemo } from "react";
-import { Image, StyleSheet, View, type ImageStyle, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import React from "react";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { Image } from "expo-image";
+import { useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, controls } from "./tokens";
+import { controls } from "./tokens";
+
+export type AvatarSize = keyof typeof controls.avatar;
 
 export type AvatarProps = {
   name?: string;
-  size?: number;
-  style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
+  /** Absolute image URL. */
   uri?: string | null;
+  size?: AvatarSize;
+  ring?: boolean;
+  style?: StyleProp<ViewStyle>;
 };
 
-function getInitials(name?: string): string {
-  if (!name) {
+export function initialsOf(name: string | undefined): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) {
     return "?";
   }
-
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (parts.length === 0) {
-    return "?";
-  }
-
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-
-  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+  return Array.from(trimmed)[0].toUpperCase();
 }
 
-const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    overflow: "hidden"
-  },
-  image: {
-    width: "100%",
-    height: "100%"
-  }
-});
-
-export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri }: AvatarProps) {
-  const initials = useMemo(() => getInitials(name), [name]);
+export function Avatar({ name, ring = false, size = "md", style, uri }: AvatarProps) {
+  const palette = useTheme();
+  const dimension = controls.avatar[size];
 
   return (
     <View
+      accessibilityIgnoresInvertColors
       style={[
-        styles.container,
         {
-          width: size,
-          height: size,
-          borderRadius: size / 2
+          width: dimension,
+          height: dimension,
+          borderRadius: dimension / 2,
+          backgroundColor: palette.brandSoft,
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          borderWidth: ring ? 3 : 0,
+          borderColor: palette.primary
         },
         style
       ]}
     >
       {uri ? (
-        <Image source={{ uri }} style={styles.image as StyleProp<ImageStyle>} />
+        <Image
+          accessibilityLabel={name ? `Photo de ${name}` : "Photo"}
+          cachePolicy="memory-disk"
+          contentFit="cover"
+          recyclingKey={uri}
+          source={{ uri }}
+          style={{ width: "100%", height: "100%" }}
+          transition={150}
+        />
       ) : (
-        <Text
-          style={textStyle}
-          tone="primary"
-          variant={size >= controls.avatar.lg ? "heading" : "label"}
-          weight="bold"
-        >
-          {initials}
+        <Text style={{ fontSize: dimension * 0.42 }} tone="brand" weight="bold">
+          {initialsOf(name)}
         </Text>
       )}
     </View>

@@ -1,52 +1,32 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { errorMessage } from "../../i18n/errors";
+import { Button, Text, spacing } from "../ui";
 
 type ErrorViewProps = {
-  actionLabel?: string;
-  message: string;
-  onAction?: () => void;
+  /** Raw error; its API code is translated to a friendly message. */
+  error?: unknown;
+  message?: string;
+  title?: string;
+  onRetry?: () => void;
   style?: StyleProp<ViewStyle>;
   testID?: string;
-  title?: string;
-  compact?: boolean;
 };
 
-export function ErrorView({
-  actionLabel = "Retry",
-  compact = false,
-  message,
-  onAction,
-  style,
-  testID,
-  title = "Something went wrong"
-}: ErrorViewProps) {
+export function ErrorView({ error, message, onRetry, style, testID, title = "Un souci est survenu" }: ErrorViewProps) {
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
-      <View style={styles.copy}>
-        <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
-          {title}
-        </Text>
-        <Text tone="muted" variant={compact ? "caption" : "body"}>
-          {message}
-        </Text>
-      </View>
-      {onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="outline" /> : null}
-    </Card>
+    <View
+      accessibilityRole="alert"
+      style={[{ alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl }, style]}
+      testID={testID}
+    >
+      <Text style={{ textAlign: "center" }} variant="heading" weight="bold">
+        {title}
+      </Text>
+      <Text style={{ textAlign: "center", maxWidth: 320 }} tone="muted">
+        {message ?? errorMessage(error)}
+      </Text>
+      {onRetry ? <Button label="Réessayer" onPress={onRetry} size="sm" variant="secondary" /> : null}
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    gap: spacing.md
-  },
-  cardCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  }
-});

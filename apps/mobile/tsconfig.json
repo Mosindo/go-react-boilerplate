@@ -3,6 +3,14 @@
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
-    "moduleResolution": "bundler"
-  }
+    "moduleResolution": "bundler",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": false
+  },
+  "exclude": [
+    "node_modules",
+    "tamagui.config.ts"
+  ]
 }

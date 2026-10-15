@@ -1,7 +1,7 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import { type StyleProp, type ViewStyle } from "react-native";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
-import { colors } from "../ui";
+import { useTheme } from "../../theme";
 
 type SafeAreaLayoutProps = {
   children: ReactNode;
@@ -9,21 +9,11 @@ type SafeAreaLayoutProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-export function SafeAreaLayout({
-  children,
-  edges = ["top", "right", "bottom", "left"],
-  style
-}: SafeAreaLayoutProps) {
+export function SafeAreaLayout({ children, edges, style }: SafeAreaLayoutProps) {
+  const palette = useTheme();
   return (
-    <SafeAreaView edges={edges} style={[styles.safeArea, style]}>
+    <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: palette.background }, style]}>
       {children}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background
-  }
-});

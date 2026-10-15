@@ -1,89 +1,72 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
+import { useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { radii, spacing } from "./tokens";
 
-export type BadgeVariant = "default" | "primary" | "success" | "warning" | "danger" | "muted";
-export type BadgeSize = "sm" | "md";
+export type BadgeTone = "neutral" | "brand" | "primary" | "success" | "warning" | "danger";
 
-export type BadgeProps = Omit<ViewProps, "style"> & {
-  label: string;
-  size?: BadgeSize;
+export type BadgeProps = {
+  label: string | number;
+  tone?: BadgeTone;
   style?: StyleProp<ViewStyle>;
-  variant?: BadgeVariant;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    alignSelf: "flex-start",
-    justifyContent: "center"
-  },
-  sizeSm: {
-    minHeight: 24,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs
-  },
-  sizeMd: {
-    minHeight: 28,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs
-  },
-  default: {
-    backgroundColor: colors.backgroundElevated,
-    borderColor: colors.border
-  },
-  primary: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryBorder
-  },
-  success: {
-    backgroundColor: colors.successSoft,
-    borderColor: colors.successBorder
-  },
-  warning: {
-    backgroundColor: colors.warningSoft,
-    borderColor: colors.warningBorder
-  },
-  danger: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: colors.dangerBorder
-  },
-  muted: {
-    backgroundColor: colors.surfaceSubtle,
-    borderColor: colors.border
-  }
-});
-
-const sizeStyles: Record<BadgeSize, ViewStyle> = {
-  sm: styles.sizeSm,
-  md: styles.sizeMd
-};
-
-const variantStyles: Record<BadgeVariant, ViewStyle> = {
-  default: styles.default,
-  primary: styles.primary,
-  success: styles.success,
-  warning: styles.warning,
-  danger: styles.danger,
-  muted: styles.muted
-};
-
-const toneByVariant: Record<BadgeVariant, "danger" | "muted" | "primary" | "secondary" | "success"> = {
-  default: "secondary",
-  primary: "primary",
-  success: "success",
-  warning: "secondary",
-  danger: "danger",
-  muted: "muted"
-};
-
-export function Badge({ label, size = "md", style, variant = "default", ...props }: BadgeProps) {
+export function Badge({ label, style, tone = "neutral" }: BadgeProps) {
+  const palette = useTheme();
+  const tones: Record<BadgeTone, { bg: string; fg: string }> = {
+    neutral: { bg: palette.surfaceMuted, fg: palette.textMuted },
+    brand: { bg: palette.brandSoft, fg: palette.brand },
+    primary: { bg: palette.primarySoft, fg: palette.primary },
+    success: { bg: palette.successSoft, fg: palette.success },
+    warning: { bg: palette.warningSoft, fg: palette.warning },
+    danger: { bg: palette.dangerSoft, fg: palette.danger }
+  };
+  const t = tones[tone];
   return (
-    <View style={[styles.base, sizeStyles[size], variantStyles[variant], style]} {...props}>
-      <Text tone={toneByVariant[variant]} variant="caption" weight="bold">
+    <View
+      style={[
+        {
+          backgroundColor: t.bg,
+          borderRadius: radii.pill,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.xxs + 1,
+          alignSelf: "flex-start"
+        },
+        style
+      ]}
+    >
+      <Text style={{ color: t.fg }} variant="caption" weight="semibold">
         {label}
+      </Text>
+    </View>
+  );
+}
+
+/** Round counter used on tab icons and rows. Hidden when the count is zero. */
+export function CountBadge({ count, style }: { count: number; style?: StyleProp<ViewStyle> }) {
+  const palette = useTheme();
+  if (count <= 0) {
+    return null;
+  }
+  return (
+    <View
+      accessibilityLabel={`${count} non lu${count > 1 ? "s" : ""}`}
+      style={[
+        {
+          minWidth: 20,
+          height: 20,
+          borderRadius: 10,
+          paddingHorizontal: 5,
+          backgroundColor: palette.primary,
+          alignItems: "center",
+          justifyContent: "center"
+        },
+        style
+      ]}
+    >
+      <Text style={{ color: palette.onPrimary, fontSize: 11, lineHeight: 14 }} weight="bold">
+        {count > 99 ? "99+" : count}
       </Text>
     </View>
   );

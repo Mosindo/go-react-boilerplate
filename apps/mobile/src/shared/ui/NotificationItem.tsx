@@ -1,73 +1,63 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
-import { Card } from "./Card";
+import { Pressable, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import type { AppNotification } from "../../api/types";
+import { formatListTime } from "../../lib/dates";
+import { useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { radii, spacing } from "./tokens";
 
-export type NotificationItemProps = {
-  body: string;
-  createdAtLabel: string;
-  isRead: boolean;
-  onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
-  title: string;
-  type: string;
+type NotificationItemProps = {
+  notification: AppNotification;
+  onPress: () => void;
 };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ notification, onPress }: NotificationItemProps) {
+  const palette = useTheme();
+  const isMatch = notification.type === "match";
+  const unread = !notification.isRead;
+
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
-        </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
+    <Pressable
+      accessibilityHint="Ouvre la conversation"
+      accessibilityLabel={`${notification.title}. ${notification.body}${unread ? ". Non lu" : ""}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        padding: spacing.md,
+        borderRadius: radii.md,
+        backgroundColor: unread ? palette.primarySoft : palette.surface,
+        borderWidth: 1,
+        borderColor: unread ? "transparent" : palette.border,
+        opacity: pressed ? 0.85 : 1
+      })}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: isMatch ? palette.primary : palette.brandSoft
+        }}
+      >
+        <Ionicons color={isMatch ? palette.onPrimary : palette.brand} name={isMatch ? "heart" : "chatbubble-ellipses"} size={22} />
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text numberOfLines={1} weight={unread ? "bold" : "semibold"}>
+          {notification.title}
         </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
+        <Text numberOfLines={2} tone="muted" variant="label">
+          {notification.body}
         </Text>
-      </Card>
+      </View>
+      <Text tone="subtle" variant="caption">
+        {formatListTime(notification.createdAt)}
+      </Text>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.sm
-  },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
-});

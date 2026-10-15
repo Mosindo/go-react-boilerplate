@@ -1,179 +1,119 @@
-import { type AuthUser } from "./auth";
-import { apiRequest } from "./client";
+// Typed calls for every non-auth endpoint. UI code goes through these (or the
+// React Query hooks built on them) and never calls fetch directly.
+import { apiRequest, type FileUpload } from "./client";
 import { endpoints } from "./endpoints";
+import type {
+  AppNotification,
+  BlockedUser,
+  Card,
+  Conversation,
+  Gender,
+  Interest,
+  Message,
+  MessagesPage,
+  MyProfileResponse,
+  NotificationsResponse,
+  PhotoView,
+  Preferences,
+  ProfileInput,
+  ReportReason,
+  SwipeAction,
+  SwipeResponse
+} from "./types";
 
-export type PlatformUser = AuthUser;
+// ---- profile ----
 
-export type Post = {
-  id: string;
-  authorUserId: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
-};
+export const getMyProfile = () => apiRequest<MyProfileResponse>(endpoints.profile.me);
 
-export type ChatMessage = {
-  id: string;
-  senderUserId: string;
-  recipientUserId: string;
-  content: string;
-  createdAt: string;
-};
+export const saveProfile = (input: ProfileInput) => apiRequest<MyProfileResponse>(endpoints.profile.me, { method: "PUT", body: input });
 
-export type ChatSummary = {
-  user: PlatformUser;
-  lastMessage?: {
-    content: string;
-    createdAt: string;
-  };
-};
+export const savePreferences = (input: Preferences) =>
+  apiRequest<MyProfileResponse>(endpoints.profile.preferences, { method: "PUT", body: input });
 
-export type Notification = {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  body: string;
-  isRead: boolean;
-  createdAt: string;
-  readAt?: string;
-};
+export const saveLocation = (latitude: number, longitude: number, city?: string) =>
+  apiRequest<MyProfileResponse>(endpoints.profile.location, { method: "PUT", body: { latitude, longitude, city: city ?? "" } });
 
-export type BillingSubscription = {
-  id?: string;
-  organizationId: string;
-  provider: string;
-  status: string;
-  stripeCustomerId?: string;
-  stripeSubscriptionId?: string;
-  stripeCheckoutSessionId?: string;
-  currentPeriodStart?: string;
-  currentPeriodEnd?: string;
-  cancelAtPeriodEnd: boolean;
-  canceledAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
+export const clearLocation = () => apiRequest<MyProfileResponse>(endpoints.profile.location, { method: "DELETE" });
 
-export type BillingCheckoutSession = {
-  sessionId: string;
-  checkoutUrl: string;
-  organizationId: string;
-  status: string;
-};
+export const savePrivacy = (input: { isVisible?: boolean; showDistance?: boolean }) =>
+  apiRequest<MyProfileResponse>(endpoints.profile.privacy, { method: "PATCH", body: input });
 
-type UsersResponse = {
-  users: PlatformUser[];
-};
+export const listInterests = async (): Promise<Interest[]> =>
+  (await apiRequest<{ interests: Interest[] }>(endpoints.profile.interests)).interests;
 
-type PostsResponse = {
-  posts: Post[];
-};
+export const getProfile = (userId: string) => apiRequest<Card>(endpoints.profile.of(userId));
 
-type ChatsResponse = {
-  chats: ChatSummary[];
-};
+// ---- photos ----
 
-type ChatMessagesResponse = {
-  messages: ChatMessage[];
-};
+type PhotosResponse = { photos: PhotoView[] };
 
-type NotificationsResponse = {
-  notifications: Notification[];
-};
+export const listPhotos = async () => (await apiRequest<PhotosResponse>(endpoints.photos.list)).photos;
 
-export type CreateNotificationInput = {
-  type: string;
-  title: string;
-  body: string;
-};
+export const uploadPhoto = async (file: FileUpload) =>
+  (await apiRequest<PhotosResponse>(endpoints.photos.list, { method: "POST", file })).photos;
 
-function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `Bearer ${token}` };
-}
+export const replacePhoto = async (id: string, file: FileUpload) =>
+  (await apiRequest<PhotosResponse>(endpoints.photos.one(id), { method: "PUT", file })).photos;
 
-export async function listUsers(token: string): Promise<PlatformUser[]> {
-  const payload = await apiRequest<UsersResponse>(endpoints.users.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.users;
-}
+export const deletePhoto = async (id: string) => (await apiRequest<PhotosResponse>(endpoints.photos.one(id), { method: "DELETE" })).photos;
 
-export async function listPosts(token: string): Promise<Post[]> {
-  const payload = await apiRequest<PostsResponse>(endpoints.posts.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.posts;
-}
+export const setMainPhoto = async (id: string) => (await apiRequest<PhotosResponse>(endpoints.photos.main(id), { method: "POST" })).photos;
 
-export async function createPost(token: string, title: string, body: string): Promise<Post> {
-  return apiRequest<Post>(endpoints.posts.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ title, body })
-  });
-}
+export const reorderPhotos = async (ids: string[]) =>
+  (await apiRequest<PhotosResponse>(endpoints.photos.order, { method: "PUT", body: { ids } })).photos;
 
-export async function listChats(token: string): Promise<ChatSummary[]> {
-  const payload = await apiRequest<ChatsResponse>(endpoints.chat.chats, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.chats;
-}
+// ---- discovery & matching ----
 
-export async function listChatMessages(token: string, userId: string): Promise<ChatMessage[]> {
-  const payload = await apiRequest<ChatMessagesResponse>(endpoints.chat.messages(userId), {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.messages;
-}
+export const discover = async (exclude: string[], limit = 10): Promise<Card[]> =>
+  (
+    await apiRequest<{ profiles: Card[] }>(endpoints.matching.discover, {
+      query: { limit, exclude: exclude.join(",") }
+    })
+  ).profiles;
 
-export async function sendChatMessage(token: string, userId: string, content: string): Promise<ChatMessage> {
-  return apiRequest<ChatMessage>(endpoints.chat.messages(userId), {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ content })
-  });
-}
+export const swipe = (userId: string, action: SwipeAction) =>
+  apiRequest<SwipeResponse>(endpoints.matching.swipes, { method: "POST", body: { userId, action } });
 
-export async function listNotifications(token: string): Promise<Notification[]> {
-  const payload = await apiRequest<NotificationsResponse>(endpoints.notifications.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.notifications;
-}
+export const unmatch = (userId: string) => apiRequest(endpoints.matching.unmatch(userId), { method: "DELETE" });
 
-export async function createNotification(token: string, input: CreateNotificationInput): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(input)
-  });
-}
+// ---- chat ----
 
-export async function markNotificationRead(token: string, notificationId: string): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.markRead(notificationId), {
-    method: "POST",
-    headers: authHeaders(token)
-  });
-}
+export const listConversations = async (): Promise<Conversation[]> =>
+  (await apiRequest<{ conversations: Conversation[] }>(endpoints.chats.list, { query: { limit: 50 } })).conversations;
 
-export async function getBillingSubscription(token: string): Promise<BillingSubscription> {
-  return apiRequest<BillingSubscription>(endpoints.billing.subscription, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-}
+export const listMessages = (conversationId: string, before?: string) =>
+  apiRequest<MessagesPage>(endpoints.chats.messages(conversationId), { query: { limit: 30, before } });
 
-export async function createBillingCheckout(token: string): Promise<BillingCheckoutSession> {
-  return apiRequest<BillingCheckoutSession>(endpoints.billing.checkout, {
-    method: "POST",
-    headers: authHeaders(token)
-  });
-}
+export const sendMessage = (conversationId: string, body: string) =>
+  apiRequest<Message>(endpoints.chats.messages(conversationId), { method: "POST", body: { body } });
+
+export const markConversationRead = (conversationId: string) =>
+  apiRequest<{ readAt: string }>(endpoints.chats.read(conversationId), { method: "POST" });
+
+export const hideConversation = (conversationId: string) => apiRequest(endpoints.chats.one(conversationId), { method: "DELETE" });
+
+// ---- notifications ----
+
+export const listNotifications = () => apiRequest<NotificationsResponse>(endpoints.notifications.list, { query: { limit: 50 } });
+
+export const markNotificationRead = (id: string) => apiRequest<AppNotification>(endpoints.notifications.read(id), { method: "POST" });
+
+export const markAllNotificationsRead = () => apiRequest(endpoints.notifications.readAll, { method: "POST" });
+
+// ---- safety ----
+
+export const listBlocked = async (): Promise<BlockedUser[]> =>
+  (await apiRequest<{ blocked: BlockedUser[] }>(endpoints.safety.blocks)).blocked;
+
+export const blockUser = (userId: string) => apiRequest(endpoints.safety.block(userId), { method: "POST" });
+
+export const unblockUser = (userId: string) => apiRequest(endpoints.safety.block(userId), { method: "DELETE" });
+
+export const reportUser = (userId: string, reason: ReportReason, details: string) =>
+  apiRequest(endpoints.safety.reports, { method: "POST", body: { userId, reason, details } });
+
+// ---- realtime ----
+
+export const requestSocketTicket = async () => (await apiRequest<{ ticket: string }>(endpoints.realtime.ticket, { method: "POST" })).ticket;
+
+export type { Gender };

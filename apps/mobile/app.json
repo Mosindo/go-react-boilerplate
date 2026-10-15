@@ -1,12 +1,46 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Alma",
+    "slug": "alma",
+    "scheme": "alma",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.alma.dating",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Alma accède à vos photos pour que vous puissiez choisir celles de votre profil.",
+        "NSCameraUsageDescription": "Alma utilise l'appareil photo pour prendre une photo de profil.",
+        "NSLocationWhenInUseUsageDescription": "Alma utilise votre position, arrondie à environ 1 km, pour vous proposer des personnes proches."
+      }
+    },
+    "android": {
+      "package": "app.alma.dating",
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Alma accède à vos photos pour que vous puissiez choisir celles de votre profil.",
+          "cameraPermission": "Alma utilise l'appareil photo pour prendre une photo de profil."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Alma utilise votre position, arrondie à environ 1 km, pour vous proposer des personnes proches."
+        }
+      ]
     ]
   }
 }

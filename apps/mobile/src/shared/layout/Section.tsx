@@ -1,57 +1,32 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
 import { Text, spacing } from "../ui";
 
-export type SectionProps = {
-  action?: ReactNode;
-  children?: ReactNode;
-  eyebrow?: string;
+type SectionProps = {
+  title?: string;
+  description?: string;
+  children: ReactNode;
   style?: StyleProp<ViewStyle>;
-  subtitle?: string;
-  title: string;
 };
 
-export function Section({ action, children, eyebrow, style, subtitle, title }: SectionProps) {
+export function Section({ children, description, style, title }: SectionProps) {
   return (
-    <View style={[styles.root, style]}>
-      <View style={styles.header}>
-        <View style={styles.copy}>
-          {eyebrow ? (
-            <Text style={styles.eyebrow} tone="secondary" variant="eyebrow" weight="bold">
-              {eyebrow}
+    <View style={[{ gap: spacing.md }, style]}>
+      {title || description ? (
+        <View style={{ gap: spacing.xxs }}>
+          {title ? (
+            <Text accessibilityRole="header" tone="muted" variant="eyebrow" weight="semibold">
+              {title}
             </Text>
           ) : null}
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
+          {description ? (
+            <Text tone="muted" variant="label">
+              {description}
+            </Text>
+          ) : null}
         </View>
-        {action ? <View>{action}</View> : null}
-      </View>
+      ) : null}
       {children}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    marginBottom: spacing.xxl
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    marginBottom: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  },
-  eyebrow: {
-    marginBottom: spacing.xs
-  },
-  title: {
-    marginBottom: spacing.xs
-  }
-});

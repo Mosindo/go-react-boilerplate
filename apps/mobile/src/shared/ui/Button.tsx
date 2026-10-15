@@ -1,18 +1,10 @@
 import React, { type ReactNode } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  View,
-  type PressableProps,
-  type StyleProp,
-  type TextStyle,
-  type ViewStyle
-} from "react-native";
+import { ActivityIndicator, Pressable, View, type PressableProps, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { elevation, useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
+import { controls, radii, spacing } from "./tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
@@ -22,148 +14,69 @@ export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   fullWidth?: boolean;
+  icon?: ReactNode;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
-};
-
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  }
-});
-
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
-};
-
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
-
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
-  primary: "inverse",
-  secondary: "primary",
-  destructive: "inverse",
-  success: "inverse",
-  outline: "default",
-  ghost: "secondary"
-};
-
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
 };
 
 export function Button({
   children,
   disabled,
   fullWidth = false,
+  icon,
   label,
   loading = false,
   size = "md",
   style,
   textStyle,
   variant = "primary",
+  accessibilityLabel,
   ...props
 }: ButtonProps) {
-  const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
-  const labelNode = typeof children === "string" ? children : label;
+  const palette = useTheme();
+  const inactive = disabled || loading;
+  const text = typeof children === "string" ? children : label;
+
+  const variants: Record<ButtonVariant, { bg: string; pressedBg: string; fg: string; border: string }> = {
+    primary: { bg: palette.primary, pressedBg: palette.primaryPressed, fg: palette.onPrimary, border: "transparent" },
+    secondary: { bg: palette.brandSoft, pressedBg: palette.surfaceMuted, fg: palette.brand, border: "transparent" },
+    outline: { bg: "transparent", pressedBg: palette.surfaceMuted, fg: palette.text, border: palette.borderStrong },
+    ghost: { bg: "transparent", pressedBg: palette.surfaceMuted, fg: palette.brand, border: "transparent" },
+    destructive: { bg: palette.danger, pressedBg: palette.danger, fg: palette.isDark ? "#1B1017" : "#FFFFFF", border: "transparent" }
+  };
+  const v = variants[variant];
 
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel ?? text}
       accessibilityRole="button"
-      disabled={buttonDisabled}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
       style={({ pressed }) => [
-        styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
-        fullWidth ? styles.fullWidth : null,
-        buttonDisabled ? styles.disabled : null,
-        pressed ? styles.pressed : null,
+        {
+          minHeight: controls.button[size],
+          borderRadius: radii.pill,
+          paddingHorizontal: size === "sm" ? spacing.lg : spacing.xl,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: pressed ? v.pressedBg : v.bg,
+          borderWidth: variant === "outline" ? 1.5 : 0,
+          borderColor: v.border,
+          opacity: inactive ? 0.55 : 1,
+          alignSelf: fullWidth ? "stretch" : "auto"
+        },
+        variant === "primary" && !inactive ? elevation(palette) : null,
         style
       ]}
       {...props}
     >
-      <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
-        {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
-            {labelNode}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm }}>
+        {loading ? <ActivityIndicator color={v.fg} size="small" /> : icon}
+        {text ? (
+          <Text style={[{ color: v.fg }, textStyle]} variant="button" weight="semibold">
+            {text}
           </Text>
-        ) : (
-          children
-        )}
+        ) : null}
       </View>
     </Pressable>
   );

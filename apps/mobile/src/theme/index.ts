@@ -1,28 +1,19 @@
-import { colors } from "../shared/ui";
-import { tokens } from "./tokens";
+import { useColorScheme, type ViewStyle } from "react-native";
+import { darkPalette, lightPalette, type Palette } from "./tokens";
 
-export { tokens };
+export * from "./tokens";
 
-export const themes = {
-  light: {
-    background: colors.background,
-    backgroundStrong: colors.backgroundElevated,
-    backgroundHover: colors.surfaceMuted,
-    backgroundPress: colors.surfaceSubtle,
-    color: colors.text,
-    colorMuted: colors.textMuted,
-    colorHover: colors.text,
-    colorPress: colors.text,
-    borderColor: colors.border,
-    borderColorHover: colors.borderStrong,
-    borderColorPress: colors.borderStrong,
-    primary: colors.primary,
-    primaryHover: colors.primary,
-    primaryPress: colors.primary,
-    success: colors.success,
-    warning: colors.warning,
-    danger: colors.danger,
-    muted: colors.surfaceMuted,
-    accent: colors.surfaceAccent
-  }
-} as const;
+export function useTheme(): Palette {
+  return useColorScheme() === "dark" ? darkPalette : lightPalette;
+}
+
+/** Soft elevation that reads well on both palettes. */
+export function elevation(palette: Palette, level: 1 | 2 = 1): ViewStyle {
+  return {
+    shadowColor: palette.isDark ? "#000000" : "#3A2230",
+    shadowOpacity: palette.isDark ? 0.4 : level === 1 ? 0.08 : 0.16,
+    shadowRadius: level === 1 ? 14 : 26,
+    shadowOffset: { width: 0, height: level === 1 ? 6 : 12 },
+    elevation: level === 1 ? 3 : 8
+  };
+}

@@ -1,84 +1,40 @@
-import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
-import { colors, radii, shadows, spacing } from "./tokens";
+import React, { type ReactNode } from "react";
+import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { elevation, useTheme } from "../../theme";
+import { radii, spacing } from "./tokens";
 
-export type CardVariant = "default" | "muted" | "accent";
-export type CardPadding = "sm" | "md" | "lg" | "xl";
-
-export type CardProps = Omit<ViewProps, "style"> & {
-  interactive?: boolean;
-  selected?: boolean;
-  variant?: CardVariant;
-  padding?: CardPadding;
+export type CardProps = {
+  children: ReactNode;
+  onPress?: () => void;
+  padded?: boolean;
+  raised?: boolean;
+  accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
 };
 
-const styles = StyleSheet.create({
-  base: {
+export function Card({ accessibilityLabel, children, onPress, padded = true, raised = false, style }: CardProps) {
+  const palette = useTheme();
+  const base: ViewStyle = {
+    backgroundColor: palette.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.backgroundElevated,
-    ...shadows.card
-  },
-  muted: {
-    backgroundColor: colors.surfaceMuted
-  },
-  accent: {
-    backgroundColor: colors.surfaceAccent,
-    borderColor: colors.primaryBorder
-  },
-  interactive: {
-    borderColor: colors.borderStrong,
-    ...shadows.floating
-  },
-  selected: {
-    backgroundColor: colors.surfaceAccent,
-    borderColor: colors.primaryBorder,
-    ...shadows.floating
-  },
-  paddingSm: {
-    padding: spacing.md
-  },
-  paddingMd: {
-    padding: spacing.lg
-  },
-  paddingLg: {
-    padding: spacing.xl
-  },
-  paddingXl: {
-    padding: spacing.xxl
+    borderColor: palette.border,
+    padding: padded ? spacing.lg : 0,
+    overflow: "hidden"
+  };
+  const shadow = raised ? elevation(palette) : null;
+
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [base, shadow, pressed ? { opacity: 0.88 } : null, style]}
+      >
+        {children}
+      </Pressable>
+    );
   }
-});
-
-const variantStyles: Record<CardVariant, ViewStyle | null> = {
-  default: null,
-  muted: styles.muted,
-  accent: styles.accent
-};
-
-const paddingStyles: Record<CardPadding, ViewStyle> = {
-  sm: styles.paddingSm,
-  md: styles.paddingMd,
-  lg: styles.paddingLg,
-  xl: styles.paddingXl
-};
-
-export function Card({ children, padding = "md", style, variant = "default", ...props }: CardProps) {
-  const { interactive = false, selected = false, ...viewProps } = props;
-  return (
-    <View
-      style={[
-        styles.base,
-        variantStyles[variant],
-        interactive ? styles.interactive : null,
-        selected ? styles.selected : null,
-        paddingStyles[padding],
-        style
-      ]}
-      {...viewProps}
-    >
-      {children}
-    </View>
-  );
+  return <View style={[base, shadow, style]}>{children}</View>;
 }

@@ -1,46 +1,58 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { View } from "react-native";
+import { formatClock } from "../../lib/dates";
+import { useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
+import { radii, spacing } from "./tokens";
+
+export type MessageStatus = "sending" | "sent" | "read" | "failed";
 
 export type MessageItemProps = {
-  content: string;
-  mine?: boolean;
-  style?: StyleProp<ViewStyle>;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+  status?: MessageStatus;
+  /** Tightens spacing when it follows a message from the same sender. */
+  grouped?: boolean;
 };
 
-export function MessageItem({ content, mine = false, style }: MessageItemProps) {
+const statusLabel: Record<MessageStatus, string> = {
+  sending: "Envoi…",
+  sent: "Envoyé",
+  read: "Lu",
+  failed: "Échec de l'envoi"
+};
+
+export function MessageItem({ body, createdAt, grouped = false, mine, status }: MessageItemProps) {
+  const palette = useTheme();
   return (
-    <View style={[styles.bubble, mine ? styles.mine : styles.theirs, style]}>
-      <Text style={mine ? styles.mineText : styles.theirsText} tone={mine ? "inverse" : "default"}>
-        {content}
+    <View
+      accessible
+      accessibilityLabel={`${mine ? "Vous" : "Message reçu"} à ${formatClock(createdAt)} : ${body}`}
+      style={{ alignItems: mine ? "flex-end" : "flex-start", marginTop: grouped ? 2 : spacing.md }}
+    >
+      <View
+        style={{
+          maxWidth: "82%",
+          backgroundColor: mine ? palette.primary : palette.surface,
+          borderWidth: mine ? 0 : 1,
+          borderColor: palette.border,
+          borderRadius: radii.lg,
+          borderBottomRightRadius: mine ? radii.xs : radii.lg,
+          borderBottomLeftRadius: mine ? radii.lg : radii.xs,
+          paddingVertical: spacing.sm + 2,
+          paddingHorizontal: spacing.md + 2,
+          opacity: status === "sending" ? 0.7 : 1
+        }}
+      >
+        <Text selectable style={{ color: mine ? palette.onPrimary : palette.text }}>
+          {body}
+        </Text>
+      </View>
+      <Text style={{ marginTop: 2, marginHorizontal: spacing.xs }} tone={status === "failed" ? "danger" : "subtle"} variant="caption">
+        {formatClock(createdAt)}
+        {mine && status ? `  ·  ${statusLabel[status]}` : ""}
       </Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  bubble: {
-    maxWidth: "78%",
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm
-  },
-  mine: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.text
-  },
-  theirs: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  mineText: {
-    color: colors.inverse
-  },
-  theirsText: {
-    color: colors.text
-  }
-});

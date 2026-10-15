@@ -1,223 +1,243 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { createPost, listPosts, type Post } from "../api/platform";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Badge, Button, Card, Input, Notice, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useQueryClient } from "@tanstack/react-query";
+import { mediaUrl } from "../api/client";
+import { discover, swipe } from "../api/platform";
+import type { Card, MatchInfo, SwipeAction } from "../api/types";
+import { MatchOverlay } from "../components/MatchOverlay";
+import { SwipeDeck, type DeckHandle } from "../components/SwipeDeck";
+import { errorCodeOf, errorMessage } from "../i18n/errors";
+import { APP_NAME } from "../i18n/fr";
+import { queryKeys, useMyProfile } from "../hooks/queries";
+import { useRealtime } from "../hooks/useRealtime";
+import { DECK_BATCH_SIZE, excludeIds, mergeCards, shouldRefill } from "../lib/deck";
+import { onProfileRemoved } from "../lib/removedProfiles";
+import type { RootStackParamList } from "../navigation/types";
+import { EmptyView, ErrorView, LoadingView, showError } from "../shared/feedback";
+import { ScreenContainer } from "../shared/layout";
+import { Text, controls, spacing } from "../shared/ui";
+import { useTheme, elevation } from "../theme";
 
-type HomeScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+type MatchState = { match: MatchInfo; card: Card } | null;
 
-function formatPostDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
-}
+export default function HomeScreen() {
+  const palette = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const queryClient = useQueryClient();
+  const profile = useMyProfile();
+  const { markMatchCelebrated } = useRealtime();
 
-export default function HomeScreen({ token, currentUserId }: HomeScreenProps) {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [queue, setQueue] = useState<Card[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [initialised, setInitialised] = useState(false);
+  const [matchState, setMatchState] = useState<MatchState>(null);
+
+  const deckRef = useRef<DeckHandle | null>(null);
+  const decided = useRef(new Set<string>());
+  const queueRef = useRef<Card[]>([]);
+  queueRef.current = queue;
+  const loadingRef = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextPosts = await listPosts(token);
-      setPosts(nextPosts);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load posts");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function onSubmit() {
-    const normalizedTitle = title.trim();
-    const normalizedBody = body.trim();
-    if (!normalizedTitle || !normalizedBody) {
-      setError("title and body are required");
+    if (loadingRef.current) {
       return;
     }
-
-    setSubmitting(true);
-    setError(null);
-    setFeedback(null);
+    loadingRef.current = true;
+    setLoading(true);
+    setLoadError(null);
     try {
-      const created = await createPost(token, normalizedTitle, normalizedBody);
-      setPosts((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
-      setTitle("");
-      setBody("");
-      setFeedback("Post published.");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "could not create post");
+      const batch = await discover(excludeIds(queueRef.current), DECK_BATCH_SIZE);
+      setQueue(mergeCards(queueRef.current, batch, decided.current));
+      // A short batch means the server has nothing more to offer right now.
+      if (batch.length < DECK_BATCH_SIZE) {
+        setExhausted(true);
+      }
+    } catch (error) {
+      setLoadError(error);
     } finally {
-      setSubmitting(false);
+      loadingRef.current = false;
+      setLoading(false);
+      setInitialised(true);
     }
-  }
+  }, []);
 
-  const emptyState = useMemo(() => {
-    if (loading) {
-      return null;
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // A person blocked or reported from their full profile must leave the deck at once.
+  useEffect(
+    () =>
+      onProfileRemoved((userId) => {
+        decided.current.add(userId);
+        setQueue((current) => current.filter((c) => c.userId !== userId));
+      }),
+    []
+  );
+
+  useEffect(() => {
+    if (initialised && !loadError && shouldRefill(queue.length, exhausted, loading)) {
+      void load();
     }
+  }, [exhausted, initialised, load, loadError, loading, queue.length]);
+
+  const onDecide = useCallback(
+    async (card: Card, action: SwipeAction) => {
+      decided.current.add(card.userId);
+      setQueue((current) => current.filter((c) => c.userId !== card.userId));
+      try {
+        const result = await swipe(card.userId, action);
+        if (result.matched && result.match) {
+          markMatchCelebrated(result.match.id);
+          setMatchState({ match: result.match, card });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.chats });
+        }
+      } catch (error) {
+        if (errorCodeOf(error) === "already_swiped" || errorCodeOf(error) === "profile_not_found") {
+          return; // Already handled elsewhere, or no longer available: the card is rightly gone.
+        }
+        // The decision did not reach the server: bring the card back so nothing is silently lost.
+        decided.current.delete(card.userId);
+        setQueue((current) => [card, ...current.filter((c) => c.userId !== card.userId)]);
+        showError(errorMessage(error, "Votre choix n'a pas pu être enregistré. Réessayez."));
+      }
+    },
+    [markMatchCelebrated, queryClient]
+  );
+
+  const openProfile = useCallback(
+    (card: Card) => {
+      queryClient.setQueryData(queryKeys.profile(card.userId), card);
+      navigation.navigate("ProfileDetail", { userId: card.userId });
+    },
+    [navigation, queryClient]
+  );
+
+  const refresh = () => {
+    setExhausted(false);
+    void load();
+  };
+
+  const myPhoto = mediaUrl(profile.data?.profile?.photos[0]?.thumbUrl);
+  const top = queue[0];
+
+  const actionButton = (action: SwipeAction | "info", icon: React.ComponentProps<typeof Ionicons>["name"], label: string, size: number) => {
+    const color = action === "like" ? palette.onPrimary : action === "pass" ? palette.pass : palette.brand;
+    const background = action === "like" ? palette.primary : palette.surface;
     return (
+      <Pressable
+        accessibilityLabel={label}
+        accessibilityRole="button"
+        disabled={!top}
+        onPress={() => {
+          if (action === "info") {
+            if (top) openProfile(top);
+          } else {
+            deckRef.current?.swipe(action);
+          }
+        }}
+        style={({ pressed }) => [
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: background,
+            borderWidth: action === "like" ? 0 : 1.5,
+            borderColor: palette.border,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: !top ? 0.4 : pressed ? 0.8 : 1
+          },
+          elevation(palette)
+        ]}
+        testID={`discover-${action}`}
+      >
+        <Ionicons color={color} name={icon} size={size * 0.46} />
+      </Pressable>
+    );
+  };
+
+  let content: React.ReactNode;
+  if (profile.data && !profile.data.onboarding.complete) {
+    content = (
       <EmptyView
-        message="Share progress, notes, or the first workspace announcement."
-        title="No posts yet"
+        message="Ajoutez vos informations, vos préférences et une photo pour découvrir des profils."
+        title="Terminez votre profil"
       />
     );
-  }, [loading]);
-
-  if (loading && posts.length === 0) {
-    return (
-      <ScreenContainer testID="home-screen">
-        <LoadingView fullScreen label="Loading workspace..." />
-      </ScreenContainer>
+  } else if (loadError && queue.length === 0) {
+    content = <ErrorView error={loadError} onRetry={refresh} />;
+  } else if (!initialised) {
+    content = <LoadingView fullScreen label="Recherche de profils…" />;
+  } else if (!top) {
+    content = (
+      <EmptyView
+        actionLabel="Actualiser"
+        icon={<Ionicons color={palette.textSubtle} name="compass-outline" size={56} />}
+        message="Vous avez vu tout le monde pour l'instant. Revenez plus tard ou élargissez vos critères de recherche."
+        onAction={refresh}
+        style={{ flex: 1 }}
+        testID="discover-empty"
+        title="C'est tout pour le moment"
+      />
+    );
+  } else {
+    content = (
+      <>
+        <View style={{ flex: 1, marginBottom: spacing.lg }}>
+          <SwipeDeck cards={queue} deckRef={deckRef} onDecide={(card, action) => void onDecide(card, action)} onOpenProfile={openProfile} />
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: spacing.xl, paddingBottom: spacing.lg }}>
+          {actionButton("pass", "close", "Passer", controls.avatar.lg)}
+          {actionButton("info", "person-outline", "Voir le profil complet", controls.avatar.md)}
+          {actionButton("like", "heart", "J'aime", controls.avatar.lg)}
+        </View>
+      </>
     );
   }
 
   return (
     <ScreenContainer testID="home-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || submitting}
-            label="Reload"
-            onPress={load}
-            size="sm"
-            testID="home-reload-button"
-            variant="outline"
-          />
-        }
-        eyebrow="Workspace"
-        style={styles.header}
-        subtitle="Team updates, product notes, and lightweight announcements."
-        title="Home"
-      />
-
-      <Card style={styles.composer} variant="accent">
-        <Text style={styles.sectionTitle} variant="heading" weight="bold">
-          Publish an update
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 56 }}>
+        <Text accessibilityRole="header" tone="brand" variant="heading" weight="bold">
+          {APP_NAME}
         </Text>
-        <Input
-          containerStyle={styles.field}
-          label="Title"
-          onChangeText={setTitle}
-          placeholder="Post title"
-          testID="home-post-title-input"
-          value={title}
-        />
-        <Input
-          containerStyle={styles.field}
-          label="Body"
-          multiline
-          numberOfLines={4}
-          onChangeText={setBody}
-          placeholder="Share progress, notes, or an announcement..."
-          style={styles.bodyInput}
-          testID="home-post-body-input"
-          value={body}
-        />
-        <Button
-          fullWidth
-          disabled={loading}
-          label="Publish"
-          loading={submitting}
-          onPress={onSubmit}
-          testID="home-post-submit-button"
-        />
-      </Card>
+        <Pressable
+          accessibilityLabel="Régler mes préférences de rencontre"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => navigation.navigate("Preferences")}
+          style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+        >
+          <Ionicons color={palette.text} name="options-outline" size={26} />
+        </Pressable>
+      </View>
+      {content}
 
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-      {feedback ? (
-        <Notice description="Your update is now visible in the workspace feed." style={styles.feedback} title={feedback} tone="success" />
-      ) : null}
-
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={posts}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={emptyState}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle} variant="heading" weight="bold">
-                {item.title}
-              </Text>
-              <Badge label={item.authorUserId === currentUserId ? "You" : "Member"} size="sm" variant="primary" />
-            </View>
-            <Text style={styles.cardBody}>{item.body}</Text>
-            <Text style={styles.meta} tone="muted" variant="caption">
-              {formatPostDate(item.createdAt)}
-            </Text>
-          </Card>
-        )}
+      <MatchOverlay
+        firstName={matchState?.match.firstName ?? ""}
+        mePhotoUri={myPhoto}
+        myName={profile.data?.profile?.firstName}
+        onContinue={() => setMatchState(null)}
+        onMessage={() => {
+          const current = matchState;
+          setMatchState(null);
+          if (current) {
+            navigation.navigate("Thread", {
+              conversationId: current.match.conversationId,
+              peerId: current.match.userId,
+              peerName: current.match.firstName
+            });
+          }
+        }}
+        theirPhotoUri={mediaUrl(matchState?.card.photos[0]?.thumbUrl)}
+        visible={matchState !== null}
       />
     </ScreenContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    marginBottom: spacing.lg
-  },
-  composer: {
-    marginBottom: spacing.md
-  },
-  sectionTitle: {
-    marginBottom: spacing.lg
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  bodyInput: {
-    minHeight: 120
-  },
-  error: {
-    marginBottom: spacing.sm
-  },
-  feedback: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  },
-  empty: {
-    marginTop: spacing.xxxl
-  },
-  card: {
-    marginBottom: spacing.md
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-    gap: spacing.sm
-  },
-  cardTitle: {
-    flex: 1,
-    color: colors.text
-  },
-  cardBody: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
-});

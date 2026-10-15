@@ -1,58 +1,63 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { colors, spacing } from "../ui";
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
+import { type Edge } from "react-native-safe-area-context";
+import { useTheme } from "../../theme";
+import { spacing } from "../ui";
 import { SafeAreaLayout } from "./SafeAreaLayout";
 
 type ScreenContainerProps = {
   children: ReactNode;
-  centered?: boolean;
-  contentMaxWidth?: number;
+  /** Wraps content in a ScrollView. Leave off for screens that own a FlatList. */
+  scroll?: boolean;
+  padded?: boolean;
+  /** Pads and lifts content above the keyboard (forms). */
+  keyboardAware?: boolean;
+  edges?: Edge[];
+  refreshing?: boolean;
+  onRefresh?: () => void;
   contentStyle?: StyleProp<ViewStyle>;
-  edges?: ("top" | "right" | "bottom" | "left")[];
-  style?: StyleProp<ViewStyle>;
   testID?: string;
 };
 
 export function ScreenContainer({
-  centered = false,
   children,
-  contentMaxWidth = 960,
   contentStyle,
-  edges,
-  style,
+  edges = ["top", "left", "right"],
+  keyboardAware = false,
+  onRefresh,
+  padded = true,
+  refreshing = false,
+  scroll = false,
   testID
 }: ScreenContainerProps) {
+  const palette = useTheme();
+  const padding: ViewStyle = padded ? { paddingHorizontal: spacing.lg } : {};
+
+  const body = scroll ? (
+    <ScrollView
+      contentContainerStyle={[{ flexGrow: 1, paddingBottom: spacing.xxl, gap: spacing.lg }, padding, contentStyle]}
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
+      refreshControl={onRefresh ? <RefreshControl onRefresh={onRefresh} refreshing={refreshing} tintColor={palette.primary} /> : undefined}
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    <View style={[{ flex: 1 }, padding, contentStyle]}>{children}</View>
+  );
+
   return (
-    <SafeAreaLayout edges={edges} style={style}>
-      <View style={[styles.outer, centered ? styles.centered : null]}>
-        <View
-          style={[styles.content, centered ? styles.contentCentered : null, { maxWidth: contentMaxWidth }, contentStyle]}
-          testID={testID}
-        >
-          {children}
-        </View>
+    <SafeAreaLayout edges={edges}>
+      <View style={{ flex: 1 }} testID={testID}>
+        {keyboardAware ? (
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+            {body}
+          </KeyboardAvoidingView>
+        ) : (
+          body
+        )}
       </View>
     </SafeAreaLayout>
   );
 }
-
-const styles = StyleSheet.create({
-  outer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
-  },
-  centered: {
-    justifyContent: "center"
-  },
-  content: {
-    flex: 1,
-    width: "100%",
-    alignSelf: "center"
-  },
-  contentCentered: {
-    flex: 0
-  }
-});

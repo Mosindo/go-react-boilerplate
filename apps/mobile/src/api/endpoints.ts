@@ -1,30 +1,54 @@
+const enc = encodeURIComponent;
+
 export const endpoints = {
+  health: "/health",
   auth: {
     register: "/auth/register",
     login: "/auth/login",
-    me: "/me"
+    refresh: "/auth/refresh",
+    logout: "/auth/logout",
+    forgotPassword: "/auth/password/forgot",
+    resetPassword: "/auth/password/reset",
+    me: "/me",
+    changePassword: "/me/password"
   },
-  users: {
-    list: "/users",
-    detail: (userId: string) => `/users/${userId}`
+  profile: {
+    me: "/me/profile",
+    preferences: "/me/preferences",
+    location: "/me/location",
+    privacy: "/me/privacy",
+    interests: "/interests",
+    of: (userId: string) => `/profiles/${enc(userId)}`
   },
-  posts: {
-    list: "/posts",
-    create: "/posts",
-    detail: (postId: string) => `/posts/${postId}`
+  photos: {
+    list: "/photos",
+    order: "/photos/order",
+    one: (id: string) => `/photos/${enc(id)}`,
+    main: (id: string) => `/photos/${enc(id)}/main`
   },
-  chat: {
-    chats: "/chats",
-    messages: (userId: string) => `/chats/${userId}/messages`
+  matching: {
+    discover: "/discover",
+    swipes: "/swipes",
+    unmatch: (userId: string) => `/matches/${enc(userId)}`
+  },
+  chats: {
+    list: "/chats",
+    one: (id: string) => `/chats/${enc(id)}`,
+    messages: (id: string) => `/chats/${enc(id)}/messages`,
+    read: (id: string) => `/chats/${enc(id)}/read`
   },
   notifications: {
     list: "/notifications",
-    create: "/notifications",
-    markRead: (notificationId: string) => `/notifications/${notificationId}/read`
+    readAll: "/notifications/read-all",
+    read: (id: string) => `/notifications/${enc(id)}/read`
   },
-  billing: {
-    subscription: "/billing/subscription",
-    checkout: "/billing/checkout",
-    webhook: "/billing/webhook"
+  safety: {
+    blocks: "/blocks",
+    block: (userId: string) => `/blocks/${enc(userId)}`,
+    reports: "/reports"
+  },
+  realtime: {
+    ticket: "/ws/ticket",
+    socket: "/ws"
   }
 } as const;

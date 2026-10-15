@@ -1,61 +1,49 @@
 import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Text, colors, spacing } from "../ui";
+import { Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../../theme";
+import { Text, controls, spacing } from "../ui";
 
 type HeaderProps = {
-  action?: ReactNode;
-  leading?: ReactNode;
-  eyebrow?: string;
-  subtitle?: string;
   title: string;
-  centered?: boolean;
+  subtitle?: string;
+  onBack?: () => void;
+  right?: ReactNode;
   style?: StyleProp<ViewStyle>;
 };
 
-export function Header({ action, centered = false, eyebrow, leading, subtitle, style, title }: HeaderProps) {
+export function Header({ onBack, right, style, subtitle, title }: HeaderProps) {
+  const palette = useTheme();
   return (
-    <View style={[styles.root, centered ? styles.rootCentered : null, style]}>
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
-      <View style={[styles.copy, centered ? styles.copyCentered : null]}>
-        {eyebrow ? (
-          <Text tone="secondary" variant="eyebrow" weight="bold">
-            {eyebrow}
-          </Text>
-        ) : null}
-        <Text style={styles.title} variant="title" weight="bold">
+    <View style={[{ minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm }, style]}>
+      {onBack ? (
+        <Pressable
+          accessibilityLabel="Retour"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onBack}
+          style={{
+            width: controls.minTouch,
+            height: controls.minTouch,
+            alignItems: "center",
+            justifyContent: "center",
+            marginLeft: -spacing.sm
+          }}
+        >
+          <Ionicons color={palette.text} name="chevron-back" size={26} />
+        </Pressable>
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Text accessibilityRole="header" numberOfLines={1} variant="heading" weight="bold">
           {title}
         </Text>
-        {subtitle ? <Text tone="muted">{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text numberOfLines={1} tone="muted" variant="label">
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
-      {action ? <View style={styles.action}>{action}</View> : null}
+      {right}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.lg
-  },
-  rootCentered: {
-    justifyContent: "center"
-  },
-  leading: {
-    paddingTop: spacing.md
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.sm
-  },
-  copyCentered: {
-    alignItems: "center"
-  },
-  action: {
-    paddingTop: spacing.md
-  },
-  title: {
-    color: colors.text
-  }
-});
