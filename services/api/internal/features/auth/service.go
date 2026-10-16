@@ -26,6 +26,7 @@ var (
 	ErrUserNotFound        = errors.New("user not found")
 	ErrInvalidPassword     = errors.New("password must be 8 to 72 bytes")
 	ErrInvalidEmail        = errors.New("invalid email address")
+	ErrAccountSuspended    = errors.New("account suspended")
 	ErrInvalidResetCode    = errors.New("invalid or expired reset code")
 )
 
@@ -112,6 +113,10 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 
 	if err := bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(password)); err != nil {
 		return Tokens{}, User{}, ErrInvalidCredentials
+	}
+
+	if stored.Suspended {
+		return Tokens{}, User{}, ErrAccountSuspended
 	}
 
 	user := toUser(stored.User)

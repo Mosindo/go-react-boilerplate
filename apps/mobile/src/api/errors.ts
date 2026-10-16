@@ -4,6 +4,7 @@ import { ApiError } from "./client";
 const KNOWN_MESSAGES: readonly [needle: string, french: string][] = [
   ["email already exists", "Cette adresse e-mail est déjà utilisée."],
   ["invalid credentials", "E-mail ou mot de passe incorrect."],
+  ["account suspended", "Ce compte a été suspendu pour non-respect des règles de la communauté."],
   ["invalid email address", "Cette adresse e-mail n'est pas valide."],
   ["password must be between 8 and 72", "Le mot de passe doit contenir entre 8 et 72 caractères."],
   ["invalid or expired code", "Code invalide ou expiré."],

@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	accountfeature "example.com/api/internal/features/account"
@@ -91,8 +95,20 @@ func main() {
 		ReadTimeout:       60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-stop
+		log.Print("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("shutdown: %v", err)
+		}
+	}()
+
 	log.Printf("api listening on %s (env=%s)", srv.Addr, cfg.Env)
-	if err := srv.ListenAndServe(); err != nil {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }

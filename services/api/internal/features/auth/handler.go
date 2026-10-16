@@ -74,6 +74,9 @@ func (h *Handler) Login(c *gin.Context) {
 		case errors.Is(err, ErrInvalidCredentials):
 			status = http.StatusUnauthorized
 			c.JSON(status, gin.H{"error": "invalid credentials"})
+		case errors.Is(err, ErrAccountSuspended):
+			status = http.StatusForbidden
+			c.JSON(status, gin.H{"error": "account suspended"})
 		default:
 			c.JSON(status, gin.H{"error": "could not login"})
 		}

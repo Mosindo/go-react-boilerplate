@@ -512,3 +512,17 @@ func TestInterestsCatalogue(t *testing.T) {
 		t.Fatalf("catalogue too small: %d", len(list))
 	}
 }
+
+func TestSuspendedAccountCannotSignIn(t *testing.T) {
+	env := newTestEnv(t)
+	u := env.register("sus")
+	if _, err := env.pool.Exec(t.Context(), `UPDATE users SET banned_at = NOW() WHERE id = $1`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if res := env.do(http.MethodPost, "/auth/login", "", map[string]string{"email": u.Email, "password": testPassword}, u.addr); res.Status != http.StatusForbidden {
+		t.Fatalf("suspended login: got %d, want 403", res.Status)
+	}
+	if res := env.do(http.MethodPost, "/auth/refresh", "", map[string]string{"refreshToken": u.Refresh}, u.addr); res.Status != http.StatusUnauthorized {
+		t.Fatalf("suspended refresh: got %d, want 401", res.Status)
+	}
+}

@@ -1,30 +1,31 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lien
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Lien`, a 100% free dating application (Go API + Expo mobile app), built from the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Lien lets two people create a profile, discover each other, like, match, chat in real time, and stay safe (block, report, delete account).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- 100% free: no subscription, paywall, paid boost, artificial like limit, locked essential feature or mandatory ad.
+  Never add a payment provider or billing code.
+- Server-side enforcement of every business rule (age gate, preferences, matching, chat membership, blocking).
+- Never expose exact location, email or birth date of a user to another user.
 
-Core reusable modules:
+Core modules (`services/api/internal/features`):
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- discover
+- matching
 - chat
+- safety
 - notifications
-- files
+- realtime
+- account
 
 ---
 
@@ -42,6 +43,7 @@ Core reusable modules:
 - PostgreSQL
 - pgxpool
 - JWT (HS256)
+- gorilla/websocket (realtime only)
 - No ORM
 - No implicit magic
 
@@ -65,12 +67,15 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discover/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
+  - `realtime/`
+  - `account/`
 
 Each feature should contain:
 - `handler.go`
@@ -89,6 +94,7 @@ Rules:
 - Domain concerns belong in `features`
 - Never break existing modules while extending the platform
 - Respect the Go backend structure: `handler -> service -> repository`
+- Features never import each other: declare a small interface on the consumer side and wire it in `cmd/api`
 - Respect the frontend API client abstraction; no direct network access from UI code
 
 ---
@@ -117,6 +123,7 @@ Secrets:
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - see `.env.example` for the rest (`APP_ENV`, `UPLOAD_DIR`, `SMTP_*`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`)
 
 ---
 
@@ -130,12 +137,12 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `matches (user_a, activity_at)` and `matches (user_b, activity_at)`
+- `messages (match_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `swipes (target_id, created_at) WHERE action = 'like'`
+- `profiles (latitude) WHERE discoverable`
 
 ---
 
@@ -143,20 +150,19 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
+- `gofmt -l .` (must print nothing), `go vet ./...`
+- `go test ./...` with `DATABASE_URL_TEST` set (integration tests are skipped without it)
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api`, `internal/features/auth`):
+- Health, auth (register/login/refresh/reset/delete), protected routes
+- Dating journey: onboarding, discover, like, match, chat, read receipts, realtime
+- Permissions: chat membership, photo ownership, blocked/hidden profiles
+- Discovery filters, concurrent mutual likes (exactly one match), uploads, block/report, account deletion
+- Browser journey (`npm run e2e:web` in `apps/mobile`) for signup → onboarding → match → chat
 
 ---
 
@@ -175,11 +181,10 @@ Mandatory rules to avoid recurring environment issues:
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
+- A frontend is only "ready" after a real smoke test (`npm run e2e:smoke` and, when possible, `npm run e2e:web`):
+  - register and login
+  - profile onboarding with a photo
+  - discover loads, like produces a match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +212,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing payment, subscription or paywall code
+- Exposing exact location, email or birth date to other users
 
 ---
 

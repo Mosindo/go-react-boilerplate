@@ -26,6 +26,7 @@ type StoredUser struct {
 type StoredUserWithPassword struct {
 	User         StoredUser
 	PasswordHash string
+	Suspended    bool
 }
 
 type StoredSession struct {
@@ -83,10 +84,10 @@ func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash strin
 func (r *PGRepository) GetUserAuthByEmail(ctx context.Context, email string) (StoredUserWithPassword, error) {
 	var user StoredUserWithPassword
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, password_hash, created_at
+		SELECT id, email, password_hash, created_at, banned_at IS NOT NULL
 		FROM users
 		WHERE email = $1
-	`, email).Scan(&user.User.ID, &user.User.Email, &user.PasswordHash, &user.User.CreatedAt)
+	`, email).Scan(&user.User.ID, &user.User.Email, &user.PasswordHash, &user.User.CreatedAt, &user.Suspended)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredUserWithPassword{}, ErrRepositoryNotFound
@@ -146,6 +147,7 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 		WHERE s.token_hash = $1
 		  AND s.revoked_at IS NULL
 		  AND s.expires_at > NOW()
+		  AND u.banned_at IS NULL
 	`, tokenHash).Scan(
 		&session.ID,
 		&session.UserID,

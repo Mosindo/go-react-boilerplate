@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to `Lien`.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- The product is 100% free: never add payment, subscription or paywall code.
+- Keep business rules on the server; the client is never trusted.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 

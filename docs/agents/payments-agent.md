@@ -1,29 +1,13 @@
-# Payments Agent
+# Payments Policy
 
-## Responsibility
-
-- Integrate Stripe billing on the backend
-- Implement checkout and webhook endpoints
-- Persist subscription lifecycle state in PostgreSQL
-- Keep billing logic isolated from unrelated domains
+Lien is 100% free for its users. There is intentionally no payments agent, provider or code path.
 
 ## Constraints
 
-- Must follow feature-first architecture
-- Must use explicit SQL in repositories
-- Must support multi-tenant SaaS use cases
-- Must keep secrets and Stripe configuration environment-driven
+- Do not add Stripe, in-app purchases, subscriptions, paid boosts, paywalled features or advertising SDKs.
+- Do not gate any essential feature (likes, seeing who liked you, chatting, photos) behind a purchase.
+- If sustainability work is ever needed, it needs an explicit product decision from the founder first.
 
-## Allowed Actions
+## History
 
-- Add billing/subscription migrations under `services/api/internal/platform/db/migrations`
-- Add new backend feature modules and route wiring required for billing
-- Add or update billing-related tests
-- Update Docker/CI config only when required for safe Stripe configuration defaults
-
-## Forbidden Actions
-
-- No hardcoded live Stripe secrets
-- No ORM introduction
-- No frontend-only implementation without backend contract
-- No invasive rewrites of auth, chat, or content modules
+The former `go-react-saas` boilerplate shipped a Stripe billing module and subscription tables. They were removed (migration `014_drop_legacy_boilerplate.sql`).
