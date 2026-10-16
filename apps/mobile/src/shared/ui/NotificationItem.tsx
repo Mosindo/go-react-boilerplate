@@ -1,9 +1,8 @@
 import React from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
 import { Card } from "./Card";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { colors, radii, spacing } from "./tokens";
 
 export type NotificationItemProps = {
   body: string;
@@ -12,34 +11,29 @@ export type NotificationItemProps = {
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
   title: string;
-  type: string;
 };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ body, createdAtLabel, isRead, onPress, style, title }: NotificationItemProps) {
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
+    <Pressable
+      accessibilityLabel={`${isRead ? "" : "Non lue. "}${title}. ${body}`}
+      accessibilityRole="button"
+      disabled={!onPress}
+      onPress={onPress}
+    >
+      <Card padding="md" style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
+        <View style={styles.row}>
+          {isRead ? <View style={styles.dotSpacer} /> : <View style={styles.dot} />}
+          <View style={styles.copy}>
+            <Text variant="label" weight="bold">
+              {title}
+            </Text>
+            <Text tone="secondary">{body}</Text>
+            <Text tone="muted" variant="caption">
+              {createdAtLabel}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
-        </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
-        </Text>
       </Card>
     </Pressable>
   );
@@ -47,27 +41,25 @@ export function NotificationItem({
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: spacing.md
+    marginBottom: spacing.sm
   },
-  header: {
+  row: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     gap: spacing.md,
-    marginBottom: spacing.sm
+    alignItems: "flex-start"
   },
-  title: {
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+    marginTop: 5
+  },
+  dotSpacer: {
+    width: 10
+  },
+  copy: {
     flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
+    gap: spacing.xxs
   }
 });

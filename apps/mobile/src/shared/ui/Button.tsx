@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg
   },
   primary: {
-    backgroundColor: colors.text,
+    backgroundColor: colors.primary,
     ...shadows.card
   },
   secondary: {

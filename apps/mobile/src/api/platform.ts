@@ -1,179 +1,163 @@
-import { type AuthUser } from "./auth";
+// Typed wrappers around the server's resource endpoints. Screens never call fetch directly.
+import { Platform } from "react-native";
 import { apiRequest } from "./client";
 import { endpoints } from "./endpoints";
+import type {
+  AppNotification,
+  BlockedUser,
+  Conversation,
+  Interest,
+  MeProfile,
+  Match,
+  Message,
+  MessagesPage,
+  Preferences,
+  ProfileInput,
+  PublicProfile,
+  ReportReason,
+  SwipeAction,
+  SwipeResult
+} from "./types";
 
-export type PlatformUser = AuthUser;
-
-export type Post = {
-  id: string;
-  authorUserId: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ChatMessage = {
-  id: string;
-  senderUserId: string;
-  recipientUserId: string;
-  content: string;
-  createdAt: string;
-};
-
-export type ChatSummary = {
-  user: PlatformUser;
-  lastMessage?: {
-    content: string;
-    createdAt: string;
-  };
-};
-
-export type Notification = {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  body: string;
-  isRead: boolean;
-  createdAt: string;
-  readAt?: string;
-};
-
-export type BillingSubscription = {
-  id?: string;
-  organizationId: string;
-  provider: string;
-  status: string;
-  stripeCustomerId?: string;
-  stripeSubscriptionId?: string;
-  stripeCheckoutSessionId?: string;
-  currentPeriodStart?: string;
-  currentPeriodEnd?: string;
-  cancelAtPeriodEnd: boolean;
-  canceledAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-export type BillingCheckoutSession = {
-  sessionId: string;
-  checkoutUrl: string;
-  organizationId: string;
-  status: string;
-};
-
-type UsersResponse = {
-  users: PlatformUser[];
-};
-
-type PostsResponse = {
-  posts: Post[];
-};
-
-type ChatsResponse = {
-  chats: ChatSummary[];
-};
-
-type ChatMessagesResponse = {
-  messages: ChatMessage[];
-};
-
-type NotificationsResponse = {
-  notifications: Notification[];
-};
-
-export type CreateNotificationInput = {
-  type: string;
-  title: string;
-  body: string;
-};
-
-function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `Bearer ${token}` };
+export function getMyProfile(): Promise<MeProfile> {
+  return apiRequest<MeProfile>(endpoints.profile.me);
 }
 
-export async function listUsers(token: string): Promise<PlatformUser[]> {
-  const payload = await apiRequest<UsersResponse>(endpoints.users.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.users;
+export function saveProfile(input: ProfileInput): Promise<MeProfile> {
+  return apiRequest<MeProfile>(endpoints.profile.me, { method: "PUT", body: JSON.stringify(input) });
 }
 
-export async function listPosts(token: string): Promise<Post[]> {
-  const payload = await apiRequest<PostsResponse>(endpoints.posts.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.posts;
+export function savePreferences(input: Preferences): Promise<MeProfile> {
+  return apiRequest<MeProfile>(endpoints.profile.preferences, { method: "PUT", body: JSON.stringify(input) });
 }
 
-export async function createPost(token: string, title: string, body: string): Promise<Post> {
-  return apiRequest<Post>(endpoints.posts.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ title, body })
-  });
+export function savePrivacy(input: { discoverable?: boolean; showDistance?: boolean }): Promise<MeProfile> {
+  return apiRequest<MeProfile>(endpoints.profile.privacy, { method: "PATCH", body: JSON.stringify(input) });
 }
 
-export async function listChats(token: string): Promise<ChatSummary[]> {
-  const payload = await apiRequest<ChatsResponse>(endpoints.chat.chats, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.chats;
+export async function listInterests(): Promise<Interest[]> {
+  const res = await apiRequest<{ interests: Interest[] }>(endpoints.profile.interests);
+  return res.interests;
 }
 
-export async function listChatMessages(token: string, userId: string): Promise<ChatMessage[]> {
-  const payload = await apiRequest<ChatMessagesResponse>(endpoints.chat.messages(userId), {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.messages;
+export function getProfile(userId: string): Promise<PublicProfile> {
+  return apiRequest<PublicProfile>(endpoints.profile.detail(userId));
 }
 
-export async function sendChatMessage(token: string, userId: string, content: string): Promise<ChatMessage> {
-  return apiRequest<ChatMessage>(endpoints.chat.messages(userId), {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ content })
-  });
+export type UploadableImage = { uri: string; name?: string; mimeType?: string };
+
+async function imageForm(image: UploadableImage): Promise<FormData> {
+  const form = new FormData();
+  const name = image.name ?? "photo.jpg";
+  if (Platform.OS === "web") {
+    // Browsers need a real Blob; the picker hands back a blob:/data: URI.
+    const blob = await (await fetch(image.uri)).blob();
+    form.append("photo", blob, name);
+  } else {
+    // React Native's FormData accepts { uri, name, type } objects in place of Blobs.
+    form.append("photo", { uri: image.uri, name, type: image.mimeType ?? "image/jpeg" } as unknown as Blob);
+  }
+  return form;
 }
 
-export async function listNotifications(token: string): Promise<Notification[]> {
-  const payload = await apiRequest<NotificationsResponse>(endpoints.notifications.list, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
-  return payload.notifications;
+export async function uploadPhoto(image: UploadableImage): Promise<{ id: string; url: string }> {
+  return apiRequest(endpoints.photos.upload, { method: "POST", body: await imageForm(image), timeoutMs: 45_000 });
 }
 
-export async function createNotification(token: string, input: CreateNotificationInput): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.create, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(input)
-  });
+export async function replacePhoto(photoId: string, image: UploadableImage): Promise<{ id: string; url: string }> {
+  return apiRequest(endpoints.photos.item(photoId), { method: "PUT", body: await imageForm(image), timeoutMs: 45_000 });
 }
 
-export async function markNotificationRead(token: string, notificationId: string): Promise<Notification> {
-  return apiRequest<Notification>(endpoints.notifications.markRead(notificationId), {
-    method: "POST",
-    headers: authHeaders(token)
-  });
+export function deletePhoto(photoId: string): Promise<void> {
+  return apiRequest(endpoints.photos.item(photoId), { method: "DELETE" });
 }
 
-export async function getBillingSubscription(token: string): Promise<BillingSubscription> {
-  return apiRequest<BillingSubscription>(endpoints.billing.subscription, {
-    method: "GET",
-    headers: authHeaders(token)
-  });
+export function makeMainPhoto(photoId: string): Promise<void> {
+  return apiRequest(endpoints.photos.main(photoId), { method: "PUT" });
 }
 
-export async function createBillingCheckout(token: string): Promise<BillingCheckoutSession> {
-  return apiRequest<BillingCheckoutSession>(endpoints.billing.checkout, {
-    method: "POST",
-    headers: authHeaders(token)
-  });
+export function reorderPhotos(photoIds: string[]): Promise<void> {
+  return apiRequest(endpoints.photos.order, { method: "PUT", body: JSON.stringify({ photoIds }) });
+}
+
+export async function getDiscover(limit = 10): Promise<PublicProfile[]> {
+  const res = await apiRequest<{ profiles: PublicProfile[] }>(`${endpoints.discover}?limit=${limit}`);
+  return res.profiles;
+}
+
+export function swipe(targetId: string, action: SwipeAction): Promise<SwipeResult> {
+  return apiRequest<SwipeResult>(endpoints.swipes, { method: "POST", body: JSON.stringify({ targetId, action }) });
+}
+
+export async function listMatches(limit = 50, offset = 0): Promise<Match[]> {
+  const res = await apiRequest<{ matches: Match[] }>(`${endpoints.matches.list}?limit=${limit}&offset=${offset}`);
+  return res.matches;
+}
+
+export function listLikesReceived(limit = 30, offset = 0): Promise<{ profiles: PublicProfile[]; total: number }> {
+  return apiRequest(`${endpoints.matches.likesReceived}?limit=${limit}&offset=${offset}`);
+}
+
+export function unmatch(matchId: string): Promise<void> {
+  return apiRequest(endpoints.matches.item(matchId), { method: "DELETE" });
+}
+
+export async function listConversations(limit = 50, offset = 0): Promise<Conversation[]> {
+  const res = await apiRequest<{ conversations: Conversation[] }>(`${endpoints.chat.conversations}?limit=${limit}&offset=${offset}`);
+  return res.conversations;
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const res = await apiRequest<{ unread: number }>(endpoints.chat.unread);
+  return res.unread;
+}
+
+export function listMessages(matchId: string, before?: string, limit = 30): Promise<MessagesPage> {
+  const query = `limit=${limit}${before ? `&before=${before}` : ""}`;
+  return apiRequest<MessagesPage>(`${endpoints.chat.messages(matchId)}?${query}`);
+}
+
+export function sendMessage(matchId: string, body: string): Promise<Message> {
+  return apiRequest<Message>(endpoints.chat.messages(matchId), { method: "POST", body: JSON.stringify({ body }) });
+}
+
+export function markConversationRead(matchId: string): Promise<void> {
+  return apiRequest(endpoints.chat.read(matchId), { method: "POST" });
+}
+
+export function clearConversation(matchId: string): Promise<void> {
+  return apiRequest(endpoints.chat.item(matchId), { method: "DELETE" });
+}
+
+export function blockUser(userId: string): Promise<void> {
+  return apiRequest(endpoints.safety.blocks, { method: "POST", body: JSON.stringify({ userId }) });
+}
+
+export function unblockUser(userId: string): Promise<void> {
+  return apiRequest(endpoints.safety.unblock(userId), { method: "DELETE" });
+}
+
+export async function listBlocked(): Promise<BlockedUser[]> {
+  const res = await apiRequest<{ blocks: BlockedUser[] }>(endpoints.safety.blocks);
+  return res.blocks;
+}
+
+export function reportUser(userId: string, reason: ReportReason, details: string): Promise<void> {
+  return apiRequest(endpoints.safety.reports, { method: "POST", body: JSON.stringify({ userId, reason, details }) });
+}
+
+export function listNotifications(limit = 50, offset = 0): Promise<{ notifications: AppNotification[]; unread: number }> {
+  return apiRequest(`${endpoints.notifications.list}?limit=${limit}&offset=${offset}`);
+}
+
+export function markNotificationRead(notificationId: string): Promise<AppNotification> {
+  return apiRequest(endpoints.notifications.markRead(notificationId), { method: "POST" });
+}
+
+export function markAllNotificationsRead(): Promise<void> {
+  return apiRequest(endpoints.notifications.readAll, { method: "POST" });
+}
+
+export function requestRealtimeTicket(): Promise<{ ticket: string; expiresIn: number }> {
+  return apiRequest(endpoints.realtime.ticket, { method: "POST", silent: true });
 }

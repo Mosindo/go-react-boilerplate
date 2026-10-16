@@ -1,48 +1,50 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lien critical flow (login -> discover -> like -> match -> chat)
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: Login
+- assertVisible: Bon retour
 - tapOn:
-    id: auth-email-input
+    id: input-email
 - inputText: ${TEST_EMAIL}
 - tapOn:
-    id: auth-password-input
+    id: input-password
 - inputText: ${TEST_PASSWORD}
+- hideKeyboard
 - tapOn:
-    id: auth-submit-button
+    id: auth-submit
 
+# Discovery: the seeded profile has already liked us, so liking back creates the match.
 - assertVisible:
-    id: home-screen
+    id: screen-discover
+- assertVisible: ${MATCH_NAME}
+- tapOn:
+    id: action-like
 
+- assertVisible: C'est un match !
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
+    id: match-open-chat
 
-- tapOn: Chat
+# Conversation
+- tapOn:
+    id: message-input
+- inputText: Salut, ravi de ce match !
+- tapOn:
+    id: send-message
+- assertVisible: Salut, ravi de ce match !
+
+# Other tabs render
+- back
+- tapOn:
+    id: tab-chat
 - assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
+    id: screen-chat
 - tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
+    id: tab-notifications
+- assertVisible:
+    id: screen-notifications
 - tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
-
-- tapOn: Notifications
+    id: tab-profile
 - assertVisible:
-    id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
-- assertVisible:
-    id: profile-screen
+    id: screen-profile

@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
   },
   mine: {
     alignSelf: "flex-end",
-    backgroundColor: colors.text
+    backgroundColor: colors.primary
   },
   theirs: {
     alignSelf: "flex-start",

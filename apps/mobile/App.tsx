@@ -1,67 +1,78 @@
 import React, { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import AuthScreen from "./src/screens/AuthScreen";
+import OnboardingScreen from "./src/screens/OnboardingScreen";
+import { useMyProfile } from "./src/hooks/queries";
 import { AuthProvider, useAuth } from "./src/hooks/useAuth";
-import { BottomNavigation, SafeAreaLayout } from "./src/shared/layout";
+import { RealtimeProvider } from "./src/hooks/useRealtime";
+import { RootNavigator } from "./src/navigation/RootNavigator";
 import { clearGlobalError, ErrorView, LoadingView, useGlobalFeedback } from "./src/shared/feedback";
-import { colors, spacing } from "./src/shared/ui";
+import { SafeAreaLayout } from "./src/shared/layout";
+import { Button, colors, spacing } from "./src/shared/ui";
 
-function AppShell() {
-  const { accessToken, isAuthenticated, isBooting, user } = useAuth();
-  const globalFeedback = useGlobalFeedback();
+function SignedIn() {
+  const me = useMyProfile();
+  const { signOut } = useAuth();
 
-  useEffect(() => {
-    if (!globalFeedback.error) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      clearGlobalError();
-    }, 5000);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [globalFeedback.error]);
-
-  if (isBooting) {
+  if (me.isLoading) {
     return (
-      <SafeAreaLayout style={styles.bootContainer}>
-        <StatusBar style="dark" />
-        <LoadingView fullScreen label="Restoring session..." />
+      <SafeAreaLayout>
+        <LoadingView fullScreen label="Chargement de votre profil…" />
       </SafeAreaLayout>
     );
   }
-
-  if (!isAuthenticated || !accessToken || !user) {
+  if (!me.data) {
     return (
-      <>
-        <StatusBar style="dark" />
-        <AuthScreen />
-      </>
+      <SafeAreaLayout style={styles.padded}>
+        <ErrorView message="Impossible de charger votre profil. Vérifiez votre connexion." onAction={() => void me.refetch()} />
+        <Button label="Se déconnecter" onPress={() => void signOut()} variant="ghost" />
+      </SafeAreaLayout>
     );
+  }
+  if (!me.data.isComplete) {
+    return <OnboardingScreen me={me.data} />;
+  }
+  return (
+    <RealtimeProvider>
+      <RootNavigator />
+    </RealtimeProvider>
+  );
+}
+
+function AppShell() {
+  const { status } = useAuth();
+  const feedback = useGlobalFeedback();
+
+  useEffect(() => {
+    if (!feedback.error) {
+      return;
+    }
+    const timeoutId = setTimeout(clearGlobalError, 5000);
+    return () => clearTimeout(timeoutId);
+  }, [feedback.error]);
+
+  let content: React.ReactNode;
+  if (status === "booting") {
+    content = (
+      <SafeAreaLayout>
+        <LoadingView fullScreen label="Ouverture de votre session…" />
+      </SafeAreaLayout>
+    );
+  } else if (status === "signedOut") {
+    content = <AuthScreen />;
+  } else {
+    content = <SignedIn />;
   }
 
   return (
     <>
       <StatusBar style="dark" />
-      <BottomNavigation accessToken={accessToken} key={user.id} user={user} />
-      {globalFeedback.error ? (
+      {content}
+      {feedback.error ? (
         <View pointerEvents="box-none" style={styles.bannerWrap}>
-          <ErrorView
-            actionLabel="Dismiss"
-            compact
-            message={globalFeedback.error}
-            onAction={clearGlobalError}
-            style={styles.banner}
-            title="Request issue"
-          />
-        </View>
-      ) : null}
-      {globalFeedback.loadingCount > 0 && !isBooting ? (
-        <View style={styles.overlay}>
-          <LoadingView label={globalFeedback.loadingLabel ?? "Working..."} style={styles.overlayCard} />
+          <ErrorView actionLabel="Fermer" compact message={feedback.error} onAction={clearGlobalError} title="Problème de connexion" />
         </View>
       ) : null}
     </>
@@ -70,37 +81,15 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  bootContainer: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  bannerWrap: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl
-  },
-  banner: {},
-  overlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xxl
-  },
-  overlayCard: {
-    width: "100%",
-    maxWidth: 320
-  }
+  padded: { padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
+  bannerWrap: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: spacing.xxl }
 });

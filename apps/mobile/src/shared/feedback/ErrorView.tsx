@@ -13,13 +13,13 @@ type ErrorViewProps = {
 };
 
 export function ErrorView({
-  actionLabel = "Retry",
+  actionLabel = "Réessayer",
   compact = false,
   message,
   onAction,
   style,
   testID,
-  title = "Something went wrong"
+  title = "Une erreur est survenue"
 }: ErrorViewProps) {
   return (
     <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>

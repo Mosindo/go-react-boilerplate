@@ -1,87 +1,75 @@
 import React from "react";
-import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { type AuthUser } from "../../api/auth";
+import { Ionicons } from "@expo/vector-icons";
 import ChatScreen from "../../screens/ChatScreen";
 import HomeScreen from "../../screens/HomeScreen";
+import MatchesScreen from "../../screens/MatchesScreen";
 import NotificationsScreen from "../../screens/NotificationsScreen";
 import ProfileScreen from "../../screens/ProfileScreen";
+import { useNotifications, useUnreadMessages } from "../../hooks/queries";
+import { useRealtime } from "../../hooks/useRealtime";
+import type { TabParamList } from "../../navigation/types";
 import { colors, shadows, spacing } from "../ui";
 
-export type RootTabParamList = {
-  Home: undefined;
-  Chat: undefined;
-  Notifications: undefined;
-  Profile: undefined;
+const Tab = createBottomTabNavigator<TabParamList>();
+
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+const ICONS: Record<keyof TabParamList, { active: IconName; idle: IconName; label: string }> = {
+  Home: { active: "flame", idle: "flame-outline", label: "Découvrir" },
+  Matches: { active: "heart", idle: "heart-outline", label: "Matchs" },
+  Chat: { active: "chatbubbles", idle: "chatbubbles-outline", label: "Messages" },
+  Notifications: { active: "notifications", idle: "notifications-outline", label: "Alertes" },
+  Profile: { active: "person", idle: "person-outline", label: "Profil" }
 };
 
-type BottomNavigationProps = {
-  accessToken: string;
-  user: AuthUser;
-};
+export function BottomNavigation() {
+  const { connected } = useRealtime();
+  const unreadMessages = useUnreadMessages(connected).data ?? 0;
+  const unreadAlerts = useNotifications(connected).data?.unread ?? 0;
 
-const Tab = createBottomTabNavigator<RootTabParamList>();
-const navigationTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: colors.background,
-    card: colors.backgroundElevated,
-    border: colors.border,
-    primary: colors.primary,
-    text: colors.text,
-    notification: colors.primary
-  }
-};
+  const badge = (count: number) => (count > 0 ? (count > 99 ? "99+" : count) : undefined);
 
-export function BottomNavigation({ accessToken, user }: BottomNavigationProps) {
   return (
-    <NavigationContainer theme={navigationTheme}>
-      <Tab.Navigator
-        initialRouteName="Home"
-        sceneContainerStyle={{
-          backgroundColor: colors.background
-        }}
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarStyle: {
-            position: "absolute",
-            left: spacing.lg,
-            right: spacing.lg,
-            bottom: spacing.md,
-            height: 68,
-            paddingTop: spacing.xs,
-            backgroundColor: colors.backgroundElevated,
-            borderTopColor: colors.border,
-            borderTopWidth: 1,
-            borderRadius: 22,
-            ...shadows.floating
-          },
-          tabBarLabelStyle: {
-            paddingBottom: spacing.xs,
-            fontSize: 12,
-            fontWeight: "600"
-          },
-          tabBarItemStyle: {
-            paddingVertical: spacing.xs
-          }
-        }}
-      >
-        <Tab.Screen name="Home">
-          {() => <HomeScreen currentUserId={user.id} token={accessToken} />}
-        </Tab.Screen>
-        <Tab.Screen name="Chat">
-          {() => <ChatScreen currentUserId={user.id} token={accessToken} />}
-        </Tab.Screen>
-        <Tab.Screen name="Notifications">
-          {() => <NotificationsScreen token={accessToken} />}
-        </Tab.Screen>
-        <Tab.Screen name="Profile">
-          {() => <ProfileScreen token={accessToken} user={user} />}
-        </Tab.Screen>
-      </Tab.Navigator>
-    </NavigationContainer>
+    <Tab.Navigator
+      initialRouteName="Home"
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarHideOnKeyboard: true,
+        tabBarIcon: ({ focused, color, size }) => (
+          <Ionicons color={color} name={focused ? ICONS[route.name].active : ICONS[route.name].idle} size={size} />
+        ),
+        tabBarLabel: ICONS[route.name].label,
+        tabBarBadgeStyle: { backgroundColor: colors.primary, color: colors.inverse },
+        tabBarStyle: {
+          position: "absolute",
+          left: spacing.lg,
+          right: spacing.lg,
+          bottom: spacing.md,
+          height: 68,
+          paddingTop: spacing.xs,
+          backgroundColor: colors.backgroundElevated,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          borderRadius: 22,
+          ...shadows.floating
+        },
+        tabBarLabelStyle: { paddingBottom: spacing.xs, fontSize: 11, fontWeight: "600" },
+        tabBarItemStyle: { paddingVertical: spacing.xs }
+      })}
+      sceneContainerStyle={{ backgroundColor: colors.background }}
+    >
+      <Tab.Screen component={HomeScreen} name="Home" options={{ tabBarTestID: "tab-home" }} />
+      <Tab.Screen component={MatchesScreen} name="Matches" options={{ tabBarTestID: "tab-matches" }} />
+      <Tab.Screen component={ChatScreen} name="Chat" options={{ tabBarBadge: badge(unreadMessages), tabBarTestID: "tab-chat" }} />
+      <Tab.Screen
+        component={NotificationsScreen}
+        name="Notifications"
+        options={{ tabBarBadge: badge(unreadAlerts), tabBarTestID: "tab-notifications" }}
+      />
+      <Tab.Screen component={ProfileScreen} name="Profile" options={{ tabBarTestID: "tab-profile" }} />
+    </Tab.Navigator>
   );
 }

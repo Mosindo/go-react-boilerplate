@@ -1,12 +1,34 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lien",
+    "slug": "lien",
+    "scheme": "lien",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.lien.mobile"
+    },
+    "android": {
+      "package": "app.lien.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lien accède à vos photos uniquement pour que vous puissiez les ajouter à votre profil."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lien utilise votre position approximative pour vous proposer des profils près de chez vous. Elle n'est jamais montrée telle quelle aux autres."
+        }
+      ]
     ]
   }
 }

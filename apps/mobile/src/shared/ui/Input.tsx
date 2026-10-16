@@ -49,17 +49,7 @@ const styles = StyleSheet.create({
   }
 });
 
-export function Input({
-  containerStyle,
-  error,
-  helperText,
-  label,
-  multiline,
-  style,
-  onBlur,
-  onFocus,
-  ...props
-}: InputProps) {
+export function Input({ containerStyle, error, helperText, label, multiline, style, onBlur, onFocus, ...props }: InputProps) {
   const [focused, setFocused] = useState(false);
   const disabled = props.editable === false;
 

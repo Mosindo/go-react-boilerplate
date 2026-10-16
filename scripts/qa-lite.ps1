@@ -2,109 +2,37 @@ param(
   [string]$ApiBaseUrl = "http://localhost:18080"
 )
 
+# QA lite: static checks for the mobile app plus the runtime smoke journey, with a report
+# written to .smoke/qa-lite-report.txt for CI to upload.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$reportDir = Join-Path $repoRoot ".smoke"
-$reportPath = Join-Path $reportDir "qa-lite-report.txt"
-$goCacheDir = Join-Path $repoRoot ".cache\\go-build"
+$root = Join-Path $PSScriptRoot ".."
+$reportDir = Join-Path $root ".smoke"
+New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
+$report = Join-Path $reportDir "qa-lite-report.txt"
+Set-Content -Path $report -Value "QA lite $(Get-Date -Format o)"
 
-if (-not (Test-Path $reportDir)) {
-  New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
-}
-
-if (-not (Test-Path $goCacheDir)) {
-  New-Item -ItemType Directory -Path $goCacheDir -Force | Out-Null
-}
-
-$env:GOCACHE = $goCacheDir
-
-$results = New-Object System.Collections.Generic.List[string]
-$failed = $false
-
-function Run-Step([string]$name, [scriptblock]$action) {
-  try {
-    & $action
-    $results.Add("PASS - $name")
+function Invoke-Step([string]$Name, [scriptblock]$Action) {
+  Write-Output "[qa-lite] $Name"
+  Add-Content -Path $report -Value "STEP $Name"
+  & $Action
+  if ($LASTEXITCODE -ne 0) {
+    Add-Content -Path $report -Value "FAIL $Name"
+    throw "qa-lite step failed: $Name"
   }
-  catch {
-    $results.Add("FAIL - $name - $($_.Exception.Message)")
-    $script:failed = $true
-  }
+  Add-Content -Path $report -Value "PASS $Name"
 }
 
-Push-Location $repoRoot
+Push-Location (Join-Path $root "apps\mobile")
 try {
-  Run-Step "Backend gofmt" {
-    Push-Location ".\services\api"
-    try {
-      $unformatted = @(Get-ChildItem -Recurse -Filter *.go | ForEach-Object { gofmt -l $_.FullName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-      if ($LASTEXITCODE -ne 0) { throw "gofmt check failed with exit code $LASTEXITCODE" }
-      if ($unformatted.Count -gt 0) {
-        throw ("gofmt check failed. Unformatted files:`n{0}" -f ($unformatted -join [Environment]::NewLine))
-      }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Backend tests (go test ./...)" {
-    Push-Location ".\services\api"
-    try {
-      go test ./... | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "go test exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Backend build (go build ./cmd/api)" {
-    Push-Location ".\services\api"
-    try {
-      go build ./cmd/api
-      if ($LASTEXITCODE -ne 0) { throw "go build exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Mobile TypeScript check (npx tsc --noEmit)" {
-    Push-Location ".\apps\mobile"
-    try {
-      npx tsc --noEmit
-      if ($LASTEXITCODE -ne 0) { throw "tsc exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Smoke API + mobile critique" {
-    & (Join-Path $repoRoot "scripts/smoke-all.ps1") -ApiBaseUrl $ApiBaseUrl
-    if ($LASTEXITCODE -ne 0) { throw "smoke-all exited with code $LASTEXITCODE" }
-  }
+  Invoke-Step "typecheck" { npm run --silent typecheck }
+  Invoke-Step "lint" { npm run --silent lint }
+  Invoke-Step "unit tests" { npm run --silent test }
 }
 finally {
   Pop-Location
 }
 
-$stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$header = @(
-  "go-react-saas QA Lite Report",
-  "Generated: $stamp",
-  "API Base URL: $ApiBaseUrl",
-  ""
-)
-
-($header + $results) | Set-Content -Path $reportPath -Encoding UTF8
-Get-Content $reportPath
-
-if ($failed) {
-  exit 1
-}
-
-exit 0
+Invoke-Step "api smoke" { & (Join-Path $PSScriptRoot "smoke-api.ps1") -ApiBaseUrl $ApiBaseUrl }
+Write-Output "[qa-lite] PASS (report: $report)"

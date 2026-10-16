@@ -3,19 +3,13 @@ import { useSyncExternalStore } from "react";
 type FeedbackState = {
   error: string | null;
   errors: string[];
-  loadingCount: number;
-  loadingLabel: string | null;
-  loadingLabels: string[];
 };
 
 type Listener = () => void;
 
 let state: FeedbackState = {
   error: null,
-  errors: [],
-  loadingCount: 0,
-  loadingLabel: null,
-  loadingLabels: []
+  errors: []
 };
 
 const listeners = new Set<Listener>();
@@ -33,28 +27,6 @@ function subscribe(listener: Listener) {
 
 function getSnapshot(): FeedbackState {
   return state;
-}
-
-export function beginGlobalLoading(label = "Working...") {
-  const nextLabels = [...state.loadingLabels, label];
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function endGlobalLoading() {
-  const nextLabels = state.loadingLabels.slice(0, -1);
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
 }
 
 export function showGlobalError(message: string) {

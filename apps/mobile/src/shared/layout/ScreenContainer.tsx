@@ -3,6 +3,9 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { colors, spacing } from "../ui";
 import { SafeAreaLayout } from "./SafeAreaLayout";
 
+// The floating tab bar is 68px tall and sits 14px above the bottom edge.
+const TAB_BAR_CLEARANCE = 68 + spacing.md + spacing.lg;
+
 type ScreenContainerProps = {
   children: ReactNode;
   centered?: boolean;
@@ -42,7 +45,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl + spacing.xl
+    paddingBottom: TAB_BAR_CLEARANCE
   },
   centered: {
     justifyContent: "center"

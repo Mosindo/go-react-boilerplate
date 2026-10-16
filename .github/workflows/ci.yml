@@ -7,7 +7,24 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Integration tests create a throwaway schema per test, so they never collide.
+      DATABASE_URL_TEST: postgres://app:app@localhost:5432/app?sslmode=disable
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,22 +40,26 @@ jobs:
         working-directory: services/api
         run: go mod download
 
-      - name: Run Go tests
+      - name: Check Go formatting
         working-directory: services/api
-        run: go test ./...
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
 
       - name: Run Go vet static checks
         working-directory: services/api
         run: go vet ./...
 
+      - name: Run Go tests (unit + integration on Postgres)
+        working-directory: services/api
+        run: go test -race ./...
+
       - name: Build the backend
         working-directory: services/api
-        run: go build ./cmd/api
+        run: go build ./cmd/api ./cmd/seed
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20.19.4
+          node-version: 22
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
 
@@ -48,7 +69,23 @@ jobs:
 
       - name: Verify TypeScript
         working-directory: apps/mobile
-        run: npx tsc --noEmit
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: apps/mobile
+        run: npm run lint
+
+      - name: Check formatting
+        working-directory: apps/mobile
+        run: npm run format:check
+
+      - name: Run mobile unit tests
+        working-directory: apps/mobile
+        run: npm test
+
+      - name: Bundle the app (Android)
+        working-directory: apps/mobile
+        run: npx expo export --platform android --output-dir /tmp/lien-export
 
       - name: Build Docker image
         run: docker build -t api-test ./services/api
@@ -73,7 +110,7 @@ jobs:
             -e POSTGRES_USER=postgres \
             -e POSTGRES_PASSWORD=postgres \
             -e POSTGRES_DB=app \
-            postgres:15-alpine >/dev/null
+            postgres:16-alpine >/dev/null
 
           echo "Waiting for Postgres readiness..."
           for i in {1..30}; do
@@ -106,3 +143,78 @@ jobs:
           docker logs api-test-run || true
           exit 1
 
+
+  e2e-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api/go.mod
+          cache: true
+          cache-dependency-path: services/api/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Build and start the API
+        working-directory: services/api
+        env:
+          APP_ENV: development
+          PORT: "18080"
+          DATABASE_URL: postgres://app:app@localhost:5432/app?sslmode=disable
+          JWT_SECRET: ci-jwt-secret-32-chars-minimum-value
+          UPLOAD_DIR: /tmp/lien-uploads
+          ALLOWED_ORIGINS: http://localhost:19006
+        run: |
+          go build -o /tmp/lien-api ./cmd/api
+          nohup /tmp/lien-api > /tmp/lien-api.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:18080/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/lien-api.log
+          exit 1
+
+      - name: Build the web app and install the browser
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18080
+        run: |
+          npm ci
+          npm run export:web
+          npx playwright install --with-deps chromium
+          nohup npx http-server dist-web -p 19006 -s > /tmp/web.log 2>&1 &
+          sleep 3
+
+      - name: Run the browser journey (signup to chat)
+        working-directory: apps/mobile
+        env:
+          MOBILE_E2E_API_URL: http://localhost:18080
+        run: npm run e2e:web
+
+      - name: API logs on failure
+        if: failure()
+        run: cat /tmp/lien-api.log || true
