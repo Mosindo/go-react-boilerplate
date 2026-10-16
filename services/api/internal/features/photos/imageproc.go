@@ -15,7 +15,7 @@ import (
 const (
 	MaxUploadBytes = 8 << 20
 	maxSourceSide  = 8000
-	maxSourcePixel = 40_000_000
+	maxSourcePixel = 12_000_000
 	minSide        = 200
 	outputMaxSide  = 1280
 	jpegQuality    = 82

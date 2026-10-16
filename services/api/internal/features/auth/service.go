@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"net/mail"
 	"strings"
@@ -154,6 +155,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	rotatedSession, err := s.repo.RotateSessionToken(
 		ctx,
 		session.ID,
+		tokenHash,
 		hashRefreshToken(refreshSecret),
 		userAgent,
 		ipAddress,
@@ -225,9 +227,15 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 
 	body := fmt.Sprintf("Votre code de réinitialisation %s : %s\n\nIl expire dans %d minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.",
 		s.appName, code, int(resetCodeTTL.Minutes()))
-	if err := s.mailer.Send(ctx, stored.User.Email, "Réinitialisation de votre mot de passe", body); err != nil {
-		return fmt.Errorf("send reset email: %w", err)
-	}
+	// Sent in the background so the response time does not reveal whether the address exists.
+	to := stored.User.Email
+	go func() {
+		sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.mailer.Send(sendCtx, to, "Réinitialisation de votre mot de passe", body); err != nil {
+			log.Printf(`{"event":"reset_mail_failed","error":%q}`, err.Error())
+		}
+	}()
 	return nil
 }
 

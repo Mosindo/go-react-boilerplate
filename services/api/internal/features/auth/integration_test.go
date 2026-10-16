@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"example.com/api/internal/platform/db/dbtest"
 )
@@ -24,10 +25,18 @@ func (m *captureMailer) Send(_ context.Context, to, _ string, body string) error
 	return nil
 }
 
+// code waits for the asynchronously sent email.
 func (m *captureMailer) code() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return regexp.MustCompile(`: ([A-Z2-9]{10})\b`).FindStringSubmatch(m.body)[1]
+	for i := 0; i < 100; i++ {
+		m.mu.Lock()
+		body := m.body
+		m.mu.Unlock()
+		if match := regexp.MustCompile(`: ([A-Z2-9]{10})\b`).FindStringSubmatch(body); match != nil {
+			return match[1]
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return ""
 }
 
 func newTestService(t *testing.T) (*Service, *captureMailer) {
@@ -108,7 +117,11 @@ func TestPasswordResetFlow(t *testing.T) {
 	if err := svc.RequestPasswordReset(ctx, "nobody@example.test"); err != nil {
 		t.Fatalf("unknown email must not error: %v", err)
 	}
-	if mail.body != "" {
+	time.Sleep(100 * time.Millisecond)
+	mail.mu.Lock()
+	sent := mail.body
+	mail.mu.Unlock()
+	if sent != "" {
 		t.Fatal("no mail may be sent for unknown addresses")
 	}
 

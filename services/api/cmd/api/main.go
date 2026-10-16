@@ -123,6 +123,7 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))
+	r.Use(middleware.LimitBody(64 << 10))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
@@ -147,7 +148,7 @@ func setupRouter(a *app) *gin.Engine {
 	safetyService := safetyfeature.NewService(safetyfeature.NewPGRepository(a.dbPool), profilesService)
 	accountService := accountfeature.NewService(a.dbPool, photosService, hub)
 
-	requireUser := middleware.RequireUser(a.jwtSecret)
+	requireUser := middleware.RequireUser(a.jwtSecret, middleware.NewPGSessionChecker(a.dbPool, 10*time.Second))
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser)

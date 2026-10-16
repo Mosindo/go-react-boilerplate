@@ -15,6 +15,8 @@ const (
 	writeWait  = 10 * time.Second
 	pongWait   = 70 * time.Second
 	pingPeriod = 30 * time.Second
+
+	maxConnectionsPerUser = 5
 )
 
 type Handler struct {
@@ -62,6 +64,10 @@ func (h *Handler) Connect(c *gin.Context) {
 	userID, ok := h.tickets.Redeem(c.Query("ticket"))
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired ticket"})
+		return
+	}
+	if h.hub.Count(userID) >= maxConnectionsPerUser {
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many open connections"})
 		return
 	}
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)

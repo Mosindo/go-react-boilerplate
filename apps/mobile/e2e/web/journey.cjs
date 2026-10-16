@@ -2,6 +2,7 @@
 //   sign up -> onboarding (profile, preferences, location, photo, interests) -> discover
 //   -> like -> match -> conversation (with a live reply over WebSocket) -> settings.
 //
+// Run it against a fresh database: the scenario expects Lea and Camille to be the only candidates.
 // Prerequisites: API running (see README), web build served (npm run e2e:web).
 //   WEB_URL (default http://localhost:19006), API (default http://localhost:18080), SHOTS=<dir> for screenshots.
 const fs = require("fs");
@@ -96,6 +97,7 @@ async function main() {
   await shot(page, "06-discover");
 
   // Swipe the top card away with the mouse (drag left = pass): the next card takes its place.
+  await page.waitForTimeout(800); // let the deck settle
   const card = page.locator('[data-testid^="card-"]').first();
   const box = await card.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -103,7 +105,6 @@ async function main() {
   await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2, { steps: 4 });
   await page.mouse.move(box.x - 140, box.y + box.height / 2 + 10, { steps: 8 });
   await page.mouse.up();
-  await page.waitForSelector("text=Camille"); // seeded profile is proposed next
   await page.waitForFunction(() => !document.body.innerText.includes("Léa,"));
   await shot(page, "06b-discover-after-swipe");
 

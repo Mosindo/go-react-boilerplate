@@ -20,7 +20,7 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 	switch {
 	case IsValidation(err):
 		httpx.Fail(c, op, http.StatusBadRequest, err.Error(), err)
-	case errors.Is(err, ErrBirthDateLocked):
+	case errors.Is(err, ErrBirthDateLocked), errors.Is(err, ErrLocationLocked):
 		httpx.Fail(c, op, http.StatusBadRequest, err.Error(), err)
 	case errors.Is(err, ErrProfileRequired):
 		httpx.Fail(c, op, http.StatusConflict, err.Error(), err)

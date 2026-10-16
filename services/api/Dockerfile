@@ -5,7 +5,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/api ./cmd/api \
+ && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/moderate ./cmd/moderate
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata \
@@ -14,6 +15,7 @@ RUN apk add --no-cache ca-certificates tzdata \
 WORKDIR /app
 
 COPY --from=builder /bin/api ./api
+COPY --from=builder /bin/moderate ./moderate
 
 ENV UPLOAD_DIR=/data/uploads
 VOLUME ["/data/uploads"]

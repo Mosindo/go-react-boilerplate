@@ -38,6 +38,8 @@ type StoredProfile struct {
 	Discoverable bool
 	ShowDistance bool
 	Interests    []string
+
+	LocationChangedAt *time.Time
 }
 
 type StoredPreferences struct {

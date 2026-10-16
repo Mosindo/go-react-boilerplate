@@ -3,6 +3,7 @@ package matching
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"example.com/api/internal/features/profiles"
 	"example.com/api/internal/platform/httpx"
@@ -37,6 +38,7 @@ func (s *Service) Swipe(ctx context.Context, actorID, targetID, action string) (
 	if action != ActionLike && action != ActionPass {
 		return SwipeResult{}, ErrInvalidAction
 	}
+	targetID = strings.ToLower(strings.TrimSpace(targetID))
 	if !httpx.IsUUID(targetID) || targetID == actorID {
 		return SwipeResult{}, ErrInvalidTarget
 	}

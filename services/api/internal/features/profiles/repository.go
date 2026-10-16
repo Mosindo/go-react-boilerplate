@@ -37,11 +37,11 @@ func (r *PGRepository) GetProfile(ctx context.Context, userID string) (StoredPro
 		SELECT p.user_id, p.first_name, p.birth_date, p.gender, p.bio, p.occupation, p.looking_for, p.city,
 		       p.latitude, p.longitude, p.discoverable, p.show_distance,
 		       ARRAY(SELECT i.slug FROM user_interests ui JOIN interests i ON i.id = ui.interest_id
-		             WHERE ui.user_id = p.user_id ORDER BY i.slug)
+		             WHERE ui.user_id = p.user_id ORDER BY i.slug), p.location_changed_at
 		FROM profiles p
 		WHERE p.user_id = $1
 	`, userID).Scan(&p.UserID, &p.FirstName, &p.BirthDate, &p.Gender, &p.Bio, &p.Occupation, &p.LookingFor, &p.City,
-		&p.Latitude, &p.Longitude, &p.Discoverable, &p.ShowDistance, &p.Interests)
+		&p.Latitude, &p.Longitude, &p.Discoverable, &p.ShowDistance, &p.Interests, &p.LocationChangedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredProfile{}, ErrRepositoryNotFound
@@ -72,6 +72,9 @@ func (r *PGRepository) UpsertProfile(ctx context.Context, p StoredProfile) error
 		  city = EXCLUDED.city,
 		  latitude = EXCLUDED.latitude,
 		  longitude = EXCLUDED.longitude,
+		  location_changed_at = CASE
+		    WHEN (profiles.latitude, profiles.longitude) IS DISTINCT FROM (EXCLUDED.latitude, EXCLUDED.longitude)
+		    THEN NOW() ELSE profiles.location_changed_at END,
 		  updated_at = NOW()
 	`, p.UserID, p.FirstName, p.BirthDate, p.Gender, p.Bio, p.Occupation, p.LookingFor, p.City, p.Latitude, p.Longitude); err != nil {
 		return err

@@ -25,15 +25,27 @@ const MaxPhotos = 6
 type Service struct {
 	repo  Repository
 	store storage.Store
+	// decoding a 12 MP image takes ~100 MB: only a few run at once.
+	slots chan struct{}
 }
 
 func NewService(repo Repository, store storage.Store) *Service {
-	return &Service{repo: repo, store: store}
+	return &Service{repo: repo, store: store, slots: make(chan struct{}, 3)}
+}
+
+func (s *Service) process(ctx context.Context, r io.Reader) (Processed, error) {
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+	case <-ctx.Done():
+		return Processed{}, ctx.Err()
+	}
+	return Process(r)
 }
 
 // Upload validates and stores a new photo at the end of the user's list.
 func (s *Service) Upload(ctx context.Context, userID string, r io.Reader) (string, error) {
-	processed, err := Process(r)
+	processed, err := s.process(ctx, r)
 	if err != nil {
 		return "", err
 	}
@@ -56,7 +68,7 @@ func (s *Service) Upload(ctx context.Context, userID string, r io.Reader) (strin
 
 // Replace swaps the image of an existing photo, keeping its position.
 func (s *Service) Replace(ctx context.Context, userID, photoID string, r io.Reader) error {
-	processed, err := Process(r)
+	processed, err := s.process(ctx, r)
 	if err != nil {
 		return err
 	}

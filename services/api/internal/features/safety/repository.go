@@ -48,6 +48,12 @@ func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) e
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	// Same pair lock as swipes: a like in flight cannot create a match across a new block.
+	if _, err := tx.Exec(ctx, `
+		SELECT pg_advisory_xact_lock(hashtextextended(LEAST($1::uuid, $2::uuid)::text || GREATEST($1::uuid, $2::uuid)::text, 11))
+	`, blockerID, blockedID); err != nil {
+		return err
+	}
 	if ok, err := userExists(ctx, tx, blockedID); err != nil {
 		return err
 	} else if !ok {
@@ -105,8 +111,13 @@ func (r *PGRepository) Report(ctx context.Context, reporterID, reportedID, reaso
 		return ErrUserNotFound
 	}
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO reports (reporter_id, reported_id, reason, details)
-		SELECT $1, $2, $3, $4
+		INSERT INTO reports (reporter_id, reported_id, reason, details, context)
+		SELECT $1, $2, $3, $4, COALESCE((
+		  SELECT jsonb_agg(jsonb_build_object('sender', t.sender_id, 'body', t.body, 'at', t.created_at) ORDER BY t.created_at)
+		  FROM (SELECT msg.sender_id, msg.body, msg.created_at
+		        FROM messages msg JOIN matches m ON m.id = msg.match_id
+		        WHERE m.user_a = LEAST($1::uuid, $2::uuid) AND m.user_b = GREATEST($1::uuid, $2::uuid)
+		        ORDER BY msg.created_at DESC LIMIT 20) t), '[]'::jsonb)
 		WHERE NOT EXISTS (
 		  SELECT 1 FROM reports WHERE reporter_id = $1 AND reported_id = $2 AND reason = $3 AND status = 'open')
 	`, reporterID, reportedID, reason, details)

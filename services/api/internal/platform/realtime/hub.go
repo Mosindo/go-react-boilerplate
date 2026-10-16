@@ -151,3 +151,10 @@ func (h *Hub) Kick(userID string) {
 		h.drop(c)
 	}
 }
+
+// Count returns how many live connections a user has.
+func (h *Hub) Count(userID string) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients[userID])
+}

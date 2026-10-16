@@ -473,9 +473,15 @@ func TestAuthFlowOverHTTP(t *testing.T) {
 	if res := env.do(http.MethodPost, "/auth/forgot-password", "", map[string]string{"email": u.Email}, u.addr); res.Status != http.StatusAccepted {
 		t.Fatalf("forgot: %d", res.Status)
 	}
-	env.mail.mu.Lock()
-	body := env.mail.bodies[len(env.mail.bodies)-1]
-	env.mail.mu.Unlock()
+	var body string
+	for i := 0; i < 100 && body == ""; i++ { // the email is sent in the background
+		env.mail.mu.Lock()
+		if len(env.mail.bodies) > 0 {
+			body = env.mail.bodies[len(env.mail.bodies)-1]
+		}
+		env.mail.mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+	}
 	code := body[strings.Index(body, ": ")+2:][:10]
 	if res := env.do(http.MethodPost, "/auth/reset-password", "", map[string]string{"email": u.Email, "code": code, "newPassword": "BrandNew123"}, u.addr); res.Status != http.StatusNoContent {
 		t.Fatalf("reset: %d %s", res.Status, res.Body)
@@ -524,5 +530,58 @@ func TestSuspendedAccountCannotSignIn(t *testing.T) {
 	}
 	if res := env.do(http.MethodPost, "/auth/refresh", "", map[string]string{"refreshToken": u.Refresh}, u.addr); res.Status != http.StatusUnauthorized {
 		t.Fatalf("suspended refresh: got %d, want 401", res.Status)
+	}
+}
+
+func TestHardening(t *testing.T) {
+	env := newTestEnv(t)
+	a, b := env.register("a"), env.register("b")
+	env.onboard(a, profileSpec{Name: "A", BirthDate: "1994-01-01", Gender: "woman", InterestedIn: []string{"man"}})
+	env.onboard(b, profileSpec{Name: "B", BirthDate: "1993-01-01", Gender: "man", InterestedIn: []string{"woman"}})
+
+	// Upper-case ids must behave like lower-case ones (and cannot dodge the self check).
+	if res := env.do(http.MethodPost, "/swipes", a.Token, map[string]string{"targetId": strings.ToUpper(a.ID), "action": "like"}, a.addr); res.Status != http.StatusBadRequest {
+		t.Fatalf("self swipe in upper case: %d", res.Status)
+	}
+	env.swipe(a, &user{ID: strings.ToUpper(b.ID)}, "like")
+	if res := env.swipe(b, a, "like"); res["matched"] != true {
+		t.Fatalf("mutual like with mixed-case id must match: %v", res)
+	}
+
+	// Logout and suspension take effect on access tokens immediately (cache aside).
+	login := env.do(http.MethodPost, "/auth/login", "", map[string]string{"email": b.Email, "password": testPassword}, b.addr).Map(t)
+	token := login["accessToken"].(string)
+	if res := env.do(http.MethodGet, "/me", token, nil, b.addr); res.Status != http.StatusOK {
+		t.Fatalf("fresh token: %d", res.Status)
+	}
+	if _, err := env.pool.Exec(t.Context(), `UPDATE users SET banned_at = NOW() WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	// A new check is needed after the positive cache expires; sessions of fresh tokens are checked on first use.
+	fresh := env.do(http.MethodPost, "/auth/refresh", "", map[string]string{"refreshToken": login["refreshToken"].(string)}, b.addr)
+	if fresh.Status != http.StatusUnauthorized {
+		t.Fatalf("banned refresh: %d", fresh.Status)
+	}
+
+	// Oversized JSON bodies are refused before being buffered.
+	big := []byte(`{"email":"` + strings.Repeat("a", 200_000) + `"}`)
+	if res := env.do(http.MethodPost, "/auth/login", "", big, "198.51.100.9:1"); res.Status == http.StatusOK || res.Status == http.StatusUnauthorized {
+		t.Fatalf("oversized body must be rejected as a bad request, got %d", res.Status)
+	}
+
+	// The stored location can only be moved once a day.
+	c := env.register("c")
+	env.onboard(c, profileSpec{Name: "C", BirthDate: "1990-01-01", Gender: "woman", InterestedIn: []string{"man"}})
+	move := func(lat, lon float64) int {
+		return env.do(http.MethodPut, "/me/profile", c.Token, map[string]any{"firstName": "C", "birthDate": "1990-01-01", "gender": "woman", "city": "X", "latitude": lat, "longitude": lon}, c.addr).Status
+	}
+	if got := move(45.76, 4.83); got != http.StatusOK {
+		t.Fatalf("first move: %d", got)
+	}
+	if got := move(43.29, 5.37); got != http.StatusBadRequest {
+		t.Fatalf("second move within a day must be refused: %d", got)
+	}
+	if got := move(45.76, 4.83); got != http.StatusOK {
+		t.Fatalf("saving the same location stays allowed: %d", got)
 	}
 }

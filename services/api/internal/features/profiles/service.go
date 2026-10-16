@@ -16,6 +16,7 @@ var (
 	ErrNotFound         = errors.New("profile not found")
 	ErrProfileRequired  = errors.New("create your profile first")
 	ErrBirthDateLocked  = errors.New("birth date cannot be changed")
+	ErrLocationLocked   = errors.New("your location can only be changed once a day")
 	errValidationMarker = errors.New("validation")
 )
 
@@ -224,6 +225,12 @@ func (s *Service) SaveProfile(ctx context.Context, userID string, in ProfileInpu
 		// The age gate is only meaningful if the date of birth cannot be edited afterwards.
 		if !existing.BirthDate.Equal(birth) {
 			return ErrBirthDateLocked
+		}
+		// Moving the stored location freely would let someone triangulate another user
+		// from the distances shown to them: allow one change per day.
+		moved := existing.Latitude != RoundCoordinate(in.Latitude) || existing.Longitude != RoundCoordinate(in.Longitude)
+		if moved && existing.LocationChangedAt != nil && s.now().Sub(*existing.LocationChangedAt) < 24*time.Hour {
+			return ErrLocationLocked
 		}
 	case !errors.Is(err, ErrRepositoryNotFound):
 		return err

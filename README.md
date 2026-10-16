@@ -195,7 +195,7 @@ cd apps/mobile
 EXPO_PUBLIC_API_URL=http://localhost:18080 npm run export:web
 npx http-server dist-web -p 19006 -s &        # l'API doit autoriser http://localhost:19006 (ALLOWED_ORIGINS)
 npx playwright install chromium
-SHOTS=/tmp/lien-shots npm run e2e:web         # SHOTS = dossier de captures d'écran (optionnel)
+SHOTS=/tmp/lien-shots npm run e2e:web         # SHOTS = captures d'écran (optionnel) ; utiliser une base vierge
 ```
 
 Flux Maestro sur appareil/émulateur : `npm run e2e:ui:run` (voir `apps/mobile/scripts/run-maestro.sh`).
@@ -232,6 +232,8 @@ go run ./cmd/moderate suspend <user-id>       # bloque la connexion, coupe les s
 go run ./cmd/moderate restore <user-id>
 go run ./cmd/moderate dismiss <report-id>
 ```
+
+Dans l'image Docker, le même outil est disponible : `docker compose exec api ./moderate reports`.
 
 Un compte suspendu reçoit `403 account suspended` à la connexion et ne peut plus renouveler sa session. Les signalements pour « personne mineure » doivent être traités en priorité.
 
@@ -294,7 +296,10 @@ Toutes les routes sauf `/health`, `/auth/*`, `/media/photos/:id` (URL signée) e
 - **Notifications push natives (FCM/APNs) non incluses** : elles exigent des identifiants propres à votre compte développeur. Les notifications sont persistées, poussées en direct (WebSocket) et affichées dans l'app (badge, onglet Alertes).
 - **Une seule instance d'API** : le hub temps réel, les tickets WebSocket et les compteurs de débit sont en mémoire. Pour monter en charge, brancher Redis (ou `LISTEN/NOTIFY`) derrière les interfaces `realtime.Hub` et `middleware.Limiter`.
 - **Stockage des photos sur disque local** : l'interface `storage.Store` permet d'ajouter un backend S3 sans toucher au reste.
-- **Jeton d'accès valide jusqu'à 15 min** après une suppression/suspension de compte (aucune requête n'est rejouée contre la base à chaque appel) ; la session ne peut pas être renouvelée.
+- **Révocation de session** : chaque requête vérifie que la session n'est pas révoquée ni le compte suspendu (cache positif de 10 s) ; les sockets WebSocket déjà ouvertes d'un compte suspendu persistent jusqu'à leur fermeture (5 connexions max par utilisateur).
+- **Triangulation de position** : la position enregistrée ne peut changer qu'une fois par 24 h ; un attaquant patient garde néanmoins un oracle de distance à ~1 km.
+- **Preuves de signalement** : le signalement conserve les 20 derniers messages **s'il est fait avant** que l'auteur bloque ou annule le match.
+- **Pas de limite de tentatives par compte** (uniquement par IP) sur la connexion.
 - **Inscription** : une adresse déjà utilisée est signalée (`409`) — compromis UX, protégé par limite de débit.
 - **Web** : la session n'y est pas persistée (pas de stockage sécurisé navigateur) ; la cible web sert au développement et aux tests.
 - **Pas de mode sombre ni d'internationalisation** (les textes sont en français dans les écrans).
