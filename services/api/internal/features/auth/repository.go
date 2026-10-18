@@ -360,3 +360,15 @@ func nullableIP(value string) any {
 	}
 	return ip.String()
 }
+
+// IsSessionActive reports whether the session behind an access token is still
+// valid. It is a primary-key lookup, cheap enough to run on every request.
+func (r *PGRepository) IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
+	var active bool
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM sessions
+			WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL AND expires_at > NOW())
+	`, sessionID, userID).Scan(&active)
+	return active, err
+}

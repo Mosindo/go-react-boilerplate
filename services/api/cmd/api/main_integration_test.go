@@ -227,8 +227,11 @@ func TestAuthLifecycle(t *testing.T) {
 	}
 	e.expect(http.StatusUnauthorized, "POST", "/auth/refresh", "", map[string]string{"refreshToken": oldRefresh})
 
+	e.expect(http.StatusOK, "GET", "/me", next["accessToken"].(string), nil)
 	e.expect(http.StatusNoContent, "POST", "/auth/logout", "", map[string]string{"refreshToken": next["refreshToken"].(string)})
 	e.expect(http.StatusUnauthorized, "POST", "/auth/refresh", "", map[string]string{"refreshToken": next["refreshToken"].(string)})
+	// Logging out revokes the session: its access token stops working at once.
+	e.expect(http.StatusUnauthorized, "GET", "/me", next["accessToken"].(string), nil)
 }
 
 func TestPasswordRecoveryAndChange(t *testing.T) {
@@ -883,10 +886,10 @@ func TestRealtimeDeliversMessagesAndMatches(t *testing.T) {
 	e.expect(http.StatusOK, "POST", "/swipes", a.Token, map[string]any{"userId": b.ID, "action": "like"})
 	res := e.expect(http.StatusOK, "POST", "/swipes", b.Token, map[string]any{"userId": a.ID, "action": "like"})
 	conv := res["match"].(map[string]any)["conversationId"].(string)
+	// b swiped last and knows from the HTTP response; a, who liked first, is told live.
 	if ev := next(ca, "match.new"); ev["data"].(map[string]any)["firstName"] != "Wb" {
 		t.Fatalf("a should learn about the match: %v", ev)
 	}
-	next(cb, "match.new")
 
 	e.expect(http.StatusCreated, "POST", "/conversations/"+conv+"/messages", a.Token, map[string]string{"content": "live!"})
 	ev := next(cb, "message.new")

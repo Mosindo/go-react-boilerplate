@@ -48,7 +48,6 @@ func NewRouter(o Options) *gin.Engine {
 	limit := func(max int, per time.Duration) *middleware.RateLimiter {
 		return middleware.NewRateLimiter(max, per, o.RateLimit)
 	}
-	requireUser := middleware.RequireUser(o.JWTSecret)
 
 	hub := realtime.NewHub()
 	gateway := realtime.NewGateway(hub, o.JWTSecret)
@@ -56,7 +55,9 @@ func NewRouter(o Options) *gin.Engine {
 	photosService := photosfeature.NewService(photosfeature.NewPGRepository(o.Pool), o.Storage, photosfeature.NewSigner(o.JWTSecret))
 	profilesService := profilesfeature.NewService(profilesfeature.NewPGRepository(o.Pool), photosService)
 
-	authService := authfeature.NewService(authfeature.NewPGRepository(o.Pool), o.JWTSecret, o.Mailer, o.Storage)
+	authRepo := authfeature.NewPGRepository(o.Pool)
+	authService := authfeature.NewService(authRepo, o.JWTSecret, o.Mailer, o.Storage)
+	requireUser := middleware.RequireUser(o.JWTSecret, authRepo)
 	matchingService := matchingfeature.NewService(matchingfeature.NewPGRepository(o.Pool), profilesService, matchingfeature.ProximityInterestRanker{}, hub)
 	chatService := chatfeature.NewService(chatfeature.NewPGRepository(o.Pool), photosService, hub)
 	safetyService := safetyfeature.NewService(safetyfeature.NewPGRepository(o.Pool), hub)

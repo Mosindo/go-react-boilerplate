@@ -1,48 +1,36 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Tendre critical flow (device)
 ---
+# Fixtures come from `npm run e2e:ui:setup`: an onboarded user matched with a
+# contact who already wrote. The verified browser journey lives in e2e/web.
 - launchApp:
     clearState: true
 
-- assertVisible: Login
 - tapOn:
-    id: auth-email-input
+    id: auth-email
 - inputText: ${TEST_EMAIL}
 - tapOn:
-    id: auth-password-input
+    id: auth-password
 - inputText: ${TEST_PASSWORD}
 - tapOn:
-    id: auth-submit-button
+    id: auth-submit
 
 - assertVisible:
     id: home-screen
 
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
-- tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
-
-- tapOn: Chat
+    id: tab-messages
 - assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
-- tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
-- tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
+    id: messages-screen
+- assertVisible: Marc
 
-- tapOn: Notifications
+- tapOn:
+    id: tab-notifications
 - assertVisible:
     id: notifications-screen
 - assertVisible: ${NOTIFICATION_TITLE}
 
-- tapOn: Profile
+- tapOn:
+    id: tab-profile
 - assertVisible:
     id: profile-screen

@@ -92,8 +92,8 @@ func (s *Service) Swipe(ctx context.Context, viewerID, targetID, action string) 
 	if err != nil {
 		return SwipeResponse{}, err
 	}
-	s.publisher.Publish(viewerID, realtime.Event{Type: "match.new", Data: map[string]string{
-		"matchId": out.MatchID, "conversationId": out.ConversationID, "userId": targetID, "firstName": out.TargetName}})
+	// The person who just swiped learns about the match from this response; only
+	// the other side needs a live event.
 	s.publisher.Publish(targetID, realtime.Event{Type: "match.new", Data: map[string]string{
 		"matchId": out.MatchID, "conversationId": out.ConversationID, "userId": viewerID, "firstName": out.ViewerName}})
 	return SwipeResponse{Matched: true, Match: &MatchInfo{

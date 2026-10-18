@@ -1,104 +1,39 @@
-/* eslint-disable no-console */
-const fs = require("fs");
-const path = require("path");
+/**
+ * Prepares fixtures for the Maestro device flow: one fully onboarded user who
+ * already matched with a contact that wrote to them. Writes env files that
+ * run-maestro.ps1 loads.
+ */
+const fs = require("node:fs");
+const path = require("node:path");
+const { API_BASE_URL, PASSWORD, createMember, expectStatus, request } = require("./lib/dating-api");
 
-const API_BASE_URL = process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080";
-const PASSWORD = process.env.MOBILE_E2E_PASSWORD || "Password123";
-const NOTIFICATION_TITLE = "Boilerplate ready";
-
-function uniqueEmail(prefix) {
-  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 100000)}@boilerplate.test`;
-}
-
-async function request(pathname, init = {}) {
-  const response = await fetch(`${API_BASE_URL}${pathname}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {})
-    }
-  });
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  return { status: response.status, ok: response.ok, payload };
-}
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-async function register(email) {
-  const res = await request("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password: PASSWORD })
-  });
-  assert(res.status === 201, `register failed for ${email}: ${res.status}`);
-  return res.payload;
-}
+const NOTIFICATION_TITLE = "C'est un match !";
 
 async function main() {
   console.log(`[e2e-ui-setup] API: ${API_BASE_URL}`);
+  const primary = await createMember("ui_primary", { name: "Claire", gender: "woman", seeking: "man" });
+  const contact = await createMember("ui_contact", { name: "Marc", gender: "man", seeking: "woman" });
 
-  const primaryEmail = uniqueEmail("mobile_ui_primary");
-  const contactEmail = uniqueEmail("mobile_ui_contact");
-
-  const primary = await register(primaryEmail);
-  const contact = await register(contactEmail);
-
-  const seedNotification = await request("/notifications", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${primary.token}` },
-    body: JSON.stringify({
-      type: "system",
-      title: NOTIFICATION_TITLE,
-      body: "This notification is created for the critical UI flow."
-    })
-  });
-  assert(seedNotification.status === 201, `seed notification failed: ${seedNotification.status}`);
-
-  const seedMessage = await request(`/chats/${primary.user.id}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${contact.token}` },
-    body: JSON.stringify({ content: "Hello from your seeded contact." })
-  });
-  assert(seedMessage.status === 201, `seed message failed: ${seedMessage.status}`);
-
-  const outDir = path.join(process.cwd(), ".e2e");
-  if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir, { recursive: true });
-  }
-
-  const envJsonPath = path.join(outDir, "maestro-env.json");
-  const envPs1Path = path.join(outDir, "maestro-env.ps1");
-  const envData = {
-    TEST_EMAIL: primaryEmail,
-    TEST_PASSWORD: PASSWORD,
-    CONTACT_EMAIL: contactEmail,
-    NOTIFICATION_TITLE,
-    API_BASE_URL
-  };
-  fs.writeFileSync(envJsonPath, JSON.stringify(envData, null, 2));
-  fs.writeFileSync(
-    envPs1Path,
-    `$env:TEST_EMAIL='${primaryEmail}'\n$env:TEST_PASSWORD='${PASSWORD}'\n$env:CONTACT_EMAIL='${contactEmail}'\n$env:NOTIFICATION_TITLE='${NOTIFICATION_TITLE}'\n`
+  await expectStatus("like", 200, request("/swipes", { method: "POST", token: primary.token, body: { userId: contact.id, action: "like" } }));
+  const match = await expectStatus("match", 200, request("/swipes", { method: "POST", token: contact.token, body: { userId: primary.id, action: "like" } }));
+  await expectStatus(
+    "message",
+    201,
+    request(`/conversations/${match.match.conversationId}/messages`, { method: "POST", token: contact.token, body: { content: "Bonjour, ravi de ce match !" } })
   );
 
-  console.log("[e2e-ui-setup] PASS");
-  console.log(`[e2e-ui-setup] TEST_EMAIL=${primaryEmail}`);
-  console.log(`[e2e-ui-setup] CONTACT_EMAIL=${contactEmail}`);
-  console.log(`[e2e-ui-setup] env json: ${envJsonPath}`);
-  console.log(`[e2e-ui-setup] env ps1: ${envPs1Path}`);
+  const outDir = path.join(process.cwd(), ".e2e");
+  fs.mkdirSync(outDir, { recursive: true });
+  const envData = { TEST_EMAIL: primary.email, TEST_PASSWORD: PASSWORD, CONTACT_EMAIL: contact.email, NOTIFICATION_TITLE, API_BASE_URL };
+  fs.writeFileSync(path.join(outDir, "maestro-env.json"), JSON.stringify(envData, null, 2));
+  fs.writeFileSync(
+    path.join(outDir, "maestro-env.ps1"),
+    `$env:TEST_EMAIL='${primary.email}'\n$env:TEST_PASSWORD='${PASSWORD}'\n$env:CONTACT_EMAIL='${contact.email}'\n$env:NOTIFICATION_TITLE='${NOTIFICATION_TITLE}'\n`
+  );
+  console.log(`[e2e-ui-setup] PASS TEST_EMAIL=${primary.email}`);
 }
 
-main().catch((err) => {
-  console.error(`[e2e-ui-setup] FAIL ${err instanceof Error ? err.message : String(err)}`);
+main().catch((error) => {
+  console.error(`[e2e-ui-setup] FAIL ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });

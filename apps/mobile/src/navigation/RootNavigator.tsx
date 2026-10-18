@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { BottomNavigation } from "../shared/layout";
@@ -55,9 +55,14 @@ function MainNavigator() {
   );
 }
 
-/** Signed in: gate on a complete profile (details + at least one photo), then the app. */
+/**
+ * Signed in: a profile with at least one photo is required to use the app. The
+ * decision is taken once per session, so onboarding stays on screen (letting
+ * the user add more photos) until they choose to finish.
+ */
 function SignedIn({ userId }: { userId: string }) {
   const { data: profile, isLoading, isError, refetch } = useMyProfile();
+  const [onboarding, setOnboarding] = useState<boolean | null>(null);
 
   if (isLoading) {
     return <Splash label="Chargement de votre profil…" />;
@@ -69,8 +74,12 @@ function SignedIn({ userId }: { userId: string }) {
       </SafeAreaLayout>
     );
   }
-  if (!profile || profile.photos.length === 0) {
-    return <OnboardingScreen profile={profile ?? null} />;
+  const needsOnboarding = onboarding ?? (!profile || profile.photos.length === 0);
+  if (needsOnboarding) {
+    if (onboarding === null) {
+      setOnboarding(true);
+    }
+    return <OnboardingScreen onFinish={() => setOnboarding(false)} profile={profile ?? null} />;
   }
   return (
     <RealtimeProvider userId={userId}>

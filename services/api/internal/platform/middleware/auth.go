@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,7 +10,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker lets RequireUser reject tokens whose session no longer exists:
+// logged out, expired, replaced by a password change or removed with the account.
+type SessionChecker interface {
+	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+func RequireUser(secret []byte, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
@@ -48,6 +55,18 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
+		}
+
+		if sessions != nil {
+			active, err := sessions.IsSessionActive(c.Request.Context(), sessionID, userID)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "temporarily unavailable"})
+				return
+			}
+			if !active {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				return
+			}
 		}
 
 		c.Set("userID", userID)

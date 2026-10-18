@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import type { PublicProfile } from "../api/types";
 import { Text, colors, radii, spacing } from "../shared/ui";
 import { Chip, ChipRow } from "./Chip";
@@ -42,8 +43,7 @@ export function ProfileCard({ profile, variant = "card", onOpenDetails, testID }
         </>
       ) : null}
 
-      <View pointerEvents="none" style={styles.scrimOuter} />
-      <View pointerEvents="none" style={styles.scrimInner} />
+      <LinearGradient colors={["rgba(20,12,22,0)", "rgba(20,12,22,0.78)"]} pointerEvents="none" style={styles.scrim} />
 
       <View style={styles.info}>
         <Pressable accessibilityRole={onOpenDetails ? "button" : undefined} disabled={!onOpenDetails} onPress={onOpenDetails}>
@@ -87,8 +87,7 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: "#ffffff" },
   tapZones: { ...StyleSheet.absoluteFillObject, flexDirection: "row", bottom: 140 },
   tapZone: { flex: 1 },
-  scrimOuter: { position: "absolute", left: 0, right: 0, bottom: 0, height: 240, backgroundColor: "rgba(20,12,22,0.28)" },
-  scrimInner: { position: "absolute", left: 0, right: 0, bottom: 0, height: 140, backgroundColor: "rgba(20,12,22,0.42)" },
+  scrim: { position: "absolute", left: 0, right: 0, bottom: 0, height: 280 },
   info: { padding: spacing.lg, gap: spacing.sm },
   name: { fontSize: 28, lineHeight: 34 },
   bio: { marginTop: spacing.xs }

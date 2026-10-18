@@ -1,0 +1,5 @@
+node_modules
+.expo
+.e2e
+dist
+package-lock.json

@@ -23,9 +23,10 @@ const NAME_PATTERN = /^[\p{L}][\p{L}\p{M} '’.-]*$/u;
 type OnboardingScreenProps = {
   /** An existing profile means only the photos are missing. */
   profile: MyProfile | null;
+  onFinish: () => void;
 };
 
-export default function OnboardingScreen({ profile }: OnboardingScreenProps) {
+export default function OnboardingScreen({ profile, onFinish }: OnboardingScreenProps) {
   const client = useQueryClient();
   const { signOut } = useAuth();
   const [step, setStep] = useState(profile ? 4 : 0);
@@ -93,7 +94,10 @@ export default function OnboardingScreen({ profile }: OnboardingScreenProps) {
   };
 
   const photos = profile?.photos ?? [];
-  const finish = () => client.invalidateQueries({ queryKey: queryKeys.profile });
+  const finish = () => {
+    void client.invalidateQueries({ queryKey: queryKeys.discover });
+    onFinish();
+  };
 
   return (
     <Screen
