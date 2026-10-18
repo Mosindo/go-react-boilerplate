@@ -1,87 +1,111 @@
 import React from "react";
-import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { Platform, StyleSheet } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { type AuthUser } from "../../api/auth";
-import ChatScreen from "../../screens/ChatScreen";
+import ConversationsScreen from "../../screens/ConversationsScreen";
 import HomeScreen from "../../screens/HomeScreen";
 import NotificationsScreen from "../../screens/NotificationsScreen";
 import ProfileScreen from "../../screens/ProfileScreen";
-import { colors, shadows, spacing } from "../ui";
+import type { TabParamList } from "../../navigation/types";
+import { useConversations, useNotifications } from "../../hooks/queries";
+import { Text, colors, shadows, spacing } from "../ui";
 
-export type RootTabParamList = {
-  Home: undefined;
-  Chat: undefined;
-  Notifications: undefined;
-  Profile: undefined;
-};
+const Tab = createBottomTabNavigator<TabParamList>();
 
-type BottomNavigationProps = {
-  accessToken: string;
-  user: AuthUser;
-};
-
-const Tab = createBottomTabNavigator<RootTabParamList>();
-const navigationTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: colors.background,
-    card: colors.backgroundElevated,
-    border: colors.border,
-    primary: colors.primary,
-    text: colors.text,
-    notification: colors.primary
-  }
-};
-
-export function BottomNavigation({ accessToken, user }: BottomNavigationProps) {
+function TabGlyph({ glyph, focused }: { glyph: string; focused: boolean }) {
   return (
-    <NavigationContainer theme={navigationTheme}>
-      <Tab.Navigator
-        initialRouteName="Home"
-        sceneContainerStyle={{
-          backgroundColor: colors.background
-        }}
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarStyle: {
-            position: "absolute",
-            left: spacing.lg,
-            right: spacing.lg,
-            bottom: spacing.md,
-            height: 68,
-            paddingTop: spacing.xs,
-            backgroundColor: colors.backgroundElevated,
-            borderTopColor: colors.border,
-            borderTopWidth: 1,
-            borderRadius: 22,
-            ...shadows.floating
-          },
-          tabBarLabelStyle: {
-            paddingBottom: spacing.xs,
-            fontSize: 12,
-            fontWeight: "600"
-          },
-          tabBarItemStyle: {
-            paddingVertical: spacing.xs
-          }
-        }}
-      >
-        <Tab.Screen name="Home">
-          {() => <HomeScreen currentUserId={user.id} token={accessToken} />}
-        </Tab.Screen>
-        <Tab.Screen name="Chat">
-          {() => <ChatScreen currentUserId={user.id} token={accessToken} />}
-        </Tab.Screen>
-        <Tab.Screen name="Notifications">
-          {() => <NotificationsScreen token={accessToken} />}
-        </Tab.Screen>
-        <Tab.Screen name="Profile">
-          {() => <ProfileScreen token={accessToken} user={user} />}
-        </Tab.Screen>
-      </Tab.Navigator>
-    </NavigationContainer>
+    <Text style={[styles.glyph, { color: focused ? colors.primary : colors.textMuted }]} weight="bold">
+      {glyph}
+    </Text>
   );
 }
+
+/** Main tab bar: discovery, conversations, notifications and the user's own profile. */
+export function BottomNavigation() {
+  const conversations = useConversations();
+  const notifications = useNotifications();
+  const unreadMessages = conversations.data?.pages[0]?.unreadTotal ?? 0;
+  const unreadNotifications = notifications.data?.pages[0]?.unreadCount ?? 0;
+
+  return (
+    <Tab.Navigator
+      initialRouteName="Home"
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarHideOnKeyboard: true,
+        tabBarStyle: styles.bar,
+        tabBarLabelStyle: styles.label,
+        tabBarItemStyle: styles.item
+      }}
+      sceneContainerStyle={{ backgroundColor: colors.background }}
+    >
+      <Tab.Screen
+        component={HomeScreen}
+        name="Home"
+        options={{
+          title: "Découvrir",
+          tabBarTestID: "tab-home",
+          tabBarAccessibilityLabel: "Découvrir",
+          tabBarIcon: ({ focused }) => <TabGlyph focused={focused} glyph="♥" />
+        }}
+      />
+      <Tab.Screen
+        component={ConversationsScreen}
+        name="Messages"
+        options={{
+          title: "Messages",
+          tabBarTestID: "tab-messages",
+          tabBarAccessibilityLabel: unreadMessages > 0 ? `Messages, ${unreadMessages} non lus` : "Messages",
+          tabBarBadge: unreadMessages > 0 ? unreadMessages : undefined,
+          tabBarBadgeStyle: styles.badge,
+          tabBarIcon: ({ focused }) => <TabGlyph focused={focused} glyph="✉" />
+        }}
+      />
+      <Tab.Screen
+        component={NotificationsScreen}
+        name="Notifications"
+        options={{
+          title: "Activité",
+          tabBarTestID: "tab-notifications",
+          tabBarAccessibilityLabel: unreadNotifications > 0 ? `Activité, ${unreadNotifications} non lues` : "Activité",
+          tabBarBadge: unreadNotifications > 0 ? unreadNotifications : undefined,
+          tabBarBadgeStyle: styles.badge,
+          tabBarIcon: ({ focused }) => <TabGlyph focused={focused} glyph="●" />
+        }}
+      />
+      <Tab.Screen
+        component={ProfileScreen}
+        name="Profile"
+        options={{
+          title: "Profil",
+          tabBarTestID: "tab-profile",
+          tabBarAccessibilityLabel: "Profil",
+          tabBarIcon: ({ focused }) => <TabGlyph focused={focused} glyph="☺" />
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+// Only the web build needs the explicit height: native tab bars size themselves.
+const styles = StyleSheet.create({
+  bar: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.md,
+    height: Platform.OS === "web" ? 64 : 68,
+    paddingTop: spacing.xs,
+    backgroundColor: colors.backgroundElevated,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    borderRadius: 22,
+    ...shadows.floating
+  },
+  item: { paddingVertical: spacing.xs },
+  label: { paddingBottom: spacing.xs, fontSize: 12, fontWeight: "600" },
+  glyph: { fontSize: 22, lineHeight: 26 },
+  badge: { backgroundColor: colors.primary, color: colors.inverse }
+});
+

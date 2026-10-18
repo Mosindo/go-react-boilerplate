@@ -1,13 +1,10 @@
 import { apiRequest } from "./client";
+import { endpoints } from "./endpoints";
+import type { AuthUser } from "./types";
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  organizationId: string;
-  createdAt: string;
-};
+export type { AuthUser } from "./types";
 
-export type AuthResponse = {
+type AuthResponse = {
   token?: string;
   accessToken?: string;
   refreshToken: string;
@@ -23,47 +20,39 @@ export type AuthSession = {
 function normalizeSession(response: AuthResponse): AuthSession {
   const accessToken = response.accessToken ?? response.token;
   if (!accessToken) {
-    throw new Error("authentication response did not include an access token");
+    throw new Error("La réponse d'authentification est incomplète.");
   }
-
-  return {
-    accessToken,
-    refreshToken: response.refreshToken,
-    user: response.user
-  };
+  return { accessToken, refreshToken: response.refreshToken, user: response.user };
 }
 
 export async function register(email: string, password: string): Promise<AuthSession> {
-  const response = await apiRequest<AuthResponse>("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password })
-  });
-  return normalizeSession(response);
+  return normalizeSession(await apiRequest<AuthResponse>(endpoints.auth.register, { method: "POST", body: { email, password } }));
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
-  const response = await apiRequest<AuthResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password })
-  });
-  return normalizeSession(response);
-}
-
-export async function refreshSession(refreshToken: string): Promise<AuthSession> {
-  const response = await apiRequest<AuthResponse>("/auth/refresh", {
-    method: "POST",
-    body: JSON.stringify({ refreshToken })
-  });
-  return normalizeSession(response);
+  return normalizeSession(await apiRequest<AuthResponse>(endpoints.auth.login, { method: "POST", body: { email, password } }));
 }
 
 export async function logout(refreshToken: string): Promise<void> {
-  await apiRequest("/auth/logout", {
-    method: "POST",
-    body: JSON.stringify({ refreshToken })
-  });
+  await apiRequest(endpoints.auth.logout, { method: "POST", body: { refreshToken } });
 }
 
-export async function me(): Promise<AuthUser> {
-  return apiRequest<AuthUser>("/me", { method: "GET" });
+export function me(): Promise<AuthUser> {
+  return apiRequest<AuthUser>(endpoints.auth.me);
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await apiRequest(endpoints.auth.forgot, { method: "POST", body: { email } });
+}
+
+export async function resetPassword(email: string, code: string, newPassword: string): Promise<void> {
+  await apiRequest(endpoints.auth.reset, { method: "POST", body: { email, code, newPassword } });
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await apiRequest(endpoints.auth.changePassword, { method: "POST", body: { currentPassword, newPassword } });
+}
+
+export async function deleteAccount(password: string): Promise<void> {
+  await apiRequest(endpoints.auth.me, { method: "DELETE", body: { password } });
 }

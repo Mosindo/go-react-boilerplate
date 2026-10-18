@@ -1,223 +1,223 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { createPost, listPosts, type Post } from "../api/platform";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Badge, Button, Card, Input, Notice, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useQueryClient } from "@tanstack/react-query";
+import { ApiError, errorMessage } from "../api/client";
+import { fetchDiscover, resetPasses, swipe } from "../api/discovery";
+import type { MatchInfo, PublicProfile } from "../api/types";
+import { MatchOverlay } from "../components/MatchOverlay";
+import { Screen } from "../components/Screen";
+import { SwipeDeck } from "../components/SwipeDeck";
+import { APP_NAME } from "../components/labels";
+import { onProfileSwiped } from "../hooks/deckBus";
+import { queryKeys, useMyProfile } from "../hooks/queries";
+import type { MainStackParamList } from "../navigation/types";
+import { showToast } from "../shared/feedback";
+import { Button, Loader, Text, spacing } from "../shared/ui";
 
-type HomeScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+const PAGE_SIZE = 10;
+const PREFETCH_AT = 3;
 
-function formatPostDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
-}
+type Nav = NativeStackNavigationProp<MainStackParamList>;
+type Status = "loading" | "ready" | "empty" | "error" | "incomplete";
 
-export default function HomeScreen({ token, currentUserId }: HomeScreenProps) {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+export default function HomeScreen() {
+  const navigation = useNavigation<Nav>();
+  const client = useQueryClient();
+  const { data: profile } = useMyProfile();
+
+  const [deck, setDeck] = useState<PublicProfile[]>([]);
+  const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [match, setMatch] = useState<MatchInfo | null>(null);
+  const fetching = useRef(false);
+  const exhausted = useRef(false);
+  const seen = useRef(new Set<string>());
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextPosts = await listPosts(token);
-      setPosts(nextPosts);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load posts");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function onSubmit() {
-    const normalizedTitle = title.trim();
-    const normalizedBody = body.trim();
-    if (!normalizedTitle || !normalizedBody) {
-      setError("title and body are required");
+  const loadMore = useCallback(async () => {
+    if (fetching.current || exhausted.current) {
       return;
     }
-
-    setSubmitting(true);
-    setError(null);
-    setFeedback(null);
+    fetching.current = true;
     try {
-      const created = await createPost(token, normalizedTitle, normalizedBody);
-      setPosts((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
-      setTitle("");
-      setBody("");
-      setFeedback("Post published.");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "could not create post");
+      const batch = await fetchDiscover(PAGE_SIZE);
+      const fresh = batch.filter((p) => !seen.current.has(p.userId));
+      fresh.forEach((p) => seen.current.add(p.userId));
+      if (fresh.length === 0) {
+        exhausted.current = true;
+      }
+      setDeck((current) => {
+        const next = [...current, ...fresh];
+        setStatus(next.length > 0 ? "ready" : "empty");
+        return next;
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "profile_incomplete") {
+        setStatus("incomplete");
+      } else {
+        setError(errorMessage(err));
+        setStatus((s) => (s === "ready" ? s : "error"));
+      }
     } finally {
-      setSubmitting(false);
+      fetching.current = false;
     }
-  }
+  }, []);
 
-  const emptyState = useMemo(() => {
-    if (loading) {
-      return null;
+  const refresh = useCallback(() => {
+    exhausted.current = false;
+    seen.current = new Set(deck.map((p) => p.userId));
+    setError(null);
+    setStatus(deck.length > 0 ? "ready" : "loading");
+    void loadMore();
+  }, [deck, loadMore]);
+
+  useEffect(() => {
+    void loadMore();
+  }, [loadMore]);
+
+  useEffect(() => {
+    if (status === "ready" && deck.length <= PREFETCH_AT) {
+      void loadMore();
     }
-    return (
-      <EmptyView
-        message="Share progress, notes, or the first workspace announcement."
-        title="No posts yet"
-      />
-    );
-  }, [loading]);
+  }, [deck.length, status, loadMore]);
 
-  if (loading && posts.length === 0) {
-    return (
-      <ScreenContainer testID="home-screen">
-        <LoadingView fullScreen label="Loading workspace..." />
-      </ScreenContainer>
-    );
-  }
+  const handleResult = useCallback(
+    (result: { matched: boolean; match?: MatchInfo }) => {
+      if (result.matched && result.match) {
+        setMatch(result.match);
+        void client.invalidateQueries({ queryKey: queryKeys.conversations });
+        void client.invalidateQueries({ queryKey: queryKeys.notifications });
+      }
+    },
+    [client]
+  );
+
+  // Swipes made from the profile detail screen remove the card from the deck too.
+  useEffect(
+    () =>
+      onProfileSwiped((userId, result) => {
+        setDeck((current) => {
+          const next = current.filter((p) => p.userId !== userId);
+          if (next.length === 0) setStatus("empty");
+          return next;
+        });
+        handleResult(result);
+      }),
+    [handleResult]
+  );
+
+  const onSwipe = useCallback(
+    (target: PublicProfile, action: "like" | "pass") => {
+      setDeck((current) => {
+        const next = current.filter((p) => p.userId !== target.userId);
+        if (next.length === 0) setStatus(exhausted.current ? "empty" : "loading");
+        return next;
+      });
+      swipe(target.userId, action)
+        .then(handleResult)
+        .catch((err) => {
+          if (err instanceof ApiError && (err.status === 409 || err.status === 404)) {
+            return; // already handled elsewhere, or no longer available
+          }
+          showToast(errorMessage(err, "Action impossible pour le moment."), "error");
+          setDeck((current) => [target, ...current]);
+          setStatus("ready");
+        });
+    },
+    [handleResult]
+  );
+
+  const reviewPasses = async () => {
+    try {
+      const count = await resetPasses();
+      showToast(count > 0 ? `${count} profil(s) remis dans votre sélection.` : "Aucun profil passé à revoir.", "info");
+      seen.current = new Set();
+      exhausted.current = false;
+      setStatus("loading");
+      void loadMore();
+    } catch (err) {
+      showToast(errorMessage(err), "error");
+    }
+  };
+
+  const openProfile = (target: PublicProfile) => navigation.navigate("Person", { userId: target.userId });
 
   return (
-    <ScreenContainer testID="home-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || submitting}
-            label="Reload"
-            onPress={load}
-            size="sm"
-            testID="home-reload-button"
-            variant="outline"
-          />
-        }
-        eyebrow="Workspace"
-        style={styles.header}
-        subtitle="Team updates, product notes, and lightweight announcements."
-        title="Home"
-      />
+    <Screen
+      edges={["top", "left", "right"]}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.brand} tone="primary" weight="bold">
+            {APP_NAME}
+          </Text>
+          <Button label="Préférences" onPress={() => navigation.navigate("EditProfile")} size="sm" testID="open-preferences" variant="ghost" />
+        </View>
+      }
+      contentStyle={styles.content}
+      testID="home-screen"
+    >
+      {status === "loading" ? <Loader fullScreen label="Recherche de profils…" /> : null}
 
-      <Card style={styles.composer} variant="accent">
-        <Text style={styles.sectionTitle} variant="heading" weight="bold">
-          Publish an update
-        </Text>
-        <Input
-          containerStyle={styles.field}
-          label="Title"
-          onChangeText={setTitle}
-          placeholder="Post title"
-          testID="home-post-title-input"
-          value={title}
-        />
-        <Input
-          containerStyle={styles.field}
-          label="Body"
-          multiline
-          numberOfLines={4}
-          onChangeText={setBody}
-          placeholder="Share progress, notes, or an announcement..."
-          style={styles.bodyInput}
-          testID="home-post-body-input"
-          value={body}
-        />
-        <Button
-          fullWidth
-          disabled={loading}
-          label="Publish"
-          loading={submitting}
-          onPress={onSubmit}
-          testID="home-post-submit-button"
-        />
-      </Card>
+      {status === "ready" ? <SwipeDeck onOpenProfile={openProfile} onSwipe={onSwipe} profiles={deck} /> : null}
 
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-      {feedback ? (
-        <Notice description="Your update is now visible in the workspace feed." style={styles.feedback} title={feedback} tone="success" />
+      {status === "empty" ? (
+        <View style={styles.center} testID="deck-empty">
+          <Text style={styles.centerTitle} variant="heading" weight="bold">
+            Vous avez tout vu pour l'instant
+          </Text>
+          <Text style={styles.centerText} tone="muted">
+            De nouvelles personnes arrivent chaque jour. Élargissez vos préférences ou revoyez les profils que vous avez passés.
+          </Text>
+          <Button label="Actualiser" onPress={refresh} testID="deck-refresh" />
+          <Button label="Revoir les profils passés" onPress={reviewPasses} testID="deck-review-passes" variant="outline" />
+          <Button label="Modifier mes préférences" onPress={() => navigation.navigate("EditProfile")} variant="ghost" />
+        </View>
       ) : null}
 
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={posts}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={emptyState}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle} variant="heading" weight="bold">
-                {item.title}
-              </Text>
-              <Badge label={item.authorUserId === currentUserId ? "You" : "Member"} size="sm" variant="primary" />
-            </View>
-            <Text style={styles.cardBody}>{item.body}</Text>
-            <Text style={styles.meta} tone="muted" variant="caption">
-              {formatPostDate(item.createdAt)}
-            </Text>
-          </Card>
-        )}
+      {status === "error" ? (
+        <View style={styles.center}>
+          <Text style={styles.centerTitle} variant="heading" weight="bold">
+            Chargement impossible
+          </Text>
+          <Text style={styles.centerText} tone="muted">
+            {error ?? "Vérifiez votre connexion."}
+          </Text>
+          <Button label="Réessayer" onPress={refresh} testID="deck-retry" />
+        </View>
+      ) : null}
+
+      {status === "incomplete" ? (
+        <View style={styles.center}>
+          <Text style={styles.centerTitle} variant="heading" weight="bold">
+            Complétez votre profil
+          </Text>
+          <Text style={styles.centerText} tone="muted">
+            Ajoutez au moins une photo pour découvrir des profils.
+          </Text>
+          <Button label="Modifier mon profil" onPress={() => navigation.navigate("EditProfile")} />
+        </View>
+      ) : null}
+
+      <MatchOverlay
+        match={match}
+        myName={profile?.firstName}
+        myPhotoPath={profile?.photos[0]?.thumbUrl}
+        onClose={() => setMatch(null)}
+        onMessage={(m) => {
+          setMatch(null);
+          navigation.navigate("Conversation", { conversationId: m.conversationId, matchId: m.id, userId: m.user.userId, name: m.user.firstName });
+        }}
       />
-    </ScreenContainer>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: spacing.lg
-  },
-  composer: {
-    marginBottom: spacing.md
-  },
-  sectionTitle: {
-    marginBottom: spacing.lg
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  bodyInput: {
-    minHeight: 120
-  },
-  error: {
-    marginBottom: spacing.sm
-  },
-  feedback: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  },
-  empty: {
-    marginTop: spacing.xxxl
-  },
-  card: {
-    marginBottom: spacing.md
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-    gap: spacing.sm
-  },
-  cardTitle: {
-    flex: 1,
-    color: colors.text
-  },
-  cardBody: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  brand: { fontSize: 28, lineHeight: 34, letterSpacing: -1 },
+  content: { paddingTop: spacing.sm, paddingBottom: 90 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
+  centerTitle: { textAlign: "center" },
+  centerText: { textAlign: "center", maxWidth: 360 }
 });

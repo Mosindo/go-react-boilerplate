@@ -192,7 +192,11 @@ func (r *PGRepository) InsertMessage(ctx context.Context, conversationID, sender
 	if err := tx.QueryRow(ctx, `SELECT first_name FROM profiles WHERE user_id = $1`, senderID).Scan(&senderName); err != nil {
 		return Message{}, "", false, err
 	}
-	data, _ := json.Marshal(map[string]string{"conversationId": conversationID, "userId": senderID})
+	var matchID string
+	if err := tx.QueryRow(ctx, `SELECT match_id FROM conversations WHERE id = $1`, conversationID).Scan(&matchID); err != nil {
+		return Message{}, "", false, err
+	}
+	data, _ := json.Marshal(map[string]string{"conversationId": conversationID, "userId": senderID, "matchId": matchID})
 	tag, err := tx.Exec(ctx, `
 		INSERT INTO notifications (user_id, type, title, body, data)
 		SELECT $1, 'message', $2, $3, $4::jsonb
