@@ -2,1016 +2,900 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
+	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
+	"io"
+	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"example.com/api/internal/platform/db"
+	"example.com/api/internal/app"
+	"example.com/api/internal/platform/db/dbtest"
+	"example.com/api/internal/platform/mailer"
+	"example.com/api/internal/platform/storage"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type testResponse struct {
-	Status int
-	Body   []byte
+func TestMain(m *testing.M) {
+	log.SetOutput(io.Discard)
+	gin.SetMode(gin.TestMode)
+	os.Exit(m.Run())
 }
 
-type userResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
+const testSecret = "0123456789abcdef0123456789abcdef0123"
+
+type env struct {
+	t      *testing.T
+	router *gin.Engine
+	pool   *pgxpool.Pool
+	mail   *mailer.Memory
+	dir    string
 }
 
-type meResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
+type user struct {
+	ID    string
+	Token string
+	Email string
 }
 
-type authResponse struct {
-	Token        string     `json:"token"`
-	AccessToken  string     `json:"accessToken"`
-	RefreshToken string     `json:"refreshToken"`
-	User         meResponse `json:"user"`
-}
-
-type usersResponse struct {
-	Users []userResponse `json:"users"`
-}
-
-type chatMessagePreview struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type chatSummaryResponse struct {
-	User        userResponse        `json:"user"`
-	LastMessage *chatMessagePreview `json:"lastMessage,omitempty"`
-}
-
-type chatsResponse struct {
-	Chats []chatSummaryResponse `json:"chats"`
-}
-
-type chatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
-}
-
-type chatMessagesResponse struct {
-	Messages []chatMessageResponse `json:"messages"`
-}
-
-type postResponse struct {
-	ID           string    `json:"id"`
-	AuthorUserID string    `json:"authorUserId"`
-	Title        string    `json:"title"`
-	Body         string    `json:"body"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-}
-
-type postsResponse struct {
-	Posts []postResponse `json:"posts"`
-}
-
-type commentResponse struct {
-	ID           string    `json:"id"`
-	PostID       string    `json:"postId"`
-	AuthorUserID string    `json:"authorUserId"`
-	Content      string    `json:"content"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-}
-
-type commentsResponse struct {
-	Comments []commentResponse `json:"comments"`
-}
-
-type notificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt"`
-}
-
-type notificationsResponse struct {
-	Notifications []notificationResponse `json:"notifications"`
-}
-
-type fileResponse struct {
-	ID          string    `json:"id"`
-	OwnerUserID string    `json:"ownerUserId"`
-	Filename    string    `json:"filename"`
-	MimeType    string    `json:"mimeType"`
-	SizeBytes   int64     `json:"sizeBytes"`
-	StorageKey  string    `json:"storageKey"`
-	CreatedAt   time.Time `json:"createdAt"`
-}
-
-type filesResponse struct {
-	Files []fileResponse `json:"files"`
-}
-
-func TestHealthEndpoint(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	resp := doRequest(t, router, http.MethodGet, "/health", nil, "")
-	if resp.Status != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", resp.Status, string(resp.Body))
-	}
-	if !strings.Contains(string(resp.Body), `"status":"ok"`) {
-		t.Fatalf("unexpected health body: %s", string(resp.Body))
-	}
-}
-
-func TestHealthPropagatesRequestID(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	req.Header.Set("X-Request-ID", "req-integration-fixed-id")
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
-	}
-	if got := rec.Header().Get("X-Request-ID"); got != "req-integration-fixed-id" {
-		t.Fatalf("expected response X-Request-ID to match input, got %q", got)
-	}
-}
-
-func TestHealthReturns503WhenDBUnavailable(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	pool.Close()
-
-	resp := doRequest(t, router, http.MethodGet, "/health", nil, "")
-	if resp.Status != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when DB is unavailable, got %d body=%s", resp.Status, string(resp.Body))
-	}
-	if !strings.Contains(string(resp.Body), `"status":"unavailable"`) {
-		t.Fatalf("unexpected health body when db unavailable: %s", string(resp.Body))
-	}
-}
-
-func TestAuthAndUsersFlow(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	email1 := uniqueEmail("flow1")
-	email2 := uniqueEmail("flow2")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email1, email2})
-
-	register1 := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email1,
-		"password": password,
-	}, "")
-	if register1.Status != http.StatusCreated {
-		t.Fatalf("register1 expected 201, got %d body=%s", register1.Status, string(register1.Body))
-	}
-
-	register2 := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email2,
-		"password": password,
-	}, "")
-	if register2.Status != http.StatusCreated {
-		t.Fatalf("register2 expected 201, got %d body=%s", register2.Status, string(register2.Body))
-	}
-
-	var auth1 authResponse
-	var auth2 authResponse
-	if err := json.Unmarshal(register1.Body, &auth1); err != nil {
-		t.Fatalf("unmarshal register1: %v", err)
-	}
-	if err := json.Unmarshal(register2.Body, &auth2); err != nil {
-		t.Fatalf("unmarshal register2: %v", err)
-	}
-	if auth1.Token == "" || auth2.Token == "" {
-		t.Fatalf("expected non-empty JWT tokens")
-	}
-	if auth1.RefreshToken == "" || auth2.RefreshToken == "" {
-		t.Fatalf("expected non-empty refresh tokens")
-	}
-	if auth1.User.OrganizationID == "" || auth2.User.OrganizationID == "" {
-		t.Fatalf("expected organization ids on auth payloads")
-	}
-	if auth1.User.OrganizationID != auth2.User.OrganizationID {
-		t.Fatalf("expected both users in the default organization for current SaaS foundation")
-	}
-
-	meResp := doRequest(t, router, http.MethodGet, "/me", nil, auth1.Token)
-	if meResp.Status != http.StatusOK {
-		t.Fatalf("/me expected 200, got %d body=%s", meResp.Status, string(meResp.Body))
-	}
-	var meUser meResponse
-	if err := json.Unmarshal(meResp.Body, &meUser); err != nil {
-		t.Fatalf("unmarshal /me: %v", err)
-	}
-	if meUser.Email != email1 {
-		t.Fatalf("expected /me email %s, got %s", email1, meUser.Email)
-	}
-	if meUser.OrganizationID != auth1.User.OrganizationID {
-		t.Fatalf("expected /me organization id %s, got %s", auth1.User.OrganizationID, meUser.OrganizationID)
-	}
-
-	usersList := doRequest(t, router, http.MethodGet, "/users", nil, auth1.Token)
-	if usersList.Status != http.StatusOK {
-		t.Fatalf("/users expected 200, got %d body=%s", usersList.Status, string(usersList.Body))
-	}
-	var usersPayload usersResponse
-	if err := json.Unmarshal(usersList.Body, &usersPayload); err != nil {
-		t.Fatalf("unmarshal /users: %v", err)
-	}
-	if !containsUser(usersPayload.Users, auth1.User.ID) || !containsUser(usersPayload.Users, auth2.User.ID) {
-		t.Fatalf("expected user list to contain both registered users")
-	}
-
-	userByID := doRequest(t, router, http.MethodGet, "/users/"+auth2.User.ID, nil, auth1.Token)
-	if userByID.Status != http.StatusOK {
-		t.Fatalf("/users/:id expected 200, got %d body=%s", userByID.Status, string(userByID.Body))
-	}
-	var listedUser userResponse
-	if err := json.Unmarshal(userByID.Body, &listedUser); err != nil {
-		t.Fatalf("unmarshal /users/:id: %v", err)
-	}
-	if listedUser.Email != email2 {
-		t.Fatalf("expected /users/:id email %s, got %s", email2, listedUser.Email)
-	}
-	if listedUser.OrganizationID != auth1.User.OrganizationID {
-		t.Fatalf("expected /users/:id organization id %s, got %s", auth1.User.OrganizationID, listedUser.OrganizationID)
-	}
-
-	refresh := doRequest(t, router, http.MethodPost, "/auth/refresh", map[string]string{
-		"refreshToken": auth1.RefreshToken,
-	}, "")
-	if refresh.Status != http.StatusOK {
-		t.Fatalf("refresh expected 200, got %d body=%s", refresh.Status, string(refresh.Body))
-	}
-	var refreshed authResponse
-	if err := json.Unmarshal(refresh.Body, &refreshed); err != nil {
-		t.Fatalf("unmarshal refresh: %v", err)
-	}
-	if refreshed.Token == "" || refreshed.RefreshToken == "" {
-		t.Fatalf("expected non-empty refreshed tokens")
-	}
-	if refreshed.RefreshToken == auth1.RefreshToken {
-		t.Fatalf("expected rotated refresh token")
-	}
-
-	logout := doRequest(t, router, http.MethodPost, "/auth/logout", map[string]string{
-		"refreshToken": refreshed.RefreshToken,
-	}, "")
-	if logout.Status != http.StatusNoContent {
-		t.Fatalf("logout expected 204, got %d body=%s", logout.Status, string(logout.Body))
-	}
-
-	refreshAfterLogout := doRequest(t, router, http.MethodPost, "/auth/refresh", map[string]string{
-		"refreshToken": refreshed.RefreshToken,
-	}, "")
-	if refreshAfterLogout.Status != http.StatusUnauthorized {
-		t.Fatalf("refresh after logout expected 401, got %d body=%s", refreshAfterLogout.Status, string(refreshAfterLogout.Body))
-	}
-}
-
-func TestUnauthorizedEndpoints(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	for _, endpoint := range []string{
-		"/me",
-		"/users",
-		"/users/11111111-1111-1111-1111-111111111111",
-		"/chats",
-		"/chats/11111111-1111-1111-1111-111111111111/messages",
-		"/posts",
-		"/posts/11111111-1111-1111-1111-111111111111",
-		"/posts/11111111-1111-1111-1111-111111111111/comments",
-		"/notifications",
-		"/files",
-		"/files/11111111-1111-1111-1111-111111111111",
-	} {
-		resp := doRequest(t, router, http.MethodGet, endpoint, nil, "")
-		if resp.Status != http.StatusUnauthorized {
-			t.Fatalf("%s expected 401 without token, got %d body=%s", endpoint, resp.Status, string(resp.Body))
-		}
-	}
-}
-
-func TestChatFlow(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	email1 := uniqueEmail("chat1")
-	email2 := uniqueEmail("chat2")
-	email3 := uniqueEmail("chat3")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email1, email2, email3})
-
-	register1 := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email1,
-		"password": password,
-	}, "")
-	register2 := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email2,
-		"password": password,
-	}, "")
-	register3 := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email3,
-		"password": password,
-	}, "")
-
-	if register1.Status != http.StatusCreated || register2.Status != http.StatusCreated || register3.Status != http.StatusCreated {
-		t.Fatalf("registers expected 201, got [%d, %d, %d]", register1.Status, register2.Status, register3.Status)
-	}
-
-	var auth1 authResponse
-	var auth2 authResponse
-	var auth3 authResponse
-	if err := json.Unmarshal(register1.Body, &auth1); err != nil {
-		t.Fatalf("unmarshal register1: %v", err)
-	}
-	if err := json.Unmarshal(register2.Body, &auth2); err != nil {
-		t.Fatalf("unmarshal register2: %v", err)
-	}
-	if err := json.Unmarshal(register3.Body, &auth3); err != nil {
-		t.Fatalf("unmarshal register3: %v", err)
-	}
-
-	send := doRequest(t, router, http.MethodPost, "/chats/"+auth2.User.ID+"/messages", map[string]string{
-		"content": "hello there",
-	}, auth1.Token)
-	if send.Status != http.StatusCreated {
-		t.Fatalf("send message expected 201, got %d body=%s", send.Status, string(send.Body))
-	}
-	var sent chatMessageResponse
-	if err := json.Unmarshal(send.Body, &sent); err != nil {
-		t.Fatalf("unmarshal sent message: %v", err)
-	}
-	if sent.Content != "hello there" {
-		t.Fatalf("unexpected message content: %s", sent.Content)
-	}
-
-	sendThird := doRequest(t, router, http.MethodPost, "/chats/"+auth3.User.ID+"/messages", map[string]string{
-		"content": "hello third user",
-	}, auth1.Token)
-	if sendThird.Status != http.StatusCreated {
-		t.Fatalf("send third user message expected 201, got %d body=%s", sendThird.Status, string(sendThird.Body))
-	}
-
-	getMessages := doRequest(t, router, http.MethodGet, "/chats/"+auth2.User.ID+"/messages", nil, auth1.Token)
-	if getMessages.Status != http.StatusOK {
-		t.Fatalf("get messages expected 200, got %d body=%s", getMessages.Status, string(getMessages.Body))
-	}
-	var messagesPayload chatMessagesResponse
-	if err := json.Unmarshal(getMessages.Body, &messagesPayload); err != nil {
-		t.Fatalf("unmarshal get messages: %v", err)
-	}
-	if len(messagesPayload.Messages) == 0 {
-		t.Fatalf("expected at least one chat message")
-	}
-
-	getChats := doRequest(t, router, http.MethodGet, "/chats", nil, auth1.Token)
-	if getChats.Status != http.StatusOK {
-		t.Fatalf("get chats expected 200, got %d body=%s", getChats.Status, string(getChats.Body))
-	}
-	var chatsPayload chatsResponse
-	if err := json.Unmarshal(getChats.Body, &chatsPayload); err != nil {
-		t.Fatalf("unmarshal get chats: %v", err)
-	}
-	if !containsChat(chatsPayload.Chats, auth2.User.ID) || !containsChat(chatsPayload.Chats, auth3.User.ID) {
-		t.Fatalf("expected chats list to include both conversation users")
-	}
-
-	sendMissingUser := doRequest(t, router, http.MethodPost, "/chats/00000000-0000-0000-0000-000000000000/messages", map[string]string{
-		"content": "should fail",
-	}, auth1.Token)
-	if sendMissingUser.Status != http.StatusNotFound {
-		t.Fatalf("send to missing user expected 404, got %d body=%s", sendMissingUser.Status, string(sendMissingUser.Body))
-	}
-}
-
-func TestUsersSupportsLimitAndOffsetQuery(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	password := "Password123"
-	emails := []string{
-		uniqueEmail("users_limit_a"),
-		uniqueEmail("users_limit_b"),
-		uniqueEmail("users_limit_c"),
-		uniqueEmail("users_limit_d"),
-	}
-	defer cleanupUsers(t, pool, emails)
-
-	for _, email := range emails {
-		resp := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{"email": email, "password": password}, "")
-		if resp.Status != http.StatusCreated {
-			t.Fatalf("register expected 201, got %d body=%s", resp.Status, string(resp.Body))
-		}
-	}
-
-	login := doRequest(t, router, http.MethodPost, "/auth/login", map[string]string{"email": emails[0], "password": password}, "")
-	if login.Status != http.StatusOK {
-		t.Fatalf("login expected 200, got %d body=%s", login.Status, string(login.Body))
-	}
-	var auth authResponse
-	if err := json.Unmarshal(login.Body, &auth); err != nil {
-		t.Fatalf("unmarshal login: %v", err)
-	}
-
-	firstPage := doRequest(t, router, http.MethodGet, "/users?limit=1", nil, auth.Token)
-	if firstPage.Status != http.StatusOK {
-		t.Fatalf("first page /users expected 200, got %d body=%s", firstPage.Status, string(firstPage.Body))
-	}
-	var firstPayload usersResponse
-	if err := json.Unmarshal(firstPage.Body, &firstPayload); err != nil {
-		t.Fatalf("unmarshal first page /users: %v", err)
-	}
-	if len(firstPayload.Users) != 1 {
-		t.Fatalf("expected first page to return exactly 1 user, got %d", len(firstPayload.Users))
-	}
-
-	secondPage := doRequest(t, router, http.MethodGet, "/users?limit=1&offset=1", nil, auth.Token)
-	if secondPage.Status != http.StatusOK {
-		t.Fatalf("second page /users expected 200, got %d body=%s", secondPage.Status, string(secondPage.Body))
-	}
-	var secondPayload usersResponse
-	if err := json.Unmarshal(secondPage.Body, &secondPayload); err != nil {
-		t.Fatalf("unmarshal second page /users: %v", err)
-	}
-	if len(secondPayload.Users) != 1 {
-		t.Fatalf("expected second page to return exactly 1 user, got %d", len(secondPayload.Users))
-	}
-	if firstPayload.Users[0].ID == secondPayload.Users[0].ID {
-		t.Fatalf("expected offset=1 to return a different user than first page")
-	}
-}
-
-func TestChatsSupportsLimitAndOffsetQuery(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	password := "Password123"
-	emails := []string{
-		uniqueEmail("chats_limit_a"),
-		uniqueEmail("chats_limit_b"),
-		uniqueEmail("chats_limit_c"),
-	}
-	defer cleanupUsers(t, pool, emails)
-
-	regA := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{"email": emails[0], "password": password}, "")
-	regB := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{"email": emails[1], "password": password}, "")
-	regC := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{"email": emails[2], "password": password}, "")
-	if regA.Status != http.StatusCreated || regB.Status != http.StatusCreated || regC.Status != http.StatusCreated {
-		t.Fatalf("registers expected 201, got [%d, %d, %d]", regA.Status, regB.Status, regC.Status)
-	}
-
-	var authA authResponse
-	var authB authResponse
-	var authC authResponse
-	if err := json.Unmarshal(regA.Body, &authA); err != nil {
-		t.Fatalf("unmarshal authA: %v", err)
-	}
-	if err := json.Unmarshal(regB.Body, &authB); err != nil {
-		t.Fatalf("unmarshal authB: %v", err)
-	}
-	if err := json.Unmarshal(regC.Body, &authC); err != nil {
-		t.Fatalf("unmarshal authC: %v", err)
-	}
-
-	sendB := doRequest(t, router, http.MethodPost, "/chats/"+authB.User.ID+"/messages", map[string]string{"content": "hello b"}, authA.Token)
-	sendC := doRequest(t, router, http.MethodPost, "/chats/"+authC.User.ID+"/messages", map[string]string{"content": "hello c"}, authA.Token)
-	if sendB.Status != http.StatusCreated || sendC.Status != http.StatusCreated {
-		t.Fatalf("send messages expected 201, got [%d, %d]", sendB.Status, sendC.Status)
-	}
-
-	firstPage := doRequest(t, router, http.MethodGet, "/chats?limit=1", nil, authA.Token)
-	if firstPage.Status != http.StatusOK {
-		t.Fatalf("first page /chats expected 200, got %d body=%s", firstPage.Status, string(firstPage.Body))
-	}
-	var firstPayload chatsResponse
-	if err := json.Unmarshal(firstPage.Body, &firstPayload); err != nil {
-		t.Fatalf("unmarshal first page /chats: %v", err)
-	}
-	if len(firstPayload.Chats) != 1 {
-		t.Fatalf("expected first page to return exactly 1 chat, got %d", len(firstPayload.Chats))
-	}
-
-	secondPage := doRequest(t, router, http.MethodGet, "/chats?limit=1&offset=1", nil, authA.Token)
-	if secondPage.Status != http.StatusOK {
-		t.Fatalf("second page /chats expected 200, got %d body=%s", secondPage.Status, string(secondPage.Body))
-	}
-	var secondPayload chatsResponse
-	if err := json.Unmarshal(secondPage.Body, &secondPayload); err != nil {
-		t.Fatalf("unmarshal second page /chats: %v", err)
-	}
-	if len(secondPayload.Chats) != 1 {
-		t.Fatalf("expected second page to return exactly 1 chat, got %d", len(secondPayload.Chats))
-	}
-	if firstPayload.Chats[0].User.ID == secondPayload.Chats[0].User.ID {
-		t.Fatalf("expected offset=1 to return a different chat than first page")
-	}
-}
-
-func TestChatMessagesSupportsLimitQuery(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	email1 := uniqueEmail("chat_limit_1")
-	email2 := uniqueEmail("chat_limit_2")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email1, email2})
-
-	register1 := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email1,
-		"password": password,
-	}, "")
-	register2 := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email2,
-		"password": password,
-	}, "")
-	if register1.Status != http.StatusCreated || register2.Status != http.StatusCreated {
-		t.Fatalf("registers expected 201, got [%d, %d]", register1.Status, register2.Status)
-	}
-
-	var auth1 authResponse
-	var auth2 authResponse
-	if err := json.Unmarshal(register1.Body, &auth1); err != nil {
-		t.Fatalf("unmarshal register1: %v", err)
-	}
-	if err := json.Unmarshal(register2.Body, &auth2); err != nil {
-		t.Fatalf("unmarshal register2: %v", err)
-	}
-
-	send1 := doRequest(t, router, http.MethodPost, "/chats/"+auth2.User.ID+"/messages", map[string]string{"content": "m1"}, auth1.Token)
-	send2 := doRequest(t, router, http.MethodPost, "/chats/"+auth2.User.ID+"/messages", map[string]string{"content": "m2"}, auth1.Token)
-	if send1.Status != http.StatusCreated || send2.Status != http.StatusCreated {
-		t.Fatalf("send messages expected 201, got [%d, %d]", send1.Status, send2.Status)
-	}
-
-	getMessages := doRequest(t, router, http.MethodGet, "/chats/"+auth2.User.ID+"/messages?limit=1", nil, auth1.Token)
-	if getMessages.Status != http.StatusOK {
-		t.Fatalf("get messages with limit expected 200, got %d body=%s", getMessages.Status, string(getMessages.Body))
-	}
-	var payload chatMessagesResponse
-	if err := json.Unmarshal(getMessages.Body, &payload); err != nil {
-		t.Fatalf("unmarshal messages payload: %v", err)
-	}
-	if len(payload.Messages) != 1 {
-		t.Fatalf("expected exactly 1 message with limit=1, got %d", len(payload.Messages))
-	}
-}
-
-func TestPostsCommentsNotificationsAndFilesFlow(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	email := uniqueEmail("content_flow")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email})
-
-	register := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    email,
-		"password": password,
-	}, "")
-	if register.Status != http.StatusCreated {
-		t.Fatalf("register expected 201, got %d body=%s", register.Status, string(register.Body))
-	}
-
-	var auth authResponse
-	if err := json.Unmarshal(register.Body, &auth); err != nil {
-		t.Fatalf("unmarshal register: %v", err)
-	}
-
-	createPost := doRequest(t, router, http.MethodPost, "/posts", map[string]string{
-		"title": "First boilerplate post",
-		"body":  "This is a generic post body.",
-	}, auth.Token)
-	if createPost.Status != http.StatusCreated {
-		t.Fatalf("create post expected 201, got %d body=%s", createPost.Status, string(createPost.Body))
-	}
-
-	var createdPost postResponse
-	if err := json.Unmarshal(createPost.Body, &createdPost); err != nil {
-		t.Fatalf("unmarshal create post: %v", err)
-	}
-	if createdPost.ID == "" || createdPost.AuthorUserID != auth.User.ID {
-		t.Fatalf("unexpected created post payload: %+v", createdPost)
-	}
-
-	listPosts := doRequest(t, router, http.MethodGet, "/posts", nil, auth.Token)
-	if listPosts.Status != http.StatusOK {
-		t.Fatalf("list posts expected 200, got %d body=%s", listPosts.Status, string(listPosts.Body))
-	}
-	var postsPayload postsResponse
-	if err := json.Unmarshal(listPosts.Body, &postsPayload); err != nil {
-		t.Fatalf("unmarshal list posts: %v", err)
-	}
-	if !containsPost(postsPayload.Posts, createdPost.ID) {
-		t.Fatalf("expected posts list to contain created post")
-	}
-
-	getPost := doRequest(t, router, http.MethodGet, "/posts/"+createdPost.ID, nil, auth.Token)
-	if getPost.Status != http.StatusOK {
-		t.Fatalf("get post expected 200, got %d body=%s", getPost.Status, string(getPost.Body))
-	}
-	var fetchedPost postResponse
-	if err := json.Unmarshal(getPost.Body, &fetchedPost); err != nil {
-		t.Fatalf("unmarshal get post: %v", err)
-	}
-	if fetchedPost.ID != createdPost.ID {
-		t.Fatalf("expected fetched post id %s, got %s", createdPost.ID, fetchedPost.ID)
-	}
-
-	createComment := doRequest(t, router, http.MethodPost, "/posts/"+createdPost.ID+"/comments", map[string]string{
-		"content": "First comment on the post",
-	}, auth.Token)
-	if createComment.Status != http.StatusCreated {
-		t.Fatalf("create comment expected 201, got %d body=%s", createComment.Status, string(createComment.Body))
-	}
-
-	var createdComment commentResponse
-	if err := json.Unmarshal(createComment.Body, &createdComment); err != nil {
-		t.Fatalf("unmarshal create comment: %v", err)
-	}
-	if createdComment.PostID != createdPost.ID {
-		t.Fatalf("expected comment post id %s, got %s", createdPost.ID, createdComment.PostID)
-	}
-
-	listComments := doRequest(t, router, http.MethodGet, "/posts/"+createdPost.ID+"/comments", nil, auth.Token)
-	if listComments.Status != http.StatusOK {
-		t.Fatalf("list comments expected 200, got %d body=%s", listComments.Status, string(listComments.Body))
-	}
-	var commentsPayload commentsResponse
-	if err := json.Unmarshal(listComments.Body, &commentsPayload); err != nil {
-		t.Fatalf("unmarshal list comments: %v", err)
-	}
-	if !containsComment(commentsPayload.Comments, createdComment.ID) {
-		t.Fatalf("expected comments list to contain created comment")
-	}
-
-	createNotification := doRequest(t, router, http.MethodPost, "/notifications", map[string]string{
-		"type":  "system",
-		"title": "Welcome",
-		"body":  "Your workspace is ready.",
-	}, auth.Token)
-	if createNotification.Status != http.StatusCreated {
-		t.Fatalf("create notification expected 201, got %d body=%s", createNotification.Status, string(createNotification.Body))
-	}
-
-	var createdNotification notificationResponse
-	if err := json.Unmarshal(createNotification.Body, &createdNotification); err != nil {
-		t.Fatalf("unmarshal create notification: %v", err)
-	}
-	if createdNotification.UserID != auth.User.ID || createdNotification.IsRead {
-		t.Fatalf("unexpected notification payload: %+v", createdNotification)
-	}
-
-	listNotifications := doRequest(t, router, http.MethodGet, "/notifications", nil, auth.Token)
-	if listNotifications.Status != http.StatusOK {
-		t.Fatalf("list notifications expected 200, got %d body=%s", listNotifications.Status, string(listNotifications.Body))
-	}
-	var notificationsPayload notificationsResponse
-	if err := json.Unmarshal(listNotifications.Body, &notificationsPayload); err != nil {
-		t.Fatalf("unmarshal list notifications: %v", err)
-	}
-	if !containsNotification(notificationsPayload.Notifications, createdNotification.ID) {
-		t.Fatalf("expected notifications list to contain created notification")
-	}
-
-	markRead := doRequest(t, router, http.MethodPost, "/notifications/"+createdNotification.ID+"/read", nil, auth.Token)
-	if markRead.Status != http.StatusOK {
-		t.Fatalf("mark notification read expected 200, got %d body=%s", markRead.Status, string(markRead.Body))
-	}
-	var readNotification notificationResponse
-	if err := json.Unmarshal(markRead.Body, &readNotification); err != nil {
-		t.Fatalf("unmarshal mark read: %v", err)
-	}
-	if !readNotification.IsRead || readNotification.ReadAt == nil {
-		t.Fatalf("expected notification to be marked as read, got %+v", readNotification)
-	}
-
-	createFile := doRequest(t, router, http.MethodPost, "/files", map[string]any{
-		"filename":   "document.txt",
-		"mimeType":   "text/plain",
-		"sizeBytes":  128,
-		"storageKey": "uploads/document.txt",
-	}, auth.Token)
-	if createFile.Status != http.StatusCreated {
-		t.Fatalf("create file expected 201, got %d body=%s", createFile.Status, string(createFile.Body))
-	}
-
-	var createdFile fileResponse
-	if err := json.Unmarshal(createFile.Body, &createdFile); err != nil {
-		t.Fatalf("unmarshal create file: %v", err)
-	}
-	if createdFile.OwnerUserID != auth.User.ID || createdFile.ID == "" {
-		t.Fatalf("unexpected file payload: %+v", createdFile)
-	}
-
-	listFiles := doRequest(t, router, http.MethodGet, "/files", nil, auth.Token)
-	if listFiles.Status != http.StatusOK {
-		t.Fatalf("list files expected 200, got %d body=%s", listFiles.Status, string(listFiles.Body))
-	}
-	var filesPayload filesResponse
-	if err := json.Unmarshal(listFiles.Body, &filesPayload); err != nil {
-		t.Fatalf("unmarshal list files: %v", err)
-	}
-	if !containsFile(filesPayload.Files, createdFile.ID) {
-		t.Fatalf("expected files list to contain created file")
-	}
-
-	getFile := doRequest(t, router, http.MethodGet, "/files/"+createdFile.ID, nil, auth.Token)
-	if getFile.Status != http.StatusOK {
-		t.Fatalf("get file expected 200, got %d body=%s", getFile.Status, string(getFile.Body))
-	}
-	var fetchedFile fileResponse
-	if err := json.Unmarshal(getFile.Body, &fetchedFile); err != nil {
-		t.Fatalf("unmarshal get file: %v", err)
-	}
-	if fetchedFile.ID != createdFile.ID || fetchedFile.StorageKey != createdFile.StorageKey {
-		t.Fatalf("unexpected fetched file payload: %+v", fetchedFile)
-	}
-}
-
-func TestTenantIsolationAcrossUsersPostsAndChats(t *testing.T) {
-	router, pool := setupTestRouter(t)
-	defer pool.Close()
-
-	defaultEmail := uniqueEmail("tenant_default")
-	otherEmail := uniqueEmail("tenant_other")
-	password := "Password123"
-
-	otherOrgID := createOrganization(t, pool, "tenant-isolation", "Tenant Isolation Workspace")
-	defer cleanupOrganizations(t, pool, []string{otherOrgID})
-	defer cleanupUsers(t, pool, []string{defaultEmail, otherEmail})
-
-	registerDefault := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    defaultEmail,
-		"password": password,
-	}, "")
-	registerOther := doRequest(t, router, http.MethodPost, "/auth/register", map[string]string{
-		"email":    otherEmail,
-		"password": password,
-	}, "")
-	if registerDefault.Status != http.StatusCreated || registerOther.Status != http.StatusCreated {
-		t.Fatalf("registers expected 201, got [%d, %d]", registerDefault.Status, registerOther.Status)
-	}
-
-	var defaultAuth authResponse
-	var otherAuth authResponse
-	if err := json.Unmarshal(registerDefault.Body, &defaultAuth); err != nil {
-		t.Fatalf("unmarshal default auth: %v", err)
-	}
-	if err := json.Unmarshal(registerOther.Body, &otherAuth); err != nil {
-		t.Fatalf("unmarshal other auth: %v", err)
-	}
-
-	moveUserToOrganization(t, pool, otherAuth.User.ID, otherOrgID)
-
-	loginOther := doRequest(t, router, http.MethodPost, "/auth/login", map[string]string{
-		"email":    otherEmail,
-		"password": password,
-	}, "")
-	if loginOther.Status != http.StatusOK {
-		t.Fatalf("other org login expected 200, got %d body=%s", loginOther.Status, string(loginOther.Body))
-	}
-	if err := json.Unmarshal(loginOther.Body, &otherAuth); err != nil {
-		t.Fatalf("unmarshal other login auth: %v", err)
-	}
-	if otherAuth.User.OrganizationID != otherOrgID {
-		t.Fatalf("expected moved user organization %s, got %s", otherOrgID, otherAuth.User.OrganizationID)
-	}
-
-	createForeignPost := doRequest(t, router, http.MethodPost, "/posts", map[string]string{
-		"title": "Other org post",
-		"body":  "This should stay inside its tenant.",
-	}, otherAuth.Token)
-	if createForeignPost.Status != http.StatusCreated {
-		t.Fatalf("other org create post expected 201, got %d body=%s", createForeignPost.Status, string(createForeignPost.Body))
-	}
-	var foreignPost postResponse
-	if err := json.Unmarshal(createForeignPost.Body, &foreignPost); err != nil {
-		t.Fatalf("unmarshal foreign post: %v", err)
-	}
-
-	usersList := doRequest(t, router, http.MethodGet, "/users", nil, defaultAuth.Token)
-	if usersList.Status != http.StatusOK {
-		t.Fatalf("/users expected 200, got %d body=%s", usersList.Status, string(usersList.Body))
-	}
-	var usersPayload usersResponse
-	if err := json.Unmarshal(usersList.Body, &usersPayload); err != nil {
-		t.Fatalf("unmarshal /users payload: %v", err)
-	}
-	if containsUser(usersPayload.Users, otherAuth.User.ID) {
-		t.Fatalf("expected cross-tenant user to be hidden from /users")
-	}
-
-	userByID := doRequest(t, router, http.MethodGet, "/users/"+otherAuth.User.ID, nil, defaultAuth.Token)
-	if userByID.Status != http.StatusNotFound {
-		t.Fatalf("cross-tenant /users/:id expected 404, got %d body=%s", userByID.Status, string(userByID.Body))
-	}
-
-	listPosts := doRequest(t, router, http.MethodGet, "/posts", nil, defaultAuth.Token)
-	if listPosts.Status != http.StatusOK {
-		t.Fatalf("/posts expected 200, got %d body=%s", listPosts.Status, string(listPosts.Body))
-	}
-	var postsPayload postsResponse
-	if err := json.Unmarshal(listPosts.Body, &postsPayload); err != nil {
-		t.Fatalf("unmarshal /posts payload: %v", err)
-	}
-	if containsPost(postsPayload.Posts, foreignPost.ID) {
-		t.Fatalf("expected cross-tenant post to be hidden from /posts")
-	}
-
-	getForeignPost := doRequest(t, router, http.MethodGet, "/posts/"+foreignPost.ID, nil, defaultAuth.Token)
-	if getForeignPost.Status != http.StatusNotFound {
-		t.Fatalf("cross-tenant /posts/:id expected 404, got %d body=%s", getForeignPost.Status, string(getForeignPost.Body))
-	}
-
-	listForeignComments := doRequest(t, router, http.MethodGet, "/posts/"+foreignPost.ID+"/comments", nil, defaultAuth.Token)
-	if listForeignComments.Status != http.StatusNotFound {
-		t.Fatalf("cross-tenant /posts/:id/comments expected 404, got %d body=%s", listForeignComments.Status, string(listForeignComments.Body))
-	}
-
-	sendCrossTenantMessage := doRequest(t, router, http.MethodPost, "/chats/"+otherAuth.User.ID+"/messages", map[string]string{
-		"content": "should not cross tenants",
-	}, defaultAuth.Token)
-	if sendCrossTenantMessage.Status != http.StatusNotFound {
-		t.Fatalf("cross-tenant chat send expected 404, got %d body=%s", sendCrossTenantMessage.Status, string(sendCrossTenantMessage.Body))
-	}
-}
-
-func setupTestRouter(t *testing.T) (*gin.Engine, *pgxpool.Pool) {
+func newEnv(t *testing.T, rateLimit bool) *env {
 	t.Helper()
-
-	databaseURL := os.Getenv("DATABASE_URL_TEST")
-	if databaseURL == "" {
-		databaseURL = os.Getenv("DATABASE_URL")
-	}
-	if databaseURL == "" {
-		t.Skip("skip integration tests: DATABASE_URL_TEST or DATABASE_URL must be set")
-	}
-
-	pool, err := db.Connect(context.Background(), databaseURL)
+	gin.SetMode(gin.TestMode)
+	pool := dbtest.New(t)
+	dir := t.TempDir()
+	files, err := storage.NewLocal(dir)
 	if err != nil {
-		t.Skipf("skip integration tests: postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
-
-	if err := db.RunMigrations(context.Background(), pool); err != nil {
-		pool.Close()
-		t.Fatalf("run migrations: %v", err)
-	}
-
-	a := &app{
-		dbPool:    pool,
-		jwtSecret: []byte("integration-test-secret"),
-	}
-
-	return setupRouter(a), pool
+	mail := &mailer.Memory{}
+	router := app.NewRouter(app.Options{
+		Pool: pool, JWTSecret: []byte(testSecret), Storage: files, Mailer: mail, RateLimit: rateLimit,
+	})
+	return &env{t: t, router: router, pool: pool, mail: mail, dir: dir}
 }
 
-func doRequest(t *testing.T, handler http.Handler, method, path string, payload any, token string) testResponse {
-	t.Helper()
-
-	var bodyBytes []byte
-	var err error
-	if payload != nil {
-		bodyBytes, err = json.Marshal(payload)
-		if err != nil {
-			t.Fatalf("marshal payload: %v", err)
-		}
-	}
-
-	req := httptest.NewRequest(method, path, bytes.NewReader(bodyBytes))
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
+func (e *env) raw(method, path, token string, body []byte, contentType string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, bytes.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	return testResponse{Status: rec.Code, Body: rec.Body.Bytes()}
+	e.router.ServeHTTP(rec, req)
+	return rec
 }
 
-func uniqueEmail(prefix string) string {
-	return prefix + "_" + time.Now().UTC().Format("20060102150405.000000000") + "@boilerplate.test"
+// call sends a JSON request and decodes the JSON response (if any).
+func (e *env) call(method, path, token string, body any) (int, map[string]any) {
+	e.t.Helper()
+	var payload []byte
+	if body != nil {
+		payload, _ = json.Marshal(body)
+	}
+	rec := e.raw(method, path, token, payload, "application/json")
+	out := map[string]any{}
+	if rec.Body.Len() > 0 && strings.Contains(rec.Header().Get("Content-Type"), "json") {
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			e.t.Fatalf("%s %s: bad json %q: %v", method, path, rec.Body.String(), err)
+		}
+	}
+	return rec.Code, out
 }
 
-func cleanupUsers(t *testing.T, pool *pgxpool.Pool, emails []string) {
+func (e *env) expect(want int, method, path, token string, body any) map[string]any {
+	e.t.Helper()
+	status, out := e.call(method, path, token, body)
+	if status != want {
+		e.t.Fatalf("%s %s: want %d got %d (%v)", method, path, want, status, out)
+	}
+	return out
+}
+
+func (e *env) upload(token, path, method string, data []byte) (int, map[string]any) {
+	e.t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", `form-data; name="file"; filename="photo.jpg"`)
+	h.Set("Content-Type", "image/jpeg") // deliberately lies about the type for non-images
+	part, _ := w.CreatePart(h)
+	_, _ = part.Write(data)
+	_ = w.Close()
+	rec := e.raw(method, path, token, buf.Bytes(), w.FormDataContentType())
+	out := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+func testImage(w, h int, asPNG bool) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 255 / w), G: uint8(y * 255 / h), B: 120, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if asPNG {
+		_ = png.Encode(&buf, img)
+	} else {
+		_ = jpeg.Encode(&buf, img, nil)
+	}
+	return buf.Bytes()
+}
+
+func (e *env) register(email string) user {
+	e.t.Helper()
+	out := e.expect(http.StatusCreated, "POST", "/auth/register", "", map[string]string{"email": email, "password": "correct-horse-1"})
+	u := out["user"].(map[string]any)
+	return user{ID: u["id"].(string), Token: out["accessToken"].(string), Email: email}
+}
+
+type profileSpec struct {
+	name    string
+	gender  string
+	seeking []string
+	born    string
+	lat     float64
+	lon     float64
+	ageMin  int
+	ageMax  int
+	maxKm   *int
+}
+
+func (e *env) profileBody(p profileSpec) map[string]any {
+	if p.ageMin == 0 {
+		p.ageMin = 18
+	}
+	if p.ageMax == 0 {
+		p.ageMax = 99
+	}
+	return map[string]any{
+		"firstName": p.name, "birthDate": p.born, "gender": p.gender, "bio": "Hello, I like long walks.",
+		"city": "Lyon", "latitude": p.lat, "longitude": p.lon, "interests": []string{"travel", "music"},
+		"preferences": map[string]any{"interestedIn": p.seeking, "ageMin": p.ageMin, "ageMax": p.ageMax, "maxDistanceKm": p.maxKm},
+	}
+}
+
+// onboard registers a user, completes the profile and uploads one photo.
+func (e *env) onboard(email string, p profileSpec) user {
+	e.t.Helper()
+	u := e.register(email)
+	e.expect(http.StatusOK, "PUT", "/me/profile", u.Token, e.profileBody(p))
+	status, out := e.upload(u.Token, "/me/photos", "POST", testImage(600, 800, false))
+	if status != http.StatusCreated {
+		e.t.Fatalf("upload photo: %d %v", status, out)
+	}
+	return u
+}
+
+func ptr(i int) *int { return &i }
+
+func TestHealth(t *testing.T) {
+	e := newEnv(t, false)
+	e.expect(http.StatusOK, "GET", "/health", "", nil)
+}
+
+func TestAuthLifecycle(t *testing.T) {
+	e := newEnv(t, false)
+
+	e.expect(http.StatusBadRequest, "POST", "/auth/register", "", map[string]string{"email": "not-an-email", "password": "correct-horse-1"})
+	e.expect(http.StatusBadRequest, "POST", "/auth/register", "", map[string]string{"email": "a@b.io", "password": "short"})
+	e.expect(http.StatusBadRequest, "POST", "/auth/register", "", map[string]string{"email": "a@b.io", "password": strings.Repeat("x", 100)})
+
+	reg := e.expect(http.StatusCreated, "POST", "/auth/register", "", map[string]string{"email": "  Alice@Example.IO ", "password": "correct-horse-1"})
+	if reg["user"].(map[string]any)["email"] != "alice@example.io" {
+		t.Fatalf("email must be trimmed and lower-cased: %v", reg["user"])
+	}
+	e.expect(http.StatusConflict, "POST", "/auth/register", "", map[string]string{"email": "alice@example.io", "password": "correct-horse-1"})
+
+	e.expect(http.StatusUnauthorized, "POST", "/auth/login", "", map[string]string{"email": "alice@example.io", "password": "wrong-password"})
+	e.expect(http.StatusUnauthorized, "POST", "/auth/login", "", map[string]string{"email": "nobody@example.io", "password": "correct-horse-1"})
+	login := e.expect(http.StatusOK, "POST", "/auth/login", "", map[string]string{"email": "ALICE@example.io", "password": "correct-horse-1"})
+
+	token := login["accessToken"].(string)
+	me := e.expect(http.StatusOK, "GET", "/me", token, nil)
+	if me["email"] != "alice@example.io" {
+		t.Fatalf("unexpected me: %v", me)
+	}
+	if _, leaked := me["passwordHash"]; leaked {
+		t.Fatal("password hash must never be serialised")
+	}
+	e.expect(http.StatusUnauthorized, "GET", "/me", "", nil)
+	e.expect(http.StatusUnauthorized, "GET", "/me", "garbage", nil)
+
+	// Refresh rotates the token: the old one stops working (replay protection).
+	oldRefresh := login["refreshToken"].(string)
+	next := e.expect(http.StatusOK, "POST", "/auth/refresh", "", map[string]string{"refreshToken": oldRefresh})
+	if next["refreshToken"] == oldRefresh {
+		t.Fatal("refresh token must rotate")
+	}
+	e.expect(http.StatusUnauthorized, "POST", "/auth/refresh", "", map[string]string{"refreshToken": oldRefresh})
+
+	e.expect(http.StatusNoContent, "POST", "/auth/logout", "", map[string]string{"refreshToken": next["refreshToken"].(string)})
+	e.expect(http.StatusUnauthorized, "POST", "/auth/refresh", "", map[string]string{"refreshToken": next["refreshToken"].(string)})
+}
+
+func TestPasswordRecoveryAndChange(t *testing.T) {
+	e := newEnv(t, false)
+	u := e.register("carol@example.io")
+
+	// Unknown addresses get the same answer and no mail.
+	e.expect(http.StatusAccepted, "POST", "/auth/password/forgot", "", map[string]string{"email": "ghost@example.io"})
+	e.expect(http.StatusAccepted, "POST", "/auth/password/forgot", "", map[string]string{"email": "carol@example.io"})
+
+	var code string
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && code == "" {
+		for _, m := range e.mail.Messages() {
+			if m.To == "carol@example.io" {
+				i := strings.Index(m.Body, "code is ")
+				code = m.Body[i+len("code is ") : i+len("code is ")+8]
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if code == "" {
+		t.Fatal("reset mail was not sent")
+	}
+	if n := len(e.mail.Messages()); n != 1 {
+		t.Fatalf("exactly one mail expected, got %d", n)
+	}
+
+	e.expect(http.StatusBadRequest, "POST", "/auth/password/reset", "", map[string]string{"email": "carol@example.io", "code": "AAAAAAAA", "newPassword": "brand-new-pass-1"})
+	e.expect(http.StatusBadRequest, "POST", "/auth/password/reset", "", map[string]string{"email": "carol@example.io", "code": code, "newPassword": "short"})
+	e.expect(http.StatusNoContent, "POST", "/auth/password/reset", "", map[string]string{"email": "carol@example.io", "code": strings.ToLower(code), "newPassword": "brand-new-pass-1"})
+	// A code works once.
+	e.expect(http.StatusBadRequest, "POST", "/auth/password/reset", "", map[string]string{"email": "carol@example.io", "code": code, "newPassword": "another-pass-12"})
+
+	e.expect(http.StatusUnauthorized, "POST", "/auth/login", "", map[string]string{"email": "carol@example.io", "password": "correct-horse-1"})
+	login := e.expect(http.StatusOK, "POST", "/auth/login", "", map[string]string{"email": "carol@example.io", "password": "brand-new-pass-1"})
+	_ = u
+
+	token := login["accessToken"].(string)
+	e.expect(http.StatusForbidden, "POST", "/me/password", token, map[string]string{"currentPassword": "nope-nope-nope", "newPassword": "yet-another-1"})
+	e.expect(http.StatusNoContent, "POST", "/me/password", token, map[string]string{"currentPassword": "brand-new-pass-1", "newPassword": "yet-another-1"})
+	e.expect(http.StatusOK, "POST", "/auth/login", "", map[string]string{"email": "carol@example.io", "password": "yet-another-1"})
+}
+
+func TestResetCodeLockoutAfterTooManyAttempts(t *testing.T) {
+	e := newEnv(t, false)
+	e.register("dan@example.io")
+	e.expect(http.StatusAccepted, "POST", "/auth/password/forgot", "", map[string]string{"email": "dan@example.io"})
+	for i := 0; i < 6; i++ {
+		e.expect(http.StatusBadRequest, "POST", "/auth/password/reset", "", map[string]string{"email": "dan@example.io", "code": "ZZZZZZZZ", "newPassword": "brand-new-pass-1"})
+	}
+	var attempts int
+	if err := e.pool.QueryRow(t.Context(), `SELECT max(attempts) FROM password_resets`).Scan(&attempts); err != nil || attempts != 5 {
+		t.Fatalf("attempts must stop at 5, got %d (%v)", attempts, err)
+	}
+}
+
+func TestRateLimitOnAuthEndpoints(t *testing.T) {
+	e := newEnv(t, true)
+	limited := false
+	for i := 0; i < 30; i++ {
+		status, _ := e.call("POST", "/auth/login", "", map[string]string{"email": "x@example.io", "password": "whatever-pass"})
+		if status == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Fatal("login must be rate limited")
+	}
+}
+
+func TestProfileValidationAndPrivacy(t *testing.T) {
+	e := newEnv(t, false)
+	u := e.register("eve@example.io")
+
+	e.expect(http.StatusNotFound, "GET", "/me/profile", u.Token, nil)
+
+	base := profileSpec{name: "Eve", gender: "woman", seeking: []string{"man"}, born: "1995-04-12", lat: 45.7640, lon: 4.8357}
+	underage := base
+	underage.born = time.Now().AddDate(-17, 0, 0).Format("2006-01-02")
+	e.expect(http.StatusForbidden, "PUT", "/me/profile", u.Token, e.profileBody(underage))
+
+	badName := base
+	badName.name = "<script>alert(1)</script>"
+	e.expect(http.StatusUnprocessableEntity, "PUT", "/me/profile", u.Token, e.profileBody(badName))
+
+	badDate := base
+	badDate.born = "12/04/1995"
+	e.expect(http.StatusUnprocessableEntity, "PUT", "/me/profile", u.Token, e.profileBody(badDate))
+
+	body := e.profileBody(base)
+	body["interests"] = []string{"travel", "not-an-interest"}
+	e.expect(http.StatusUnprocessableEntity, "PUT", "/me/profile", u.Token, body)
+
+	body = e.profileBody(base)
+	body["preferences"] = map[string]any{"interestedIn": []string{"man"}, "ageMin": 40, "ageMax": 30}
+	e.expect(http.StatusUnprocessableEntity, "PUT", "/me/profile", u.Token, body)
+
+	body = e.profileBody(base)
+	body["latitude"] = 123.0
+	e.expect(http.StatusBadRequest, "PUT", "/me/profile", u.Token, body)
+
+	got := e.expect(http.StatusOK, "PUT", "/me/profile", u.Token, e.profileBody(base))
+	if got["latitude"].(float64) != 45.76 || got["longitude"].(float64) != 4.84 {
+		t.Fatalf("coordinates must be rounded to 2 decimals, got %v,%v", got["latitude"], got["longitude"])
+	}
+	if got["age"].(float64) < 18 || len(got["interests"].([]any)) != 2 {
+		t.Fatalf("unexpected profile: %v", got)
+	}
+
+	e.expect(http.StatusOK, "PATCH", "/me/settings", u.Token, map[string]any{"isVisible": false})
+	e.expect(http.StatusBadRequest, "PATCH", "/me/settings", u.Token, map[string]any{})
+	if got := e.expect(http.StatusOK, "GET", "/me/profile", u.Token, nil); got["isVisible"] != false {
+		t.Fatalf("visibility not updated: %v", got)
+	}
+	cat := e.expect(http.StatusOK, "GET", "/interests", u.Token, nil)
+	if len(cat["interests"].([]any)) < 10 {
+		t.Fatal("interest catalog is empty")
+	}
+}
+
+func TestPhotoLifecycleAndSafety(t *testing.T) {
+	e := newEnv(t, false)
+	u := e.register("fay@example.io")
+	other := e.register("gus@example.io")
+	e.expect(http.StatusOK, "PUT", "/me/profile", u.Token, e.profileBody(profileSpec{name: "Fay", gender: "woman", seeking: []string{"man"}, born: "1994-01-01", lat: 45.76, lon: 4.84}))
+
+	// Dangerous or invalid uploads are refused even when the client lies about the type.
+	if status, _ := e.upload(u.Token, "/me/photos", "POST", []byte("<?php system($_GET['c']); ?>")); status != http.StatusUnprocessableEntity {
+		t.Fatalf("script upload must be rejected, got %d", status)
+	}
+	if status, _ := e.upload(u.Token, "/me/photos", "POST", append([]byte("GIF89a"), make([]byte, 600)...)); status != http.StatusUnprocessableEntity {
+		t.Fatalf("gif must be rejected, got %d", status)
+	}
+	if status, _ := e.upload(u.Token, "/me/photos", "POST", testImage(50, 50, true)); status != http.StatusUnprocessableEntity {
+		t.Fatalf("tiny image must be rejected, got %d", status)
+	}
+	if status, _ := e.upload(u.Token, "/me/photos", "POST", bytes.Repeat([]byte{0xff}, 9<<20)); status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized upload must be rejected, got %d", status)
+	}
+	if status, _ := e.upload("", "/me/photos", "POST", testImage(400, 400, false)); status != http.StatusUnauthorized {
+		t.Fatalf("anonymous upload must be rejected, got %d", status)
+	}
+
+	var ids []string
+	for i := 0; i < 6; i++ {
+		status, out := e.upload(u.Token, "/me/photos", "POST", testImage(900, 1200, i%2 == 0))
+		if status != http.StatusCreated {
+			t.Fatalf("upload %d: %d %v", i, status, out)
+		}
+		if int(out["position"].(float64)) != i {
+			t.Fatalf("position %d expected, got %v", i, out["position"])
+		}
+		ids = append(ids, out["id"].(string))
+	}
+	if status, _ := e.upload(u.Token, "/me/photos", "POST", testImage(400, 400, false)); status != http.StatusConflict {
+		t.Fatalf("7th photo must be refused, got %d", status)
+	}
+
+	// Stored files are re-encoded JPEGs bounded in size, served through signed URLs.
+	list := e.expect(http.StatusOK, "GET", "/me/photos", u.Token, nil)["photos"].([]any)
+	first := list[0].(map[string]any)
+	if int(first["width"].(float64)) > 1280 || int(first["height"].(float64)) > 1280 {
+		t.Fatalf("photo must be downscaled: %v", first)
+	}
+	url := first["url"].(string)
+	rec := e.raw("GET", url, "", nil, "")
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/jpeg" || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("signed url must serve a jpeg: %d %v", rec.Code, rec.Header())
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(rec.Body.Bytes())); err != nil {
+		t.Fatalf("served file is not a jpeg: %v", err)
+	}
+	if rec := e.raw("GET", strings.Replace(url, "sig=", "sig=x", 1), "", nil, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("tampered signature must 404, got %d", rec.Code)
+	}
+	if rec := e.raw("GET", strings.Split(url, "?")[0], "", nil, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("unsigned url must 404, got %d", rec.Code)
+	}
+	if rec := e.raw("GET", strings.Replace(url, "/full", "/original", 1), "", nil, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown variant must 404, got %d", rec.Code)
+	}
+
+	// Ownership: another user can neither delete, replace nor reorder these photos.
+	e.expect(http.StatusNotFound, "DELETE", "/me/photos/"+ids[0], other.Token, nil)
+	if status, _ := e.upload(other.Token, "/me/photos/"+ids[0], "PUT", testImage(400, 400, false)); status != http.StatusNotFound {
+		t.Fatalf("foreign replace must 404, got %d", status)
+	}
+	e.expect(http.StatusBadRequest, "PUT", "/me/photos/order", other.Token, map[string]any{"photoIds": ids})
+
+	// Reorder: last becomes primary.
+	order := append([]string{ids[5]}, ids[:5]...)
+	re := e.expect(http.StatusOK, "PUT", "/me/photos/order", u.Token, map[string]any{"photoIds": order})["photos"].([]any)
+	if re[0].(map[string]any)["id"] != ids[5] {
+		t.Fatalf("primary photo not updated: %v", re[0])
+	}
+	e.expect(http.StatusBadRequest, "PUT", "/me/photos/order", u.Token, map[string]any{"photoIds": order[:3]})
+	dup := append([]string{ids[0]}, order[1:]...)
+	dup[1] = ids[0]
+	e.expect(http.StatusBadRequest, "PUT", "/me/photos/order", u.Token, map[string]any{"photoIds": dup})
+
+	// Replace keeps position and id; delete compacts positions and removes files.
+	status, replaced := e.upload(u.Token, "/me/photos/"+ids[5], "PUT", testImage(500, 500, true))
+	if status != http.StatusOK || replaced["id"] != ids[5] {
+		t.Fatalf("replace failed: %d %v", status, replaced)
+	}
+	if rec := e.raw("GET", url, "", nil, ""); rec.Code != http.StatusOK {
+		t.Fatalf("an untouched photo keeps serving: %d", rec.Code)
+	}
+	filesBefore := countFiles(t, e.dir)
+	e.expect(http.StatusNoContent, "DELETE", "/me/photos/"+ids[5], u.Token, nil)
+	after := e.expect(http.StatusOK, "GET", "/me/photos", u.Token, nil)["photos"].([]any)
+	if len(after) != 5 {
+		t.Fatalf("5 photos expected, got %d", len(after))
+	}
+	for i, p := range after {
+		if int(p.(map[string]any)["position"].(float64)) != i {
+			t.Fatalf("positions must be compact: %v", after)
+		}
+	}
+	if got := countFiles(t, e.dir); got != filesBefore-2 {
+		t.Fatalf("deleting a photo must remove its two files: %d -> %d", filesBefore, got)
+	}
+	if rec := e.raw("GET", replaced["url"].(string), "", nil, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleted photo url should 404, got %d", rec.Code)
+	}
+}
+
+func countFiles(t *testing.T, dir string) int {
 	t.Helper()
-	_, err := pool.Exec(context.Background(), `DELETE FROM users WHERE email = ANY($1)`, emails)
-	if err != nil {
-		t.Fatalf("cleanup users: %v", err)
-	}
+	n := 0
+	_ = filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			n++
+		}
+		return nil
+	})
+	return n
 }
 
-func createOrganization(t *testing.T, pool *pgxpool.Pool, slug, name string) string {
+func discoverIDs(t *testing.T, e *env, u user) (ids []string, raw []any) {
 	t.Helper()
-	var organizationID string
-	err := pool.QueryRow(context.Background(), `
-		INSERT INTO organizations (slug, name)
-		VALUES ($1, $2)
-		RETURNING id
-	`, slug, name).Scan(&organizationID)
-	if err != nil {
-		t.Fatalf("create organization: %v", err)
+	out := e.expect(http.StatusOK, "GET", "/discover?limit=20", u.Token, nil)
+	for _, p := range out["profiles"].([]any) {
+		raw = append(raw, p)
+		ids = append(ids, p.(map[string]any)["userId"].(string))
 	}
-	return organizationID
+	return
 }
 
-func moveUserToOrganization(t *testing.T, pool *pgxpool.Pool, userID, organizationID string) {
+func contains(list []string, id string) bool {
+	for _, v := range list {
+		if v == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDiscoveryRulesAndMatching(t *testing.T) {
+	e := newEnv(t, false)
+	lyon := profileSpec{lat: 45.76, lon: 4.84}
+
+	alice := e.onboard("alice@example.io", profileSpec{name: "Alice", gender: "woman", seeking: []string{"man"}, born: "1994-05-05", lat: lyon.lat, lon: lyon.lon, maxKm: ptr(50)})
+	bob := e.onboard("bob@example.io", profileSpec{name: "Bob", gender: "man", seeking: []string{"woman"}, born: "1992-03-03", lat: 45.80, lon: 4.90})
+	carl := e.onboard("carl@example.io", profileSpec{name: "Carl", gender: "man", seeking: []string{"man"}, born: "1992-03-03", lat: lyon.lat, lon: lyon.lon})   // not interested in women
+	dave := e.onboard("dave@example.io", profileSpec{name: "Dave", gender: "man", seeking: []string{"woman"}, born: "1992-03-03", lat: 48.85, lon: 2.35})        // Paris: beyond Alice's 50 km
+	erik := e.onboard("erik@example.io", profileSpec{name: "Erik", gender: "man", seeking: []string{"woman"}, born: "1970-03-03", lat: lyon.lat, lon: lyon.lon}) // 54: Alice's range is 18-99 but Erik wants 18-40
+	_ = erik
+	e.expect(http.StatusOK, "PUT", "/me/profile", e.register("tmp@example.io").Token, e.profileBody(profileSpec{name: "Tmp", gender: "man", seeking: []string{"woman"}, born: "1992-03-03", lat: lyon.lat, lon: lyon.lon})) // no photo
+	hidden := e.onboard("hidden@example.io", profileSpec{name: "Hid", gender: "man", seeking: []string{"woman"}, born: "1992-03-03", lat: lyon.lat, lon: lyon.lon})
+	e.expect(http.StatusOK, "PATCH", "/me/settings", hidden.Token, map[string]any{"isVisible": false})
+
+	// Erik only wants people up to 40 years old: re-save his preferences.
+	body := e.profileBody(profileSpec{name: "Erik", gender: "man", seeking: []string{"woman"}, born: "1970-03-03", lat: lyon.lat, lon: lyon.lon, ageMin: 18, ageMax: 40})
+	e.expect(http.StatusOK, "PUT", "/me/profile", erik.Token, body)
+
+	ids, raw := discoverIDs(t, e, alice)
+	if len(ids) != 2 || !contains(ids, bob.ID) || !contains(ids, erik.ID) {
+		// Erik is 56 and Alice's range is 18-99 but Erik wants <=40 while Alice is 31: he IS eligible.
+		t.Fatalf("alice should see bob and erik only, got %v", ids)
+	}
+	for _, id := range []string{carl.ID, dave.ID, hidden.ID, alice.ID} {
+		if contains(ids, id) {
+			t.Fatalf("user %s must not be discoverable by alice", id)
+		}
+	}
+	// No exact location or personal identifiers leak.
+	for _, p := range raw {
+		blob, _ := json.Marshal(p)
+		for _, forbidden := range []string{"latitude", "longitude", "birthDate", "email", "isVisible"} {
+			if strings.Contains(string(blob), forbidden) {
+				t.Fatalf("public profile leaks %q: %s", forbidden, blob)
+			}
+		}
+		if d := p.(map[string]any)["distanceKm"]; d == nil {
+			t.Fatal("distance should be shown")
+		}
+	}
+
+	// A profile that is not discoverable cannot be fetched or swiped on.
+	e.expect(http.StatusNotFound, "GET", "/profiles/"+dave.ID, alice.Token, nil)
+	e.expect(http.StatusNotFound, "POST", "/swipes", alice.Token, map[string]any{"userId": dave.ID, "action": "like"})
+	e.expect(http.StatusNotFound, "POST", "/swipes", alice.Token, map[string]any{"userId": alice.ID, "action": "like"})
+	e.expect(http.StatusBadRequest, "POST", "/swipes", alice.Token, map[string]any{"userId": bob.ID, "action": "superlike"})
+	e.expect(http.StatusBadRequest, "POST", "/swipes", alice.Token, map[string]any{"userId": "nope", "action": "like"})
+
+	// Erik has not liked Alice yet: a like is not a match, and bob/erik reciprocity differs.
+	e.expect(http.StatusOK, "GET", "/profiles/"+bob.ID, alice.Token, nil)
+	res := e.expect(http.StatusOK, "POST", "/swipes", alice.Token, map[string]any{"userId": bob.ID, "action": "like"})
+	if res["matched"] != false {
+		t.Fatal("a one-sided like must not match")
+	}
+	e.expect(http.StatusConflict, "POST", "/swipes", alice.Token, map[string]any{"userId": bob.ID, "action": "like"})
+	e.expect(http.StatusConflict, "POST", "/swipes", alice.Token, map[string]any{"userId": bob.ID, "action": "pass"})
+	e.expect(http.StatusOK, "POST", "/swipes", alice.Token, map[string]any{"userId": erik.ID, "action": "pass"})
+	if ids, _ := discoverIDs(t, e, alice); len(ids) != 0 {
+		t.Fatalf("handled profiles must not reappear, got %v", ids)
+	}
+
+	// Bob sees Alice, likes her back: match with a conversation, notifications for both.
+	if ids, _ := discoverIDs(t, e, bob); !contains(ids, alice.ID) {
+		t.Fatal("bob should see alice")
+	}
+	res = e.expect(http.StatusOK, "POST", "/swipes", bob.Token, map[string]any{"userId": alice.ID, "action": "like"})
+	if res["matched"] != true {
+		t.Fatalf("reciprocal like must match: %v", res)
+	}
+	match := res["match"].(map[string]any)
+	if match["conversationId"] == "" || match["user"].(map[string]any)["firstName"] != "Alice" {
+		t.Fatalf("unexpected match payload: %v", match)
+	}
+	var matches int
+	_ = e.pool.QueryRow(t.Context(), `SELECT count(*) FROM matches`).Scan(&matches)
+	if matches != 1 {
+		t.Fatalf("exactly one match expected, got %d", matches)
+	}
+	for _, u := range []user{alice, bob} {
+		n := e.expect(http.StatusOK, "GET", "/notifications", u.Token, nil)
+		if n["unreadCount"].(float64) != 1 || n["notifications"].([]any)[0].(map[string]any)["type"] != "match" {
+			t.Fatalf("match notification expected for %s: %v", u.Email, n)
+		}
+	}
+	// Matched people stay viewable even though they left discovery.
+	e.expect(http.StatusOK, "GET", "/profiles/"+alice.ID, bob.Token, nil)
+
+	// Passes can be revisited on request.
+	reset := e.expect(http.StatusOK, "DELETE", "/swipes/passes", alice.Token, nil)
+	if reset["reset"].(float64) != 1 {
+		t.Fatalf("one pass should reset: %v", reset)
+	}
+	if ids, _ := discoverIDs(t, e, alice); len(ids) != 1 || ids[0] != erik.ID {
+		t.Fatalf("erik should be back, got %v", ids)
+	}
+
+	// A user without photos cannot use discovery.
+	noPhoto := e.register("nophoto@example.io")
+	e.expect(http.StatusOK, "PUT", "/me/profile", noPhoto.Token, e.profileBody(profileSpec{name: "No", gender: "man", seeking: []string{"woman"}, born: "1990-01-01", lat: lyon.lat, lon: lyon.lon}))
+	if out := e.expect(http.StatusConflict, "GET", "/discover", noPhoto.Token, nil); out["code"] != "profile_incomplete" {
+		t.Fatalf("expected profile_incomplete: %v", out)
+	}
+}
+
+func TestSimultaneousLikesCreateExactlyOneMatch(t *testing.T) {
+	e := newEnv(t, false)
+	const pairs = 8
+	type pair struct{ a, b user }
+	var ps []pair
+	for i := 0; i < pairs; i++ {
+		a := e.onboard(fmt.Sprintf("a%d@example.io", i), profileSpec{name: "Ana", gender: "woman", seeking: []string{"man"}, born: "1994-05-05", lat: 45.76, lon: 4.84})
+		b := e.onboard(fmt.Sprintf("b%d@example.io", i), profileSpec{name: "Ben", gender: "man", seeking: []string{"woman"}, born: "1994-05-05", lat: 45.76, lon: 4.84})
+		ps = append(ps, pair{a, b})
+	}
+	var wg sync.WaitGroup
+	statuses := make(chan int, pairs*2)
+	for _, p := range ps {
+		for _, side := range [][2]user{{p.a, p.b}, {p.b, p.a}} {
+			wg.Add(1)
+			go func(from, to user) {
+				defer wg.Done()
+				code, _ := e.call("POST", "/swipes", from.Token, map[string]any{"userId": to.ID, "action": "like"})
+				statuses <- code
+			}(side[0], side[1])
+		}
+	}
+	wg.Wait()
+	close(statuses)
+	for code := range statuses {
+		if code != http.StatusOK {
+			t.Fatalf("concurrent like failed with %d", code)
+		}
+	}
+	var matches, conversations int
+	_ = e.pool.QueryRow(t.Context(), `SELECT count(*) FROM matches`).Scan(&matches)
+	_ = e.pool.QueryRow(t.Context(), `SELECT count(*) FROM conversations`).Scan(&conversations)
+	if matches != pairs || conversations != pairs {
+		t.Fatalf("want %d matches/conversations, got %d/%d", pairs, matches, conversations)
+	}
+}
+
+// matchedPair returns two users who matched, plus their conversation id and an outsider.
+func matchedPair(t *testing.T, e *env) (a, b, outsider user, conversationID string) {
 	t.Helper()
-	commandTag, err := pool.Exec(context.Background(), `
-		UPDATE users
-		SET organization_id = $2
-		WHERE id = $1
-	`, userID, organizationID)
-	if err != nil {
-		t.Fatalf("move user to organization: %v", err)
-	}
-	if commandTag.RowsAffected() != 1 {
-		t.Fatalf("expected 1 moved user, got %d", commandTag.RowsAffected())
-	}
+	a = e.onboard("ann@example.io", profileSpec{name: "Ann", gender: "woman", seeking: []string{"man"}, born: "1994-05-05", lat: 45.76, lon: 4.84})
+	b = e.onboard("ben@example.io", profileSpec{name: "Ben", gender: "man", seeking: []string{"woman"}, born: "1993-05-05", lat: 45.77, lon: 4.85})
+	outsider = e.onboard("mallory@example.io", profileSpec{name: "Mallory", gender: "man", seeking: []string{"woman"}, born: "1993-05-05", lat: 45.77, lon: 4.85})
+	e.expect(http.StatusOK, "POST", "/swipes", a.Token, map[string]any{"userId": b.ID, "action": "like"})
+	res := e.expect(http.StatusOK, "POST", "/swipes", b.Token, map[string]any{"userId": a.ID, "action": "like"})
+	conversationID = res["match"].(map[string]any)["conversationId"].(string)
+	return
 }
 
-func cleanupOrganizations(t *testing.T, pool *pgxpool.Pool, organizationIDs []string) {
-	t.Helper()
-	_, err := pool.Exec(context.Background(), `DELETE FROM organizations WHERE id = ANY($1)`, organizationIDs)
-	if err != nil {
-		t.Fatalf("cleanup organizations: %v", err)
-	}
-}
+func TestChatPermissionsReadStateAndHiding(t *testing.T) {
+	e := newEnv(t, false)
+	a, b, mallory, conv := matchedPair(t, e)
+	msgs := "/conversations/" + conv + "/messages"
 
-func containsUser(users []userResponse, userID string) bool {
-	for _, user := range users {
-		if user.ID == userID {
-			return true
+	// Outsiders learn nothing: no read, no write, no read receipt, no hide.
+	e.expect(http.StatusNotFound, "GET", msgs, mallory.Token, nil)
+	e.expect(http.StatusNotFound, "POST", msgs, mallory.Token, map[string]string{"content": "hi"})
+	e.expect(http.StatusNotFound, "POST", "/conversations/"+conv+"/read", mallory.Token, nil)
+	e.expect(http.StatusNotFound, "DELETE", "/conversations/"+conv, mallory.Token, nil)
+	e.expect(http.StatusUnauthorized, "GET", msgs, "", nil)
+	e.expect(http.StatusNotFound, "GET", "/conversations/not-a-uuid/messages", a.Token, nil)
+
+	e.expect(http.StatusUnprocessableEntity, "POST", msgs, a.Token, map[string]string{"content": "   "})
+	e.expect(http.StatusUnprocessableEntity, "POST", msgs, a.Token, map[string]string{"content": strings.Repeat("é", 2001)})
+	e.expect(http.StatusBadRequest, "POST", msgs, a.Token, map[string]string{})
+
+	sent := e.expect(http.StatusCreated, "POST", msgs, a.Token, map[string]string{"content": "  Salut Ben !  "})
+	if sent["content"] != "Salut Ben !" || sent["senderId"] != a.ID {
+		t.Fatalf("unexpected message: %v", sent)
+	}
+	e.expect(http.StatusCreated, "POST", msgs, a.Token, map[string]string{"content": "Tu es libre ce soir ?"})
+
+	list := e.expect(http.StatusOK, "GET", "/conversations", b.Token, nil)
+	row := list["conversations"].([]any)[0].(map[string]any)
+	if row["unreadCount"].(float64) != 2 || list["unreadTotal"].(float64) != 2 || row["lastMessage"].(map[string]any)["content"] != "Tu es libre ce soir ?" {
+		t.Fatalf("unexpected conversation row: %v", list)
+	}
+	if row["user"].(map[string]any)["thumbUrl"] == nil || row["user"].(map[string]any)["firstName"] != "Ann" {
+		t.Fatalf("conversation should show the other person: %v", row["user"])
+	}
+	// Sender has nothing unread; a single coalesced message notification for the recipient.
+	if e.expect(http.StatusOK, "GET", "/conversations", a.Token, nil)["unreadTotal"].(float64) != 0 {
+		t.Fatal("sender must not have unread messages")
+	}
+	notifs := e.expect(http.StatusOK, "GET", "/notifications", b.Token, nil)
+	var messageNotifs int
+	for _, n := range notifs["notifications"].([]any) {
+		if n.(map[string]any)["type"] == "message" {
+			messageNotifs++
 		}
 	}
-	return false
+	if messageNotifs != 1 {
+		t.Fatalf("message notifications must be coalesced, got %d", messageNotifs)
+	}
+
+	// Newest first; read receipts visible to the sender.
+	got := e.expect(http.StatusOK, "GET", msgs+"?limit=1", b.Token, nil)
+	if len(got["messages"].([]any)) != 1 || got["nextCursor"] == nil {
+		t.Fatalf("pagination expected: %v", got)
+	}
+	older := e.expect(http.StatusOK, "GET", msgs+"?limit=1&cursor="+got["nextCursor"].(string), b.Token, nil)
+	if older["messages"].([]any)[0].(map[string]any)["content"] != "Salut Ben !" {
+		t.Fatalf("older page wrong: %v", older)
+	}
+	e.expect(http.StatusBadRequest, "GET", msgs+"?cursor=garbage", b.Token, nil)
+
+	before := e.expect(http.StatusOK, "GET", msgs, a.Token, nil)
+	e.expect(http.StatusOK, "POST", "/conversations/"+conv+"/read", b.Token, nil)
+	after := e.expect(http.StatusOK, "GET", msgs, a.Token, nil)
+	if before["otherLastReadAt"] == after["otherLastReadAt"] {
+		t.Fatal("read receipt should advance")
+	}
+	if e.expect(http.StatusOK, "GET", "/conversations", b.Token, nil)["unreadTotal"].(float64) != 0 {
+		t.Fatal("unread should be cleared")
+	}
+	if e.expect(http.StatusOK, "GET", "/notifications", b.Token, nil)["unreadCount"].(float64) != 1 { // only the match one remains
+		t.Fatal("message notification should be read with the conversation")
+	}
+
+	// Hiding is local: gone for b, intact for a, and reappears (without history) on a new message.
+	e.expect(http.StatusNoContent, "DELETE", "/conversations/"+conv, b.Token, nil)
+	if n := len(e.expect(http.StatusOK, "GET", "/conversations", b.Token, nil)["conversations"].([]any)); n != 0 {
+		t.Fatalf("hidden conversation must disappear, got %d", n)
+	}
+	if n := len(e.expect(http.StatusOK, "GET", "/conversations", a.Token, nil)["conversations"].([]any)); n != 1 {
+		t.Fatalf("other side must be unaffected, got %d", n)
+	}
+	time.Sleep(10 * time.Millisecond)
+	e.expect(http.StatusCreated, "POST", msgs, a.Token, map[string]string{"content": "Coucou ?"})
+	back := e.expect(http.StatusOK, "GET", msgs, b.Token, nil)["messages"].([]any)
+	if len(back) != 1 || back[0].(map[string]any)["content"] != "Coucou ?" {
+		t.Fatalf("only post-hide messages should show: %v", back)
+	}
+
+	// Unmatching removes the conversation for both.
+	var matchID string
+	_ = e.pool.QueryRow(t.Context(), `SELECT match_id FROM conversations WHERE id = $1`, conv).Scan(&matchID)
+	e.expect(http.StatusNotFound, "DELETE", "/matches/"+matchID, mallory.Token, nil)
+	e.expect(http.StatusNoContent, "DELETE", "/matches/"+matchID, a.Token, nil)
+	e.expect(http.StatusNotFound, "GET", msgs, b.Token, nil)
 }
 
-func containsChat(chats []chatSummaryResponse, userID string) bool {
-	for _, chat := range chats {
-		if chat.User.ID == userID {
-			return true
+func TestBlockReportAndAccountDeletion(t *testing.T) {
+	e := newEnv(t, false)
+	a, b, mallory, conv := matchedPair(t, e)
+	msgs := "/conversations/" + conv + "/messages"
+	e.expect(http.StatusCreated, "POST", msgs, a.Token, map[string]string{"content": "hello"})
+
+	// Reports are validated; reporting yourself is refused; duplicates collapse.
+	e.expect(http.StatusBadRequest, "POST", "/reports", a.Token, map[string]any{"userId": b.ID, "reason": "because"})
+	e.expect(http.StatusBadRequest, "POST", "/reports", a.Token, map[string]any{"userId": a.ID, "reason": "spam"})
+	e.expect(http.StatusNotFound, "POST", "/reports", a.Token, map[string]any{"userId": "00000000-0000-0000-0000-000000000000", "reason": "spam"})
+	r1 := e.expect(http.StatusCreated, "POST", "/reports", a.Token, map[string]any{"userId": mallory.ID, "reason": "harassment", "details": "rude"})
+	r2 := e.expect(http.StatusCreated, "POST", "/reports", a.Token, map[string]any{"userId": mallory.ID, "reason": "harassment", "details": "rude again"})
+	if r1["id"] != r2["id"] {
+		t.Fatal("duplicate open reports from one reporter must collapse")
+	}
+
+	// Blocking: conversation vanishes for both, discovery and profile access are cut both ways.
+	e.expect(http.StatusBadRequest, "POST", "/blocks", b.Token, map[string]any{"userId": b.ID})
+	e.expect(http.StatusNotFound, "POST", "/blocks", b.Token, map[string]any{"userId": "00000000-0000-0000-0000-000000000000"})
+	e.expect(http.StatusNoContent, "POST", "/blocks", b.Token, map[string]any{"userId": a.ID})
+	e.expect(http.StatusNotFound, "GET", msgs, a.Token, nil)
+	e.expect(http.StatusNotFound, "GET", msgs, b.Token, nil)
+	e.expect(http.StatusNotFound, "POST", msgs, a.Token, map[string]string{"content": "still there?"})
+	for _, u := range []user{a, b} {
+		if n := len(e.expect(http.StatusOK, "GET", "/conversations", u.Token, nil)["conversations"].([]any)); n != 0 {
+			t.Fatalf("conversation must disappear for %s, got %d", u.Email, n)
 		}
 	}
-	return false
+	e.expect(http.StatusNotFound, "GET", "/profiles/"+a.ID, b.Token, nil)
+	e.expect(http.StatusNotFound, "GET", "/profiles/"+b.ID, a.Token, nil)
+	if ids, _ := discoverIDs(t, e, a); contains(ids, b.ID) {
+		t.Fatal("blocked user must not be discoverable")
+	}
+	if ids, _ := discoverIDs(t, e, b); contains(ids, a.ID) {
+		t.Fatal("blocker must not be discoverable by the blocked user")
+	}
+	e.expect(http.StatusNotFound, "POST", "/swipes", a.Token, map[string]any{"userId": b.ID, "action": "like"})
+	var matches int
+	_ = e.pool.QueryRow(t.Context(), `SELECT count(*) FROM matches`).Scan(&matches)
+	if matches != 0 {
+		t.Fatal("block must end the match")
+	}
+
+	blocks := e.expect(http.StatusOK, "GET", "/blocks", b.Token, nil)["blocks"].([]any)
+	if len(blocks) != 1 || blocks[0].(map[string]any)["userId"] != a.ID {
+		t.Fatalf("unexpected blocks: %v", blocks)
+	}
+	e.expect(http.StatusNoContent, "DELETE", "/blocks/"+a.ID, b.Token, nil)
+	e.expect(http.StatusNoContent, "DELETE", "/blocks/"+a.ID, b.Token, nil) // idempotent
+	e.expect(http.StatusOK, "GET", "/profiles/"+a.ID, b.Token, nil)
+
+	// Report + block in one call.
+	e.expect(http.StatusCreated, "POST", "/reports", a.Token, map[string]any{"userId": b.ID, "reason": "fake", "block": true})
+	e.expect(http.StatusNotFound, "GET", "/profiles/"+b.ID, a.Token, nil)
+
+	// Account deletion needs the password and removes every trace, files included.
+	e.expect(http.StatusForbidden, "DELETE", "/me", a.Token, map[string]string{"password": "wrong-password"})
+	e.expect(http.StatusBadRequest, "DELETE", "/me", a.Token, nil)
+	if countFiles(t, e.dir) == 0 {
+		t.Fatal("fixture should have photo files")
+	}
+	filesBefore := countFiles(t, e.dir)
+	e.expect(http.StatusNoContent, "DELETE", "/me", a.Token, map[string]string{"password": "correct-horse-1"})
+	if got := countFiles(t, e.dir); got != filesBefore-2 {
+		t.Fatalf("photo files of the deleted account must be removed: %d -> %d", filesBefore, got)
+	}
+	e.expect(http.StatusUnauthorized, "POST", "/auth/login", "", map[string]string{"email": a.Email, "password": "correct-horse-1"})
+	e.expect(http.StatusUnauthorized, "GET", "/me", a.Token, nil)
+	for _, table := range []string{"profiles", "preferences", "photos", "user_interests", "swipes", "blocks", "reports", "notifications", "sessions", "conversation_participants"} {
+		col := "user_id"
+		switch table {
+		case "swipes":
+			col = "swiper_id"
+		case "blocks":
+			col = "blocker_id"
+		case "reports":
+			col = "reporter_id"
+		}
+		var n int
+		if err := e.pool.QueryRow(t.Context(), "SELECT count(*) FROM "+table+" WHERE "+col+" = $1", a.ID).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("%s still holds %d rows for the deleted user (%v)", table, n, err)
+		}
+	}
+	var sent int
+	_ = e.pool.QueryRow(t.Context(), `SELECT count(*) FROM messages WHERE sender_id = $1`, a.ID).Scan(&sent)
+	if sent != 0 {
+		t.Fatal("messages of the deleted user must be removed")
+	}
+	var ops int
+	_ = e.pool.QueryRow(t.Context(), `SELECT count(*) FROM users WHERE id = $1`, b.ID).Scan(&ops)
+	if ops != 1 {
+		t.Fatal("other users must be untouched")
+	}
 }
 
-func containsPost(posts []postResponse, postID string) bool {
-	for _, post := range posts {
-		if post.ID == postID {
-			return true
-		}
-	}
-	return false
-}
+func TestRealtimeDeliversMessagesAndMatches(t *testing.T) {
+	e := newEnv(t, false)
+	srv := httptest.NewServer(e.router)
+	defer srv.Close()
 
-func containsComment(comments []commentResponse, commentID string) bool {
-	for _, comment := range comments {
-		if comment.ID == commentID {
-			return true
-		}
-	}
-	return false
-}
+	a := e.onboard("wa@example.io", profileSpec{name: "Wa", gender: "woman", seeking: []string{"man"}, born: "1994-05-05", lat: 45.76, lon: 4.84})
+	b := e.onboard("wb@example.io", profileSpec{name: "Wb", gender: "man", seeking: []string{"woman"}, born: "1993-05-05", lat: 45.77, lon: 4.85})
 
-func containsNotification(notifications []notificationResponse, notificationID string) bool {
-	for _, notification := range notifications {
-		if notification.ID == notificationID {
-			return true
+	connect := func(u user) *websocket.Conn {
+		t.Helper()
+		ticket := e.expect(http.StatusOK, "POST", "/realtime/ticket", u.Token, nil)["ticket"].(string)
+		conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/realtime/ws?ticket="+ticket, nil)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		var hello map[string]any
+		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		if err := conn.ReadJSON(&hello); err != nil || hello["type"] != "ready" {
+			t.Fatalf("expected ready, got %v (%v)", hello, err)
+		}
+		return conn
+	}
+	next := func(conn *websocket.Conn, typ string) map[string]any {
+		t.Helper()
+		for {
+			var ev map[string]any
+			_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			if err := conn.ReadJSON(&ev); err != nil {
+				t.Fatalf("waiting for %s: %v", typ, err)
+			}
+			if ev["type"] == typ {
+				return ev
+			}
 		}
 	}
-	return false
-}
 
-func containsFile(files []fileResponse, fileID string) bool {
-	for _, file := range files {
-		if file.ID == fileID {
-			return true
-		}
+	// Access tokens are not valid tickets, and tickets are not valid access tokens.
+	if _, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/realtime/ws?ticket="+a.Token, nil); err == nil {
+		t.Fatal("an access token must not open a socket")
 	}
-	return false
+	if _, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/realtime/ws", nil); err == nil {
+		t.Fatal("a socket without ticket must be refused")
+	}
+	ticket := e.expect(http.StatusOK, "POST", "/realtime/ticket", a.Token, nil)["ticket"].(string)
+	e.expect(http.StatusUnauthorized, "GET", "/me", ticket, nil)
+
+	ca, cb := connect(a), connect(b)
+	defer ca.Close()
+	defer cb.Close()
+
+	e.expect(http.StatusOK, "POST", "/swipes", a.Token, map[string]any{"userId": b.ID, "action": "like"})
+	res := e.expect(http.StatusOK, "POST", "/swipes", b.Token, map[string]any{"userId": a.ID, "action": "like"})
+	conv := res["match"].(map[string]any)["conversationId"].(string)
+	if ev := next(ca, "match.new"); ev["data"].(map[string]any)["firstName"] != "Wb" {
+		t.Fatalf("a should learn about the match: %v", ev)
+	}
+	next(cb, "match.new")
+
+	e.expect(http.StatusCreated, "POST", "/conversations/"+conv+"/messages", a.Token, map[string]string{"content": "live!"})
+	ev := next(cb, "message.new")
+	if ev["data"].(map[string]any)["content"] != "live!" {
+		t.Fatalf("b should receive the message in real time: %v", ev)
+	}
+	next(cb, "notification.new")
+	next(ca, "message.new") // the sender's other devices stay in sync
+
+	e.expect(http.StatusOK, "POST", "/conversations/"+conv+"/read", b.Token, nil)
+	next(ca, "message.read")
 }

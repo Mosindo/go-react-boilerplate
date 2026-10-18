@@ -4,32 +4,54 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
 const minJWTSecretLength = 32
 
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripePriceID       string
-	AppBaseURL          string
-	AllowedOrigins      []string
+	Port           string
+	Env            string
+	DatabaseURL    string
+	JWTSecret      string
+	UploadDir      string
+	AllowedOrigins []string
+	TrustedProxies []string
+	RateLimit      bool
+	SMTP           SMTP
 }
+
+// SMTP holds optional outgoing mail settings used for password recovery.
+type SMTP struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	From     string
+}
+
+func (s SMTP) Enabled() bool { return s.Host != "" && s.From != "" }
+
+func (c Config) IsProduction() bool { return c.Env == "production" }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                getenv("PORT", "8080"),
-		DatabaseURL:         strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		StripeSecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		StripePriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		AppBaseURL:          strings.TrimSpace(os.Getenv("APP_BASE_URL")),
-		AllowedOrigins:      splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		Port:           getenv("PORT", "8080"),
+		Env:            strings.ToLower(getenv("APP_ENV", "development")),
+		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
+		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
+		RateLimit:      parseBool(getenv("RATE_LIMIT_ENABLED", "true")),
+		SMTP: SMTP{
+			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
+			Port:     getenv("SMTP_PORT", "587"),
+			User:     strings.TrimSpace(os.Getenv("SMTP_USER")),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     strings.TrimSpace(os.Getenv("SMTP_FROM")),
+		},
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -38,13 +60,11 @@ func Load() (Config, error) {
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return Config{}, err
 	}
-	if cfg.StripeSecretKey != "" {
-		if cfg.StripePriceID == "" {
-			return Config{}, errors.New("STRIPE_PRICE_ID is required when STRIPE_SECRET_KEY is set")
-		}
-		if cfg.AppBaseURL == "" {
-			return Config{}, errors.New("APP_BASE_URL is required when STRIPE_SECRET_KEY is set")
-		}
+	if _, err := strconv.Atoi(cfg.Port); err != nil {
+		return Config{}, fmt.Errorf("PORT must be a number: %w", err)
+	}
+	if cfg.SMTP.Host != "" && cfg.SMTP.From == "" {
+		return Config{}, errors.New("SMTP_FROM is required when SMTP_HOST is set")
 	}
 
 	return cfg, nil
@@ -56,6 +76,11 @@ func getenv(key, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func parseBool(raw string) bool {
+	v, err := strconv.ParseBool(strings.TrimSpace(raw))
+	return err != nil || v
 }
 
 func validateJWTSecret(secret string) error {
