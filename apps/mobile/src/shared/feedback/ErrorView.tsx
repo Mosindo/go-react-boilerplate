@@ -22,7 +22,11 @@ export function ErrorView({
   title = "Something went wrong"
 }: ErrorViewProps) {
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
+    <Card
+      padding={compact ? "sm" : "md"}
+      style={[styles.card, compact ? styles.cardCompact : null, style]}
+      testID={testID}
+    >
       <View style={styles.copy}>
         <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
           {title}

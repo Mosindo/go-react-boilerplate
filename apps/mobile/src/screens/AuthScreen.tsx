@@ -48,8 +48,22 @@ export default function AuthScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.tabs}>
-        <Button label="Connexion" onPress={() => setMode("login")} size="sm" style={styles.tab} testID="tab-login" variant={mode === "login" ? "primary" : "ghost"} />
-        <Button label="Créer un compte" onPress={() => setMode("register")} size="sm" style={styles.tab} testID="tab-register" variant={mode === "register" ? "primary" : "ghost"} />
+        <Button
+          label="Connexion"
+          onPress={() => setMode("login")}
+          size="sm"
+          style={styles.tab}
+          testID="tab-login"
+          variant={mode === "login" ? "primary" : "ghost"}
+        />
+        <Button
+          label="Créer un compte"
+          onPress={() => setMode("register")}
+          size="sm"
+          style={styles.tab}
+          testID="tab-register"
+          variant={mode === "register" ? "primary" : "ghost"}
+        />
       </View>
 
       {notice ? <Notice title={notice} tone="warning" /> : null}
@@ -107,7 +121,12 @@ export default function AuthScreen({ navigation }: Props) {
       />
 
       {mode === "login" ? (
-        <Button label="Mot de passe oublié ?" onPress={() => navigation.navigate("ForgotPassword", { email })} testID="auth-forgot" variant="ghost" />
+        <Button
+          label="Mot de passe oublié ?"
+          onPress={() => navigation.navigate("ForgotPassword", { email })}
+          testID="auth-forgot"
+          variant="ghost"
+        />
       ) : null}
     </Screen>
   );
@@ -117,7 +136,13 @@ const styles = StyleSheet.create({
   brand: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xl },
   logo: { fontSize: 44, lineHeight: 52, letterSpacing: -1.5 },
   tagline: { textAlign: "center", maxWidth: 320 },
-  tabs: { flexDirection: "row", gap: spacing.sm, backgroundColor: colors.surfaceSubtle, borderRadius: 24, padding: spacing.xxs },
+  tabs: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: 24,
+    padding: spacing.xxs
+  },
   tab: { flex: 1 },
   adult: { gap: spacing.xs, alignItems: "flex-start" }
 });

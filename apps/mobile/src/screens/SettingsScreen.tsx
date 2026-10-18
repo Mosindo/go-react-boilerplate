@@ -55,7 +55,11 @@ export default function SettingsScreen({ navigation }: Props) {
   });
 
   return (
-    <Screen header={<NavHeader onBack={() => navigation.goBack()} title="Paramètres" />} scroll testID="settings-screen">
+    <Screen
+      header={<NavHeader onBack={() => navigation.goBack()} title="Paramètres" />}
+      scroll
+      testID="settings-screen"
+    >
       <Text tone="muted">Connecté avec {user.email}</Text>
 
       <View style={styles.group}>
@@ -76,16 +80,31 @@ export default function SettingsScreen({ navigation }: Props) {
           testID="toggle-distance"
           value={profile?.showDistance ?? true}
         />
-        <Button label="Personnes bloquées" onPress={() => navigation.navigate("BlockedUsers")} testID="open-blocked" variant="outline" />
+        <Button
+          label="Personnes bloquées"
+          onPress={() => navigation.navigate("BlockedUsers")}
+          testID="open-blocked"
+          variant="outline"
+        />
       </View>
 
       <View style={styles.group}>
         <Text variant="heading" weight="bold">
           Compte
         </Text>
-        <Button label="Changer de mot de passe" onPress={() => setDialog("password")} testID="open-change-password" variant="outline" />
+        <Button
+          label="Changer de mot de passe"
+          onPress={() => setDialog("password")}
+          testID="open-change-password"
+          variant="outline"
+        />
         <Button label="Se déconnecter" onPress={() => setDialog("logout")} testID="logout" variant="outline" />
-        <Button label="Supprimer mon compte" onPress={() => setDialog("delete")} testID="open-delete-account" variant="destructive" />
+        <Button
+          label="Supprimer mon compte"
+          onPress={() => setDialog("delete")}
+          testID="open-delete-account"
+          variant="destructive"
+        />
       </View>
 
       <Notice
@@ -111,8 +130,23 @@ export default function SettingsScreen({ navigation }: Props) {
         visible={dialog === "password"}
       >
         {password.isError ? <Notice title={errorMessage(password.error)} tone="danger" /> : null}
-        <Input autoCapitalize="none" label="Mot de passe actuel" onChangeText={setCurrentPassword} secureTextEntry testID="current-password" value={currentPassword} />
-        <Input autoCapitalize="none" helperText="8 caractères minimum." label="Nouveau mot de passe" onChangeText={setNewPassword} secureTextEntry testID="new-password" value={newPassword} />
+        <Input
+          autoCapitalize="none"
+          label="Mot de passe actuel"
+          onChangeText={setCurrentPassword}
+          secureTextEntry
+          testID="current-password"
+          value={currentPassword}
+        />
+        <Input
+          autoCapitalize="none"
+          helperText="8 caractères minimum."
+          label="Nouveau mot de passe"
+          onChangeText={setNewPassword}
+          secureTextEntry
+          testID="new-password"
+          value={newPassword}
+        />
       </ConfirmModal>
 
       <ConfirmModal
@@ -126,13 +160,26 @@ export default function SettingsScreen({ navigation }: Props) {
         visible={dialog === "delete"}
       >
         {remove.isError ? <Notice title={errorMessage(remove.error)} tone="danger" /> : null}
-        <Input autoCapitalize="none" label="Confirmez avec votre mot de passe" onChangeText={setDeletePassword} secureTextEntry testID="delete-password" value={deletePassword} />
+        <Input
+          autoCapitalize="none"
+          label="Confirmez avec votre mot de passe"
+          onChangeText={setDeletePassword}
+          secureTextEntry
+          testID="delete-password"
+          value={deletePassword}
+        />
       </ConfirmModal>
     </Screen>
   );
 }
 
-type ToggleRowProps = { label: string; description: string; value: boolean; onChange: (value: boolean) => void; testID: string };
+type ToggleRowProps = {
+  label: string;
+  description: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  testID: string;
+};
 
 function ToggleRow({ label, description, value, onChange, testID }: ToggleRowProps) {
   return (

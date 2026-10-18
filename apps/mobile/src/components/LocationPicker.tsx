@@ -64,7 +64,13 @@ export function LocationPicker({ coordinates, city, onChange, onCityChange }: Lo
         Votre position précise n'est jamais affichée : les autres voient seulement une distance approximative, et nous
         n'enregistrons qu'une position arrondie à environ 1 km.
       </Text>
-      <Button label={coordinates ? "Mettre à jour ma position" : "Utiliser ma position"} loading={loading} onPress={locate} testID="locate-me" variant="secondary" />
+      <Button
+        label={coordinates ? "Mettre à jour ma position" : "Utiliser ma position"}
+        loading={loading}
+        onPress={locate}
+        testID="locate-me"
+        variant="secondary"
+      />
       {problem ? <Notice title={problem} tone="warning" /> : null}
       {coordinates ? (
         <Notice title="Position enregistrée." tone="success" />
@@ -86,7 +92,14 @@ export function LocationPicker({ coordinates, city, onChange, onCityChange }: Lo
           />
         ))}
       </ChipRow>
-      <Input label="Ville affichée (facultatif)" maxLength={80} onChangeText={onCityChange} placeholder="Ex. Lyon" testID="city-input" value={city} />
+      <Input
+        label="Ville affichée (facultatif)"
+        maxLength={80}
+        onChangeText={onCityChange}
+        placeholder="Ex. Lyon"
+        testID="city-input"
+        value={city}
+      />
     </View>
   );
 }

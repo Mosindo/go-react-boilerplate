@@ -85,7 +85,11 @@ function makePng(width = 600, height = 800, tint = 80) {
 /** Registers a user, completes the profile and uploads one photo. */
 async function createMember(prefix, { name, gender, seeking, born = "1993-03-14" }) {
   const email = uniqueEmail(prefix);
-  const session = await expectStatus("register", 201, request("/auth/register", { method: "POST", body: { email, password: PASSWORD } }));
+  const session = await expectStatus(
+    "register",
+    201,
+    request("/auth/register", { method: "POST", body: { email, password: PASSWORD } })
+  );
   const token = session.accessToken;
   await expectStatus(
     "profile",

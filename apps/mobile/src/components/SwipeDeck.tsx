@@ -54,7 +54,8 @@ export function SwipeDeck({ profiles, disabled = false, onSwipe, onOpenProfile }
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, g) => !latest.current.disabled && Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+        onMoveShouldSetPanResponder: (_, g) =>
+          !latest.current.disabled && Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
         onPanResponderMove: Animated.event([null, { dx: position.x, dy: position.y }], { useNativeDriver: false }),
         onPanResponderRelease: (_, g) => {
           if (g.dx > SWIPE_THRESHOLD) {
@@ -77,10 +78,25 @@ export function SwipeDeck({ profiles, disabled = false, onSwipe, onOpenProfile }
     position.setValue({ x: 0, y: 0 });
   }, [top?.userId, position]);
 
-  const rotate = position.x.interpolate({ inputRange: [-OFF_SCREEN, 0, OFF_SCREEN], outputRange: ["-14deg", "0deg", "14deg"] });
-  const likeOpacity = position.x.interpolate({ inputRange: [20, SWIPE_THRESHOLD], outputRange: [0, 1], extrapolate: "clamp" });
-  const passOpacity = position.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, -20], outputRange: [1, 0], extrapolate: "clamp" });
-  const nextScale = position.x.interpolate({ inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD], outputRange: [1, 0.94, 1], extrapolate: "clamp" });
+  const rotate = position.x.interpolate({
+    inputRange: [-OFF_SCREEN, 0, OFF_SCREEN],
+    outputRange: ["-14deg", "0deg", "14deg"]
+  });
+  const likeOpacity = position.x.interpolate({
+    inputRange: [20, SWIPE_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: "clamp"
+  });
+  const passOpacity = position.x.interpolate({
+    inputRange: [-SWIPE_THRESHOLD, -20],
+    outputRange: [1, 0],
+    extrapolate: "clamp"
+  });
+  const nextScale = position.x.interpolate({
+    inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
+    outputRange: [1, 0.94, 1],
+    extrapolate: "clamp"
+  });
 
   if (!top) {
     return null;
@@ -114,9 +130,31 @@ export function SwipeDeck({ profiles, disabled = false, onSwipe, onOpenProfile }
       </View>
 
       <View style={styles.actions}>
-        <RoundButton disabled={disabled} glyph="✕" label="Passer" onPress={() => fling("pass")} testID="swipe-pass" tone={colors.pass} />
-        <RoundButton disabled={disabled} glyph="i" label="Voir le profil complet" onPress={() => onOpenProfile(top)} size={48} testID="swipe-info" tone={colors.secondary} />
-        <RoundButton disabled={disabled} glyph="♥" label="J'aime" onPress={() => fling("like")} testID="swipe-like" tone={colors.like} />
+        <RoundButton
+          disabled={disabled}
+          glyph="✕"
+          label="Passer"
+          onPress={() => fling("pass")}
+          testID="swipe-pass"
+          tone={colors.pass}
+        />
+        <RoundButton
+          disabled={disabled}
+          glyph="i"
+          label="Voir le profil complet"
+          onPress={() => onOpenProfile(top)}
+          size={48}
+          testID="swipe-info"
+          tone={colors.secondary}
+        />
+        <RoundButton
+          disabled={disabled}
+          glyph="♥"
+          label="J'aime"
+          onPress={() => fling("like")}
+          testID="swipe-like"
+          tone={colors.like}
+        />
       </View>
     </View>
   );
@@ -171,7 +209,13 @@ const styles = StyleSheet.create({
   stampPass: { right: spacing.xl, borderColor: colors.pass, transform: [{ rotate: "12deg" }] },
   stampText: { fontSize: 22, lineHeight: 28, letterSpacing: 1 },
   actions: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: spacing.xl },
-  round: { alignItems: "center", justifyContent: "center", borderWidth: 2, backgroundColor: colors.backgroundElevated, ...shadows.card },
+  round: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    backgroundColor: colors.backgroundElevated,
+    ...shadows.card
+  },
   roundDisabled: { opacity: 0.5 },
   roundPressed: { transform: [{ scale: 0.94 }] }
 });

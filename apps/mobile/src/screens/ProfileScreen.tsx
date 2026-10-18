@@ -37,7 +37,14 @@ export default function ProfileScreen() {
         Mon profil
       </Text>
       {isLoading ? <Loader label="Chargement…" /> : null}
-      {isError ? <ErrorView actionLabel="Réessayer" message="Impossible de charger votre profil." onAction={() => void refetch()} title="Oups" /> : null}
+      {isError ? (
+        <ErrorView
+          actionLabel="Réessayer"
+          message="Impossible de charger votre profil."
+          onAction={() => void refetch()}
+          title="Oups"
+        />
+      ) : null}
       {profile ? (
         <>
           {!profile.isVisible ? (
@@ -50,8 +57,18 @@ export default function ProfileScreen() {
           <View style={styles.preview}>
             <ProfileCard profile={toPublicProfile(profile)} variant="full" />
           </View>
-          <Button label="Modifier mon profil" onPress={() => navigation.navigate("EditProfile")} size="lg" testID="edit-profile" />
-          <Button label="Paramètres et confidentialité" onPress={() => navigation.navigate("Settings")} testID="open-settings" variant="outline" />
+          <Button
+            label="Modifier mon profil"
+            onPress={() => navigation.navigate("EditProfile")}
+            size="lg"
+            testID="edit-profile"
+          />
+          <Button
+            label="Paramètres et confidentialité"
+            onPress={() => navigation.navigate("Settings")}
+            testID="open-settings"
+            variant="outline"
+          />
         </>
       ) : null}
     </Screen>

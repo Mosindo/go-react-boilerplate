@@ -5,7 +5,17 @@ const react = require("eslint-plugin-react");
 const reactHooks = require("eslint-plugin-react-hooks");
 
 module.exports = tseslint.config(
-  { ignores: ["node_modules/**", ".expo/**", ".e2e/**", "dist/**", "babel.config.js", "eslint.config.js", "tamagui.config.ts"] },
+  {
+    ignores: [
+      "node_modules/**",
+      ".expo/**",
+      ".e2e/**",
+      "dist/**",
+      "babel.config.js",
+      "eslint.config.js",
+      "tamagui.config.ts"
+    ]
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -21,6 +31,10 @@ module.exports = tseslint.config(
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "no-console": ["error", { allow: ["warn", "error"] }]
     }
+  },
+  {
+    files: ["e2e/**/*.ts"],
+    rules: { "no-console": "off" }
   },
   {
     files: ["scripts/**/*.js"],

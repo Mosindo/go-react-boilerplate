@@ -52,5 +52,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.sm
   },
-  handle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: colors.borderStrong, marginBottom: spacing.sm }
+  handle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+    marginBottom: spacing.sm
+  }
 });

@@ -42,6 +42,7 @@ export type MyProfile = {
   interests: Interest[];
   preferences: Preferences;
   photos: Photo[];
+  updatedAt: string;
 };
 
 export type ProfileInput = {

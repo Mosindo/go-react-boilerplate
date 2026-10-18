@@ -1,5 +1,12 @@
 import React from "react";
-import { ActivityIndicator, StyleSheet, View, type ActivityIndicatorProps, type StyleProp, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  View,
+  type ActivityIndicatorProps,
+  type StyleProp,
+  type ViewStyle
+} from "react-native";
 import { Text } from "./Text";
 import { colors, spacing, typography } from "./tokens";
 

@@ -1,30 +1,27 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Tendre (dating app)
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository started as the `go-react-saas` boilerplate and is now **Tendre**, a 100% free dating application
+(no subscription, paywall, paid boost, artificial like limit or mandatory ads: never introduce any).
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Free dating app: profiles, photos, discovery, likes, matches, real-time chat, notifications, blocking, reporting,
+privacy controls and account deletion. See `README.md` for product decisions.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Backend feature modules (`services/api/internal/features`):
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- matching
 - chat
+- safety
 - notifications
-- files
+
+Server-side rules are the source of truth (age, mutual preferences, blocks, conversation membership, photo
+ownership). Never trust the client.
 
 ---
 
@@ -65,11 +62,11 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -128,14 +125,14 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
+Required indexes (all created by migration `014_dating_schema.sql`):
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `swipes (target_id, swiper_id) WHERE action = 'like'`
+- `messages (conversation_id, created_at, id)`
+- `conversation_participants (user_id, conversation_id)`
+- `notifications (user_id, created_at, id)`
+- `profiles (latitude, longitude)`
+- `blocks (blocked_id, blocker_id)`
 
 ---
 
@@ -146,17 +143,16 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit` and `npm run lint` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`, real PostgreSQL via
+`DATABASE_URL_TEST`):
+- Health, auth lifecycle and recovery, profiles, photos, discovery and matching, chat, safety, account deletion,
+  real-time delivery.
+- Browser journey: `npm run e2e:web` in `apps/mobile` (sign up -> match -> chat -> block -> delete account).
+- Also run `npm run lint` and `npm run format:check` in `apps/mobile`.
 
 ---
 
@@ -175,13 +171,13 @@ Mandatory rules to avoid recurring environment issues:
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
+- A frontend is only "ready" after a real smoke test (`node apps/mobile/scripts/e2e-smoke.js` or `npm run e2e:web`):
+  - register and complete the profile with a photo
+  - discover loads
+  - like / match
   - chat send/read
   - notifications read flow
+  - block and account deletion
 
 ---
 

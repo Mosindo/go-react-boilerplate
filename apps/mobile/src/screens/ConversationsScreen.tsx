@@ -24,7 +24,12 @@ export default function ConversationsScreen() {
   const talking = all.filter((c) => c.lastMessage !== null);
 
   const open = (c: ConversationSummary) =>
-    navigation.navigate("Conversation", { conversationId: c.id, matchId: c.matchId, userId: c.user.userId, name: c.user.firstName });
+    navigation.navigate("Conversation", {
+      conversationId: c.id,
+      matchId: c.matchId,
+      userId: c.user.userId,
+      name: c.user.firstName
+    });
 
   return (
     <Screen edges={["top", "left", "right"]} contentStyle={styles.content} testID="messages-screen">
@@ -34,7 +39,12 @@ export default function ConversationsScreen() {
 
       {query.isLoading ? <Loader fullScreen label="Chargement…" /> : null}
       {query.isError && !query.data ? (
-        <ErrorView actionLabel="Réessayer" message="Impossible de charger vos conversations." onAction={() => void query.refetch()} title="Oups" />
+        <ErrorView
+          actionLabel="Réessayer"
+          message="Impossible de charger vos conversations."
+          onAction={() => void query.refetch()}
+          title="Oups"
+        />
       ) : null}
 
       {query.data ? (
@@ -61,8 +71,18 @@ export default function ConversationsScreen() {
                   horizontal
                   keyExtractor={(c) => c.id}
                   renderItem={({ item }) => (
-                    <Pressable accessibilityLabel={`Nouveau match : ${item.user.firstName}`} accessibilityRole="button" onPress={() => open(item)} style={styles.match} testID={`new-match-${item.user.firstName}`}>
-                      <PhotoImage fallbackLabel={item.user.firstName} path={item.user.thumbUrl} style={styles.matchPhoto} />
+                    <Pressable
+                      accessibilityLabel={`Nouveau match : ${item.user.firstName}`}
+                      accessibilityRole="button"
+                      onPress={() => open(item)}
+                      style={styles.match}
+                      testID={`new-match-${item.user.firstName}`}
+                    >
+                      <PhotoImage
+                        fallbackLabel={item.user.firstName}
+                        path={item.user.thumbUrl}
+                        style={styles.matchPhoto}
+                      />
                       <Text numberOfLines={1} variant="label" weight="semibold">
                         {item.user.firstName}
                       </Text>
@@ -80,8 +100,16 @@ export default function ConversationsScreen() {
             if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
           }}
           onEndReachedThreshold={0.4}
-          refreshControl={<RefreshControl onRefresh={() => void query.refetch()} refreshing={query.isRefetching && !query.isFetchingNextPage} tintColor={colors.primary} />}
-          renderItem={({ item }) => <ConversationRow conversation={item} currentUserId={user.id} onPress={() => open(item)} />}
+          refreshControl={
+            <RefreshControl
+              onRefresh={() => void query.refetch()}
+              refreshing={query.isRefetching && !query.isFetchingNextPage}
+              tintColor={colors.primary}
+            />
+          }
+          renderItem={({ item }) => (
+            <ConversationRow conversation={item} currentUserId={user.id} onPress={() => open(item)} />
+          )}
         />
       ) : null}
     </Screen>

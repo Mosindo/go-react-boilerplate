@@ -1,5 +1,11 @@
 import React from "react";
-import { StyleSheet, Text as RNText, type StyleProp, type TextProps as RNTextProps, type TextStyle } from "react-native";
+import {
+  StyleSheet,
+  Text as RNText,
+  type StyleProp,
+  type TextProps as RNTextProps,
+  type TextStyle
+} from "react-native";
 import { colors, fontWeights, typography } from "./tokens";
 
 export type TextVariant = "body" | "label" | "title" | "heading" | "caption" | "eyebrow" | "button";
@@ -80,14 +86,7 @@ const toneStyles: Record<TextTone, TextStyle> = {
   inverse: styles.inverseTone
 };
 
-export function Text({
-  children,
-  style,
-  tone = "default",
-  variant = "body",
-  weight = "regular",
-  ...props
-}: TextProps) {
+export function Text({ children, style, tone = "default", variant = "body", weight = "regular", ...props }: TextProps) {
   return (
     <RNText style={[styles.base, variantStyles[variant], weightStyles[weight], toneStyles[tone], style]} {...props}>
       {children}

@@ -72,9 +72,20 @@ export default function HomeScreen() {
     void loadMore();
   }, [deck, loadMore]);
 
+  // First load, and again whenever the profile (preferences, location, visibility) changes:
+  // the cards on screen were chosen with the old criteria.
+  const profileStamp = profile?.updatedAt;
+  const lastStamp = useRef<string | undefined>(undefined);
   useEffect(() => {
+    if (lastStamp.current !== undefined && lastStamp.current !== profileStamp) {
+      exhausted.current = false;
+      seen.current = new Set();
+      setDeck([]);
+      setStatus("loading");
+    }
+    lastStamp.current = profileStamp ?? "";
     void loadMore();
-  }, [loadMore]);
+  }, [loadMore, profileStamp]);
 
   useEffect(() => {
     if (status === "ready" && deck.length <= PREFETCH_AT) {
@@ -151,7 +162,13 @@ export default function HomeScreen() {
           <Text style={styles.brand} tone="primary" weight="bold">
             {APP_NAME}
           </Text>
-          <Button label="Préférences" onPress={() => navigation.navigate("EditProfile")} size="sm" testID="open-preferences" variant="ghost" />
+          <Button
+            label="Préférences"
+            onPress={() => navigation.navigate("EditProfile")}
+            size="sm"
+            testID="open-preferences"
+            variant="ghost"
+          />
         </View>
       }
       contentStyle={styles.content}
@@ -167,10 +184,16 @@ export default function HomeScreen() {
             Vous avez tout vu pour l'instant
           </Text>
           <Text style={styles.centerText} tone="muted">
-            De nouvelles personnes arrivent chaque jour. Élargissez vos préférences ou revoyez les profils que vous avez passés.
+            De nouvelles personnes arrivent chaque jour. Élargissez vos préférences ou revoyez les profils que vous avez
+            passés.
           </Text>
           <Button label="Actualiser" onPress={refresh} testID="deck-refresh" />
-          <Button label="Revoir les profils passés" onPress={reviewPasses} testID="deck-review-passes" variant="outline" />
+          <Button
+            label="Revoir les profils passés"
+            onPress={reviewPasses}
+            testID="deck-review-passes"
+            variant="outline"
+          />
           <Button label="Modifier mes préférences" onPress={() => navigation.navigate("EditProfile")} variant="ghost" />
         </View>
       ) : null}
@@ -206,7 +229,12 @@ export default function HomeScreen() {
         onClose={() => setMatch(null)}
         onMessage={(m) => {
           setMatch(null);
-          navigation.navigate("Conversation", { conversationId: m.conversationId, matchId: m.id, userId: m.user.userId, name: m.user.firstName });
+          navigation.navigate("Conversation", {
+            conversationId: m.conversationId,
+            matchId: m.id,
+            userId: m.user.userId,
+            name: m.user.firstName
+          });
         }}
       />
     </Screen>
@@ -214,7 +242,13 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm
+  },
   brand: { fontSize: 28, lineHeight: 34, letterSpacing: -1 },
   content: { paddingTop: spacing.sm, paddingBottom: 90 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },

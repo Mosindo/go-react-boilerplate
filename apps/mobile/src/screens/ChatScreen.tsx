@@ -122,10 +122,18 @@ export default function ChatScreen({ navigation, route }: Props) {
   const lastOwnId = messages.find((m) => m.senderId === me.id)?.id;
   const renderItem = ({ item }: { item: Message }) => {
     const mine = item.senderId === me.id;
-    const read = mine && item.id === lastOwnId && otherLastReadAt !== null && new Date(otherLastReadAt) >= new Date(item.createdAt);
+    const read =
+      mine &&
+      item.id === lastOwnId &&
+      otherLastReadAt !== null &&
+      new Date(otherLastReadAt) >= new Date(item.createdAt);
     return (
       <View style={[styles.bubbleRow, mine ? styles.mine : styles.theirs]}>
-        <View accessible style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]} testID={mine ? "message-mine" : "message-theirs"}>
+        <View
+          accessible
+          style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
+          testID={mine ? "message-mine" : "message-theirs"}
+        >
           <Text tone={mine ? "inverse" : "default"}>{item.content}</Text>
           <Text style={styles.time} tone={mine ? "inverse" : "muted"} variant="caption">
             {formatClock(item.createdAt)}
@@ -144,7 +152,14 @@ export default function ChatScreen({ navigation, route }: Props) {
         <NavHeader
           onBack={() => navigation.goBack()}
           right={
-            <Pressable accessibilityLabel="Plus d'options" accessibilityRole="button" hitSlop={10} onPress={() => setDialog("menu")} style={styles.more} testID="chat-menu">
+            <Pressable
+              accessibilityLabel="Plus d'options"
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={() => setDialog("menu")}
+              style={styles.more}
+              testID="chat-menu"
+            >
               <Text style={styles.moreGlyph} weight="bold">
                 ⋯
               </Text>
@@ -204,16 +219,32 @@ export default function ChatScreen({ navigation, route }: Props) {
               testID="chat-input"
               value={draft}
             />
-            <Button disabled={!draft.trim()} label="Envoyer" loading={send.isPending} onPress={submit} size="sm" testID="chat-send" />
+            <Button
+              disabled={!draft.trim()}
+              label="Envoyer"
+              loading={send.isPending}
+              onPress={submit}
+              size="sm"
+              testID="chat-send"
+            />
           </View>
         </>
       )}
 
       <ActionSheet
         actions={[
-          { label: "Voir le profil", onPress: () => navigation.navigate("Person", { userId, matchId, conversationId }), testID: "menu-profile" },
+          {
+            label: "Voir le profil",
+            onPress: () => navigation.navigate("Person", { userId, matchId, conversationId }),
+            testID: "menu-profile"
+          },
           { label: "Masquer la conversation", onPress: () => setDialog("hide"), testID: "menu-hide" },
-          { label: "Supprimer le match", onPress: () => setDialog("unmatch"), destructive: true, testID: "menu-unmatch" },
+          {
+            label: "Supprimer le match",
+            onPress: () => setDialog("unmatch"),
+            destructive: true,
+            testID: "menu-unmatch"
+          },
           { label: "Bloquer", onPress: () => setDialog("block"), destructive: true, testID: "menu-block" },
           { label: "Signaler", onPress: () => setDialog("report"), destructive: true, testID: "menu-report" }
         ]}
@@ -249,7 +280,13 @@ export default function ChatScreen({ navigation, route }: Props) {
         title={`Bloquer ${name} ?`}
         visible={dialog === "block"}
       />
-      <ReportModal firstName={name} onClose={() => setDialog(null)} onDone={leave} userId={userId} visible={dialog === "report"} />
+      <ReportModal
+        firstName={name}
+        onClose={() => setDialog(null)}
+        onDone={leave}
+        userId={userId}
+        visible={dialog === "report"}
+      />
     </Screen>
   );
 }
@@ -261,7 +298,13 @@ const styles = StyleSheet.create({
   bubbleRow: { flexDirection: "row" },
   mine: { justifyContent: "flex-end" },
   theirs: { justifyContent: "flex-start" },
-  bubble: { maxWidth: "80%", borderRadius: radii.lg, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, gap: 2 },
+  bubble: {
+    maxWidth: "80%",
+    borderRadius: radii.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: 2
+  },
   bubbleMine: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
   bubbleTheirs: { backgroundColor: colors.surfaceSubtle, borderBottomLeftRadius: 4 },
   time: { alignSelf: "flex-end", opacity: 0.8 },

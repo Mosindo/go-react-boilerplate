@@ -69,7 +69,14 @@ export function ToastHost() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: "absolute", top: spacing.xxxl, left: spacing.lg, right: spacing.lg, alignItems: "center", zIndex: 50 },
+  wrap: {
+    position: "absolute",
+    top: spacing.xxxl,
+    left: spacing.lg,
+    right: spacing.lg,
+    alignItems: "center",
+    zIndex: 50
+  },
   toast: {
     backgroundColor: colors.text,
     borderRadius: radii.pill,

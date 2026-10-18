@@ -38,7 +38,13 @@ export function ConfirmModal({
           {message ? <Text tone="muted">{message}</Text> : null}
           {children}
           <View style={styles.actions}>
-            <Button label={cancelLabel} onPress={onCancel} variant="outline" style={styles.action} testID="confirm-cancel" />
+            <Button
+              label={cancelLabel}
+              onPress={onCancel}
+              variant="outline"
+              style={styles.action}
+              testID="confirm-cancel"
+            />
             <Button
               label={confirmLabel}
               loading={loading}
@@ -55,7 +61,13 @@ export function ConfirmModal({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: colors.overlay, alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  backdrop: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl
+  },
   sheet: {
     width: "100%",
     maxWidth: 420,

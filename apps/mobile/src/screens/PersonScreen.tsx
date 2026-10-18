@@ -80,7 +80,14 @@ export default function PersonScreen({ navigation, route }: Props) {
         <NavHeader
           onBack={() => navigation.goBack()}
           right={
-            <Pressable accessibilityLabel="Plus d'options" accessibilityRole="button" hitSlop={10} onPress={() => setDialog("menu")} style={styles.more} testID="person-menu">
+            <Pressable
+              accessibilityLabel="Plus d'options"
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={() => setDialog("menu")}
+              style={styles.more}
+              testID="person-menu"
+            >
               <Text style={styles.moreGlyph} weight="bold">
                 ⋯
               </Text>
@@ -93,8 +100,22 @@ export default function PersonScreen({ navigation, route }: Props) {
       testID="person-screen"
     >
       {query.isLoading ? <Loader label="Chargement…" /> : null}
-      {gone ? <ErrorView message="Ce profil n'est plus disponible." onAction={() => navigation.goBack()} actionLabel="Retour" title="Introuvable" /> : null}
-      {query.isError && !gone ? <ErrorView actionLabel="Réessayer" message="Impossible de charger ce profil." onAction={() => void query.refetch()} title="Oups" /> : null}
+      {gone ? (
+        <ErrorView
+          message="Ce profil n'est plus disponible."
+          onAction={() => navigation.goBack()}
+          actionLabel="Retour"
+          title="Introuvable"
+        />
+      ) : null}
+      {query.isError && !gone ? (
+        <ErrorView
+          actionLabel="Réessayer"
+          message="Impossible de charger ce profil."
+          onAction={() => void query.refetch()}
+          title="Oups"
+        />
+      ) : null}
 
       {profile ? (
         <>
@@ -104,15 +125,35 @@ export default function PersonScreen({ navigation, route }: Props) {
           {conversationId || matchId ? (
             <Button
               label={`Écrire à ${profile.firstName}`}
-              onPress={() => navigation.navigate("Conversation", { conversationId: conversationId ?? "", matchId, userId, name: profile.firstName })}
+              onPress={() =>
+                navigation.navigate("Conversation", {
+                  conversationId: conversationId ?? "",
+                  matchId,
+                  userId,
+                  name: profile.firstName
+                })
+              }
               disabled={!conversationId}
               size="lg"
               testID="person-message"
             />
           ) : (
             <View style={styles.row}>
-              <Button label="Passer" loading={act.isPending && act.variables === "pass"} onPress={() => act.mutate("pass")} style={styles.flex} testID="person-pass" variant="outline" />
-              <Button label="J'aime" loading={act.isPending && act.variables === "like"} onPress={() => act.mutate("like")} style={styles.flex} testID="person-like" />
+              <Button
+                label="Passer"
+                loading={act.isPending && act.variables === "pass"}
+                onPress={() => act.mutate("pass")}
+                style={styles.flex}
+                testID="person-pass"
+                variant="outline"
+              />
+              <Button
+                label="J'aime"
+                loading={act.isPending && act.variables === "like"}
+                onPress={() => act.mutate("like")}
+                style={styles.flex}
+                testID="person-like"
+              />
             </View>
           )}
         </>
@@ -120,7 +161,16 @@ export default function PersonScreen({ navigation, route }: Props) {
 
       <ActionSheet
         actions={[
-          ...(matchId ? [{ label: "Supprimer le match", onPress: () => setDialog("unmatch"), destructive: true, testID: "person-unmatch" }] : []),
+          ...(matchId
+            ? [
+                {
+                  label: "Supprimer le match",
+                  onPress: () => setDialog("unmatch"),
+                  destructive: true,
+                  testID: "person-unmatch"
+                }
+              ]
+            : []),
           { label: "Bloquer", onPress: () => setDialog("block"), destructive: true, testID: "person-block" },
           { label: "Signaler", onPress: () => setDialog("report"), destructive: true, testID: "person-report" }
         ]}
@@ -147,7 +197,16 @@ export default function PersonScreen({ navigation, route }: Props) {
         title="Supprimer le match ?"
         visible={dialog === "unmatch"}
       />
-      <ReportModal firstName={name} onClose={() => setDialog(null)} onDone={() => { emitProfileSwiped(userId, { matched: false }); back(); }} userId={userId} visible={dialog === "report"} />
+      <ReportModal
+        firstName={name}
+        onClose={() => setDialog(null)}
+        onDone={() => {
+          emitProfileSwiped(userId, { matched: false });
+          back();
+        }}
+        userId={userId}
+        visible={dialog === "report"}
+      />
     </Screen>
   );
 }

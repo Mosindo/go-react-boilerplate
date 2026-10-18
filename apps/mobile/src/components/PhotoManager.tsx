@@ -55,7 +55,8 @@ export function PhotoManager({ photos }: PhotoManagerProps) {
   });
   const remove = useMutation({ mutationFn: (photoId: string) => deletePhoto(photoId), onSuccess: refresh, onError });
   const makePrimary = useMutation({
-    mutationFn: (photoId: string) => reorderPhotos([photoId, ...photos.filter((p) => p.id !== photoId).map((p) => p.id)]),
+    mutationFn: (photoId: string) =>
+      reorderPhotos([photoId, ...photos.filter((p) => p.id !== photoId).map((p) => p.id)]),
     onSuccess: refresh,
     onError
   });
@@ -104,7 +105,8 @@ export function PhotoManager({ photos }: PhotoManagerProps) {
         ))}
       </View>
       <Text tone="muted" variant="caption">
-        Au moins une photo est nécessaire. JPEG ou PNG, 8 Mo maximum. La première photo est celle qui s'affiche en premier.
+        Au moins une photo est nécessaire. JPEG ou PNG, 8 Mo maximum. La première photo est celle qui s'affiche en
+        premier.
       </Text>
 
       <ConfirmModal
@@ -131,7 +133,12 @@ export function PhotoManager({ photos }: PhotoManagerProps) {
             testID="photo-replace"
             variant="outline"
           />
-          <Button label="Supprimer" onPress={() => setConfirmDelete(true)} testID="photo-delete" variant="destructive" />
+          <Button
+            label="Supprimer"
+            onPress={() => setConfirmDelete(true)}
+            testID="photo-delete"
+            variant="destructive"
+          />
         </View>
       </ConfirmModal>
 
@@ -157,9 +164,24 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   cell: { width: "31.5%", aspectRatio: 3 / 4 },
   slot: { flex: 1, borderRadius: radii.md, overflow: "hidden", backgroundColor: colors.surfaceSubtle },
-  empty: { alignItems: "center", justifyContent: "center", borderWidth: 2, borderStyle: "dashed", borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft },
+  empty: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft
+  },
   dim: { opacity: 0.4 },
   plus: { fontSize: 32, lineHeight: 36 },
-  badge: { position: "absolute", left: 6, bottom: 6, backgroundColor: colors.scrim, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  badge: {
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    backgroundColor: colors.scrim,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2
+  },
   sheetActions: { gap: spacing.sm }
 });

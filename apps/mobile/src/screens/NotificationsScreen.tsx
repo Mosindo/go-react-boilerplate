@@ -43,18 +43,38 @@ export default function NotificationsScreen() {
           <Text variant="title" weight="bold">
             Notifications
           </Text>
-          {unread > 0 ? <Button label="Tout lire" loading={readAll.isPending} onPress={() => readAll.mutate()} size="sm" testID="notifications-read-all" variant="ghost" /> : null}
+          {unread > 0 ? (
+            <Button
+              label="Tout lire"
+              loading={readAll.isPending}
+              onPress={() => readAll.mutate()}
+              size="sm"
+              testID="notifications-read-all"
+              variant="ghost"
+            />
+          ) : null}
         </View>
       }
       testID="notifications-screen"
     >
       {query.isLoading ? <Loader fullScreen label="Chargement…" /> : null}
       {query.isError && !query.data ? (
-        <ErrorView actionLabel="Réessayer" message="Impossible de charger vos notifications." onAction={() => void query.refetch()} title="Oups" />
+        <ErrorView
+          actionLabel="Réessayer"
+          message="Impossible de charger vos notifications."
+          onAction={() => void query.refetch()}
+          title="Oups"
+        />
       ) : null}
       {query.data ? (
         <FlatList
-          ListEmptyComponent={<EmptyView message="Vos matchs et nouveaux messages apparaîtront ici." testID="notifications-empty" title="Rien de nouveau" />}
+          ListEmptyComponent={
+            <EmptyView
+              message="Vos matchs et nouveaux messages apparaîtront ici."
+              testID="notifications-empty"
+              title="Rien de nouveau"
+            />
+          }
           contentContainerStyle={styles.list}
           data={items}
           keyExtractor={(n) => n.id}
@@ -62,7 +82,13 @@ export default function NotificationsScreen() {
             if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
           }}
           onEndReachedThreshold={0.4}
-          refreshControl={<RefreshControl onRefresh={() => void query.refetch()} refreshing={query.isRefetching && !query.isFetchingNextPage} tintColor={colors.primary} />}
+          refreshControl={
+            <RefreshControl
+              onRefresh={() => void query.refetch()}
+              refreshing={query.isRefetching && !query.isFetchingNextPage}
+              tintColor={colors.primary}
+            />
+          }
           renderItem={({ item }) => (
             <Pressable
               accessibilityLabel={`${item.title}. ${item.body}${item.isRead ? "" : " Non lu."}`}
@@ -93,9 +119,24 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   content: { padding: 0, gap: 0 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm
+  },
   list: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 100, flexGrow: 1 },
-  item: { flexDirection: "row", gap: spacing.md, padding: spacing.md, borderRadius: radii.lg, backgroundColor: colors.backgroundElevated, borderWidth: 1, borderColor: colors.border },
+  item: {
+    flexDirection: "row",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
   unread: { backgroundColor: colors.primarySoft, borderColor: colors.primaryBorder },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary, marginTop: 7 },
   dotSpacer: { width: 10 },

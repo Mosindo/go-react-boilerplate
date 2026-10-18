@@ -37,8 +37,18 @@ export function ProfileCard({ profile, variant = "card", onOpenDetails, testID }
             ))}
           </View>
           <View style={styles.tapZones}>
-            <Pressable accessibilityLabel="Photo précédente" onPress={() => step(-1)} style={styles.tapZone} testID="photo-prev" />
-            <Pressable accessibilityLabel="Photo suivante" onPress={() => step(1)} style={styles.tapZone} testID="photo-next" />
+            <Pressable
+              accessibilityLabel="Photo précédente"
+              onPress={() => step(-1)}
+              style={styles.tapZone}
+              testID="photo-prev"
+            />
+            <Pressable
+              accessibilityLabel="Photo suivante"
+              onPress={() => step(1)}
+              style={styles.tapZone}
+              testID="photo-next"
+            />
           </View>
         </>
       ) : null}
@@ -46,7 +56,11 @@ export function ProfileCard({ profile, variant = "card", onOpenDetails, testID }
       <LinearGradient colors={["rgba(20,12,22,0)", "rgba(20,12,22,0.78)"]} pointerEvents="none" style={styles.scrim} />
 
       <View style={styles.info}>
-        <Pressable accessibilityRole={onOpenDetails ? "button" : undefined} disabled={!onOpenDetails} onPress={onOpenDetails}>
+        <Pressable
+          accessibilityRole={onOpenDetails ? "button" : undefined}
+          disabled={!onOpenDetails}
+          onPress={onOpenDetails}
+        >
           <Text style={styles.name} tone="inverse" weight="bold">
             {profile.firstName}, {profile.age}
           </Text>

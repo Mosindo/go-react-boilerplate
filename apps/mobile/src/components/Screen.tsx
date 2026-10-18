@@ -1,5 +1,13 @@
 import React from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle
+} from "react-native";
 import { SafeAreaLayout } from "../shared/layout";
 import { colors, spacing } from "../shared/ui";
 
@@ -21,7 +29,12 @@ export function Screen({ children, scroll = false, footer, header, edges, conten
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
         {header}
         {scroll ? (
-          <ScrollView contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled" style={styles.flex} testID={testID}>
+          <ScrollView
+            contentContainerStyle={[styles.content, contentStyle]}
+            keyboardShouldPersistTaps="handled"
+            style={styles.flex}
+            testID={testID}
+          >
             <View style={styles.inner}>{children}</View>
           </ScrollView>
         ) : (

@@ -56,7 +56,11 @@ export function BirthDateField({ value, onChange, error }: BirthDateFieldProps) 
   const digits = (text: string, max: number) => text.replace(/\D/g, "").slice(0, max);
 
   return (
-    <FormField error={error} label="Date de naissance" helperText="Vous devez avoir 18 ans ou plus. Seul votre âge sera visible.">
+    <FormField
+      error={error}
+      label="Date de naissance"
+      helperText="Vous devez avoir 18 ans ou plus. Seul votre âge sera visible."
+    >
       <View style={styles.row}>
         <TextInput
           accessibilityLabel="Jour de naissance"

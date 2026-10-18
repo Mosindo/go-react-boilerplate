@@ -15,15 +15,7 @@ export type NotificationItemProps = {
   type: string;
 };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ body, createdAtLabel, isRead, onPress, style, title, type }: NotificationItemProps) {
   return (
     <Pressable disabled={!onPress} onPress={onPress}>
       <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>

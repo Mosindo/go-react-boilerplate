@@ -35,9 +35,18 @@ export function MatchOverlay({ match, myPhotoPath, myName, onMessage, onClose }:
             </Text>
             <View style={styles.photos}>
               <PhotoImage fallbackLabel={myName} path={myPhotoPath} style={styles.photo} />
-              <PhotoImage fallbackLabel={match.user.firstName} path={match.user.photos[0]?.thumbUrl} style={[styles.photo, styles.photoOverlap]} />
+              <PhotoImage
+                fallbackLabel={match.user.firstName}
+                path={match.user.photos[0]?.thumbUrl}
+                style={[styles.photo, styles.photoOverlap]}
+              />
             </View>
-            <Button label={`Écrire à ${match.user.firstName}`} onPress={() => onMessage(match)} size="lg" testID="match-message" />
+            <Button
+              label={`Écrire à ${match.user.firstName}`}
+              onPress={() => onMessage(match)}
+              size="lg"
+              testID="match-message"
+            />
             <Button label="Continuer à découvrir" onPress={onClose} testID="match-close" variant="ghost" />
           </Animated.View>
         ) : null}
@@ -47,7 +56,13 @@ export function MatchOverlay({ match, myPhotoPath, myName, onMessage, onClose }:
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: colors.scrim, alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  backdrop: {
+    flex: 1,
+    backgroundColor: colors.scrim,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl
+  },
   sheet: {
     width: "100%",
     maxWidth: 420,

@@ -17,7 +17,10 @@ export function PreferencesEditor({ value, onChange }: PreferencesEditorProps) {
     if (has && value.interestedIn.length === 1) {
       return; // at least one gender must stay selected
     }
-    onChange({ ...value, interestedIn: has ? value.interestedIn.filter((g) => g !== gender) : [...value.interestedIn, gender] });
+    onChange({
+      ...value,
+      interestedIn: has ? value.interestedIn.filter((g) => g !== gender) : [...value.interestedIn, gender]
+    });
   };
 
   return (

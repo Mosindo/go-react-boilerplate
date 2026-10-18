@@ -26,11 +26,15 @@ function normalizeSession(response: AuthResponse): AuthSession {
 }
 
 export async function register(email: string, password: string): Promise<AuthSession> {
-  return normalizeSession(await apiRequest<AuthResponse>(endpoints.auth.register, { method: "POST", body: { email, password } }));
+  return normalizeSession(
+    await apiRequest<AuthResponse>(endpoints.auth.register, { method: "POST", body: { email, password } })
+  );
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
-  return normalizeSession(await apiRequest<AuthResponse>(endpoints.auth.login, { method: "POST", body: { email, password } }));
+  return normalizeSession(
+    await apiRequest<AuthResponse>(endpoints.auth.login, { method: "POST", body: { email, password } })
+  );
 }
 
 export async function logout(refreshToken: string): Promise<void> {

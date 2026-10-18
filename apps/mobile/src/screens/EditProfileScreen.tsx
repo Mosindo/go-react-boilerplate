@@ -26,7 +26,11 @@ const NAME_PATTERN = /^[\p{L}][\p{L}\p{M} '’.-]*$/u;
 export default function EditProfileScreen({ navigation }: Props) {
   const { data: profile } = useMyProfile();
   return (
-    <Screen header={<NavHeader onBack={() => navigation.goBack()} title="Modifier mon profil" />} scroll testID="edit-profile-screen">
+    <Screen
+      header={<NavHeader onBack={() => navigation.goBack()} title="Modifier mon profil" />}
+      scroll
+      testID="edit-profile-screen"
+    >
       {profile ? <EditForm onSaved={() => navigation.goBack()} profile={profile} /> : <Loader label="Chargement…" />}
     </Screen>
   );
@@ -39,7 +43,10 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
   const [bio, setBio] = useState(profile.bio);
   const [interests, setInterests] = useState(profile.interests.map((i) => i.slug));
   const [preferences, setPreferences] = useState<Preferences>(profile.preferences);
-  const [coordinates, setCoordinates] = useState<Coordinates>({ latitude: profile.latitude, longitude: profile.longitude });
+  const [coordinates, setCoordinates] = useState<Coordinates>({
+    latitude: profile.latitude,
+    longitude: profile.longitude
+  });
   const [city, setCity] = useState(profile.city);
   const [tried, setTried] = useState(false);
 
@@ -81,7 +88,14 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
       </Section>
 
       <Section title="À propos">
-        <Input error={tried ? nameError : null} label="Prénom" maxLength={40} onChangeText={setFirstName} testID="edit-name" value={firstName} />
+        <Input
+          error={tried ? nameError : null}
+          label="Prénom"
+          maxLength={40}
+          onChangeText={setFirstName}
+          testID="edit-name"
+          value={firstName}
+        />
         <Text tone="muted" variant="caption">
           Né(e) le {formatLongDate(profile.birthDate)} · la date de naissance ne peut pas être modifiée.
         </Text>
@@ -90,10 +104,24 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
         </Text>
         <ChipRow>
           {GENDERS.map((g) => (
-            <Chip key={g} label={GENDER_LABELS[g]} onPress={() => setGender(g)} selected={gender === g} testID={`edit-gender-${g}`} />
+            <Chip
+              key={g}
+              label={GENDER_LABELS[g]}
+              onPress={() => setGender(g)}
+              selected={gender === g}
+              testID={`edit-gender-${g}`}
+            />
           ))}
         </ChipRow>
-        <Input helperText={`${bio.length}/${MAX_BIO}`} label="Bio" maxLength={MAX_BIO} multiline onChangeText={setBio} testID="edit-bio" value={bio} />
+        <Input
+          helperText={`${bio.length}/${MAX_BIO}`}
+          label="Bio"
+          maxLength={MAX_BIO}
+          multiline
+          onChangeText={setBio}
+          testID="edit-bio"
+          value={bio}
+        />
       </Section>
 
       <Section title="Centres d'intérêt">

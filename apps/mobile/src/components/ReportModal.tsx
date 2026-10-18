@@ -55,10 +55,23 @@ export function ReportModal({ userId, firstName, visible, onClose, onDone }: Rep
       <View style={styles.body}>
         <ChipRow>
           {REASONS.map((r) => (
-            <Chip key={r.value} label={r.label} onPress={() => setReason(r.value)} selected={reason === r.value} testID={`reason-${r.value}`} />
+            <Chip
+              key={r.value}
+              label={r.label}
+              onPress={() => setReason(r.value)}
+              selected={reason === r.value}
+              testID={`reason-${r.value}`}
+            />
           ))}
         </ChipRow>
-        <Input maxLength={1000} multiline onChangeText={setDetails} placeholder="Détails (facultatif)" testID="report-details" value={details} />
+        <Input
+          maxLength={1000}
+          multiline
+          onChangeText={setDetails}
+          placeholder="Détails (facultatif)"
+          testID="report-details"
+          value={details}
+        />
         <Text tone="muted" variant="caption">
           En cas de danger immédiat, contactez les services d'urgence.
         </Text>

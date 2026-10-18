@@ -30,19 +30,51 @@ export default function ForgotPasswordScreen({ navigation, route }: Props) {
   });
 
   return (
-    <Screen header={<NavHeader onBack={() => navigation.goBack()} title="Mot de passe oublié" />} scroll testID="forgot-screen">
+    <Screen
+      header={<NavHeader onBack={() => navigation.goBack()} title="Mot de passe oublié" />}
+      scroll
+      testID="forgot-screen"
+    >
       {step === "request" ? (
         <>
-          <Text tone="muted">Saisissez votre adresse e-mail : nous vous envoyons un code à usage unique valable 30 minutes.</Text>
+          <Text tone="muted">
+            Saisissez votre adresse e-mail : nous vous envoyons un code à usage unique valable 30 minutes.
+          </Text>
           {request.isError ? <Notice title={errorMessage(request.error)} tone="danger" /> : null}
-          <Input autoCapitalize="none" inputMode="email" keyboardType="email-address" label="Adresse e-mail" onChangeText={setEmail} testID="forgot-email" value={email} />
-          <Button disabled={!email.trim()} label="Envoyer le code" loading={request.isPending} onPress={() => request.mutate()} size="lg" testID="forgot-send" />
+          <Input
+            autoCapitalize="none"
+            inputMode="email"
+            keyboardType="email-address"
+            label="Adresse e-mail"
+            onChangeText={setEmail}
+            testID="forgot-email"
+            value={email}
+          />
+          <Button
+            disabled={!email.trim()}
+            label="Envoyer le code"
+            loading={request.isPending}
+            onPress={() => request.mutate()}
+            size="lg"
+            testID="forgot-send"
+          />
         </>
       ) : (
         <>
-          <Notice description="Si cette adresse est enregistrée, un code vient de vous être envoyé." title="Vérifiez vos e-mails" tone="success" />
+          <Notice
+            description="Si cette adresse est enregistrée, un code vient de vous être envoyé."
+            title="Vérifiez vos e-mails"
+            tone="success"
+          />
           {reset.isError ? <Notice title={errorMessage(reset.error)} tone="danger" /> : null}
-          <Input autoCapitalize="characters" label="Code reçu" maxLength={8} onChangeText={setCode} testID="forgot-code" value={code} />
+          <Input
+            autoCapitalize="characters"
+            label="Code reçu"
+            maxLength={8}
+            onChangeText={setCode}
+            testID="forgot-code"
+            value={code}
+          />
           <Input
             autoCapitalize="none"
             helperText="8 caractères minimum."
@@ -60,7 +92,12 @@ export default function ForgotPasswordScreen({ navigation, route }: Props) {
             size="lg"
             testID="forgot-confirm"
           />
-          <Button label="Renvoyer un code" loading={request.isPending} onPress={() => request.mutate()} variant="ghost" />
+          <Button
+            label="Renvoyer un code"
+            loading={request.isPending}
+            onPress={() => request.mutate()}
+            variant="ghost"
+          />
         </>
       )}
     </Screen>

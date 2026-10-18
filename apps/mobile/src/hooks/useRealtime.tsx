@@ -17,7 +17,10 @@ const RealtimeContext = createContext<RealtimeContextValue>({ setActiveConversat
 const MIN_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 
-function appendMessage(data: InfiniteData<MessagesPage> | undefined, message: Message): InfiniteData<MessagesPage> | undefined {
+function appendMessage(
+  data: InfiniteData<MessagesPage> | undefined,
+  message: Message
+): InfiniteData<MessagesPage> | undefined {
   if (!data || data.pages.length === 0) {
     return data;
   }

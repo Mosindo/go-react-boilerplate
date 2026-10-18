@@ -70,7 +70,12 @@ function SignedIn({ userId }: { userId: string }) {
   if (isError) {
     return (
       <SafeAreaLayout>
-        <ErrorView actionLabel="Réessayer" message="Impossible de charger votre profil." onAction={() => void refetch()} title="Oups" />
+        <ErrorView
+          actionLabel="Réessayer"
+          message="Impossible de charger votre profil."
+          onAction={() => void refetch()}
+          title="Oups"
+        />
       </SafeAreaLayout>
     );
   }
@@ -100,7 +105,9 @@ export function RootNavigator() {
       {status === "signedIn" && user ? (
         <SignedIn key={user.id} userId={user.id} />
       ) : (
-        <AuthStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+        <AuthStack.Navigator
+          screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}
+        >
           <AuthStack.Screen component={AuthScreen} name="Auth" />
           <AuthStack.Screen component={ForgotPasswordScreen} name="ForgotPassword" />
         </AuthStack.Navigator>
@@ -108,4 +115,3 @@ export function RootNavigator() {
     </NavigationContainer>
   );
 }
-

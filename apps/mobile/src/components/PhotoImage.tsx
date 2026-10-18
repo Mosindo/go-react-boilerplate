@@ -18,7 +18,13 @@ export function PhotoImage({ path, style, fallbackLabel, resizeMode = "cover", t
   return (
     <View style={[styles.frame, style]} testID={testID}>
       {uri && !failed ? (
-        <Image accessibilityIgnoresInvertColors onError={() => setFailed(true)} resizeMode={resizeMode} source={{ uri }} style={styles.image} />
+        <Image
+          accessibilityIgnoresInvertColors
+          onError={() => setFailed(true)}
+          resizeMode={resizeMode}
+          source={{ uri }}
+          style={styles.image}
+        />
       ) : (
         <View style={styles.fallback}>
           <Text style={styles.initial} tone="muted" weight="bold">

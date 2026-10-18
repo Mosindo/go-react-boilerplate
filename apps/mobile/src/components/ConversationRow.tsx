@@ -15,7 +15,9 @@ type ConversationRowProps = {
 export function ConversationRow({ conversation, currentUserId, onPress, onLongPress }: ConversationRowProps) {
   const { user, lastMessage, unreadCount } = conversation;
   const unread = unreadCount > 0;
-  const preview = lastMessage ? `${lastMessage.senderId === currentUserId ? "Vous : " : ""}${lastMessage.content}` : "Dites bonjour 👋";
+  const preview = lastMessage
+    ? `${lastMessage.senderId === currentUserId ? "Vous : " : ""}${lastMessage.content}`
+    : "Dites bonjour 👋";
 
   return (
     <Pressable
@@ -52,11 +54,25 @@ export function ConversationRow({ conversation, currentUserId, onPress, onLongPr
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg
+  },
   pressed: { backgroundColor: colors.surfaceMuted },
   avatar: { width: 56, height: 56, borderRadius: 28 },
   copy: { flex: 1, gap: 2 },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
   name: { flex: 1 },
-  badge: { minWidth: 24, height: 24, borderRadius: radii.pill, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }
+  badge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6
+  }
 });

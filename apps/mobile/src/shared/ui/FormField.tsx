@@ -12,14 +12,7 @@ export type FormFieldProps = {
   required?: boolean;
 };
 
-export function FormField({
-  children,
-  containerStyle,
-  error,
-  helperText,
-  label,
-  required = false
-}: FormFieldProps) {
+export function FormField({ children, containerStyle, error, helperText, label, required = false }: FormFieldProps) {
   return (
     <View style={[styles.container, containerStyle]}>
       {label ? (

@@ -23,7 +23,13 @@ function ErrorBanner() {
   }
   return (
     <View pointerEvents="box-none" style={styles.bannerWrap}>
-      <ErrorView actionLabel="Fermer" compact message={error} onAction={clearGlobalError} title="Problème de connexion" />
+      <ErrorView
+        actionLabel="Fermer"
+        compact
+        message={error}
+        onAction={clearGlobalError}
+        title="Problème de connexion"
+      />
     </View>
   );
 }

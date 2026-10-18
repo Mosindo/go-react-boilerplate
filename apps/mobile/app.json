@@ -1,12 +1,37 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Tendre",
+    "slug": "tendre",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "assetBundlePatterns": ["**/*"],
+    "scheme": "tendre",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.tendre.mobile"
+    },
+    "android": {
+      "package": "app.tendre.mobile"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Tendre utilise votre position pour vous proposer des personnes proches. Seule une distance approximative est affichée."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Tendre accède à vos photos pour que vous puissiez les ajouter à votre profil."
+        }
+      ],
+      "expo-secure-store"
     ]
   }
 }

@@ -13,7 +13,14 @@ export function NavHeader({ title, onBack, right }: NavHeaderProps) {
     <View style={styles.row}>
       <View style={styles.side}>
         {onBack ? (
-          <Pressable accessibilityLabel="Retour" accessibilityRole="button" hitSlop={10} onPress={onBack} style={styles.back} testID="nav-back">
+          <Pressable
+            accessibilityLabel="Retour"
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={onBack}
+            style={styles.back}
+            testID="nav-back"
+          >
             <Text style={styles.arrow} weight="bold">
               ‹
             </Text>

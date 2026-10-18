@@ -56,7 +56,12 @@ const styles = StyleSheet.create({
     minHeight: 40,
     justifyContent: "center"
   },
-  static: { backgroundColor: colors.primarySoft, borderColor: colors.primaryBorder, minHeight: 32, paddingVertical: spacing.xs },
+  static: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryBorder,
+    minHeight: 32,
+    paddingVertical: spacing.xs
+  },
   selected: { backgroundColor: colors.primary, borderColor: colors.primary },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.85 }

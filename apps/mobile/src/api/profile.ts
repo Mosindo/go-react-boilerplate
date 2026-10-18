@@ -43,6 +43,9 @@ export async function deletePhoto(photoId: string): Promise<void> {
 }
 
 export async function reorderPhotos(photoIds: string[]): Promise<Photo[]> {
-  const response = await apiRequest<{ photos: Photo[] }>(endpoints.profile.photosOrder, { method: "PUT", body: { photoIds } });
+  const response = await apiRequest<{ photos: Photo[] }>(endpoints.profile.photosOrder, {
+    method: "PUT",
+    body: { photoIds }
+  });
   return response.photos;
 }

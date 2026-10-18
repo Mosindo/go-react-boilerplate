@@ -23,7 +23,9 @@ export function EmptyView({ actionLabel, message, onAction, style, testID, title
             {message}
           </Text>
         ) : null}
-        {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="secondary" /> : null}
+        {actionLabel && onAction ? (
+          <Button label={actionLabel} onPress={onAction} size="sm" variant="secondary" />
+        ) : null}
       </Card>
     </View>
   );

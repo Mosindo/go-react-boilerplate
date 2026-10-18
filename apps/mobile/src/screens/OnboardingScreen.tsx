@@ -48,7 +48,11 @@ export default function OnboardingScreen({ profile, onFinish }: OnboardingScreen
   const age = ageFromIso(birthDate);
   const errors = {
     firstName: !NAME_PATTERN.test(firstName.trim()) ? "Saisissez votre prénom (lettres uniquement)." : null,
-    birthDate: !birthDate ? "Saisissez une date valide." : age !== null && age < 18 ? "Vous devez avoir au moins 18 ans." : null,
+    birthDate: !birthDate
+      ? "Saisissez une date valide."
+      : age !== null && age < 18
+        ? "Vous devez avoir au moins 18 ans."
+        : null,
     gender: !gender ? "Choisissez une option." : null,
     prefs: preferences.interestedIn.length === 0 ? "Choisissez au moins une option." : null,
     location: !coordinates ? "Indiquez votre position ou choisissez une ville." : null
@@ -103,15 +107,35 @@ export default function OnboardingScreen({ profile, onFinish }: OnboardingScreen
     <Screen
       footer={
         step < 4 ? (
-          <Button fullWidth label={step === 3 ? "Enregistrer mon profil" : "Continuer"} loading={save.isPending} onPress={next} size="lg" style={styles.footerButton} testID="onboarding-next" />
+          <Button
+            fullWidth
+            label={step === 3 ? "Enregistrer mon profil" : "Continuer"}
+            loading={save.isPending}
+            onPress={next}
+            size="lg"
+            style={styles.footerButton}
+            testID="onboarding-next"
+          />
         ) : (
-          <Button disabled={photos.length === 0} fullWidth label="Commencer à découvrir" onPress={finish} size="lg" style={styles.footerButton} testID="onboarding-finish" />
+          <Button
+            disabled={photos.length === 0}
+            fullWidth
+            label="Commencer à découvrir"
+            onPress={finish}
+            size="lg"
+            style={styles.footerButton}
+            testID="onboarding-finish"
+          />
         )
       }
       header={
         <NavHeader
           onBack={step > 0 && step < 4 ? () => setStep(step - 1) : undefined}
-          right={step === 0 || step === 4 ? <Button label="Quitter" onPress={() => void signOut()} size="sm" variant="ghost" /> : undefined}
+          right={
+            step === 0 || step === 4 ? (
+              <Button label="Quitter" onPress={() => void signOut()} size="sm" variant="ghost" />
+            ) : undefined
+          }
           title={STEPS[step]}
         />
       }
@@ -124,7 +148,15 @@ export default function OnboardingScreen({ profile, onFinish }: OnboardingScreen
 
       {step === 0 ? (
         <>
-          <Input autoCapitalize="words" error={tried ? errors.firstName : null} label="Prénom" maxLength={40} onChangeText={setFirstName} testID="ob-name" value={firstName} />
+          <Input
+            autoCapitalize="words"
+            error={tried ? errors.firstName : null}
+            label="Prénom"
+            maxLength={40}
+            onChangeText={setFirstName}
+            testID="ob-name"
+            value={firstName}
+          />
           <BirthDateField error={tried ? errors.birthDate : null} onChange={setBirthDate} value={birthDate} />
           <View style={styles.block}>
             <Text tone="secondary" variant="label" weight="semibold">
@@ -132,7 +164,13 @@ export default function OnboardingScreen({ profile, onFinish }: OnboardingScreen
             </Text>
             <ChipRow>
               {GENDERS.map((g) => (
-                <Chip key={g} label={GENDER_LABELS[g]} onPress={() => setGender(g)} selected={gender === g} testID={`gender-${g}`} />
+                <Chip
+                  key={g}
+                  label={GENDER_LABELS[g]}
+                  onPress={() => setGender(g)}
+                  selected={gender === g}
+                  testID={`gender-${g}`}
+                />
               ))}
             </ChipRow>
             {tried && errors.gender ? (

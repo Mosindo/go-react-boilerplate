@@ -53,9 +53,18 @@ async function waitFor(url, label) {
 }
 
 function serveStatic(dir, port) {
-  const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf" };
+  const types = {
+    ".html": "text/html",
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".png": "image/png",
+    ".json": "application/json",
+    ".ttf": "font/ttf"
+  };
   const server = http.createServer((req, res) => {
-    const requested = path.normalize(decodeURIComponent(new URL(req.url, webUrl).pathname)).replace(/^(\.\.[/\\])+/, "");
+    const requested = path
+      .normalize(decodeURIComponent(new URL(req.url, webUrl).pathname))
+      .replace(/^(\.\.[/\\])+/, "");
     let file = path.join(dir, requested);
     if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       file = path.join(dir, "index.html"); // SPA fallback

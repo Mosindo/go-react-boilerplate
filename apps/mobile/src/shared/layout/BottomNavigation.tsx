@@ -106,6 +106,5 @@ const styles = StyleSheet.create({
   item: { paddingVertical: spacing.xs },
   label: { paddingBottom: spacing.xs, fontSize: 12, fontWeight: "600" },
   glyph: { fontSize: 22, lineHeight: 26 },
-  badge: { backgroundColor: colors.primary, color: colors.inverse }
+  badge: { backgroundColor: colors.primary, color: colors.inverse, fontSize: 11, fontWeight: "700" }
 });
-
