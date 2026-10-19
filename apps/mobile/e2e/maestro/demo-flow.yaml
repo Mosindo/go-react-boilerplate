@@ -1,0 +1,48 @@
+# Device E2E (Maestro): sign in with the seeded demo account, swipe, open messages and settings.
+# Prerequisites: API running with `go run ./cmd/seed` applied, app installed on an emulator/phone.
+#   maestro test -e APP_ID=app.ember.dating -e DEMO_EMAIL=demo@demo.invalid -e DEMO_PASSWORD=demo-password-123 e2e/maestro/demo-flow.yaml
+appId: ${APP_ID}
+name: Ember demo flow
+---
+- launchApp:
+    clearState: true
+
+- assertVisible: "Créer un compte"
+- tapOn:
+    id: welcome-login
+- tapOn:
+    id: auth-email-input
+- inputText: ${DEMO_EMAIL}
+- tapOn:
+    id: auth-password-input
+- inputText: ${DEMO_PASSWORD}
+- tapOn:
+    id: auth-submit-button
+
+# Discovery: like the first profile, then pass the next one.
+- assertVisible:
+    id: discover-screen
+- tapOn:
+    id: like-button
+- tapOn:
+    id: pass-button
+
+# Likes received and messages tabs.
+- tapOn:
+    id: tab-likes
+- assertVisible:
+    id: likes-list
+- tapOn:
+    id: tab-messages
+- assertVisible: "Messages"
+
+# Profile hub and privacy settings.
+- tapOn:
+    id: tab-me
+- tapOn:
+    id: me-settings
+- assertVisible:
+    id: settings-screen
+- tapOn:
+    id: logout-button
+- assertVisible: "Créer un compte"

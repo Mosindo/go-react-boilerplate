@@ -3,6 +3,10 @@
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
-    "moduleResolution": "bundler"
-  }
+    "moduleResolution": "bundler",
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["App.tsx", "src/**/*", "jest.setup.ts", "types/**/*"]
 }

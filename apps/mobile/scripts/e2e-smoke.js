@@ -1,132 +1,224 @@
 /* eslint-disable no-console */
-const API_BASE_URL = process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080";
+// End-to-end smoke test against a running API (no device needed):
+//   register -> profile -> photo -> discover -> like -> match -> realtime chat -> read receipts
+//   -> block -> account deletion.
+// Usage: MOBILE_E2E_API_URL=http://localhost:18080 npm run e2e:smoke
+const zlib = require("node:zlib");
+
+const API = (
+  process.env.MOBILE_E2E_API_URL ||
+  process.env.EXPO_PUBLIC_API_URL ||
+  "http://localhost:18080"
+).replace(/\/+$/, "");
 const PASSWORD = "Password123";
 
-function uniqueEmail(prefix) {
-  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 100000)}@boilerplate.test`;
+function assert(condition, message) {
+  if (!condition) throw new Error(`ASSERTION FAILED: ${message}`);
 }
 
-async function request(path, init = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {})
+function step(name) {
+  console.log(`✓ ${name}`);
+}
+
+/** Builds a valid 320x320 RGB PNG (the API re-encodes it to JPEG). */
+function makePng() {
+  const w = 320;
+  const h = 320;
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 3 + 1)] = 0;
+    for (let x = 0; x < w; x++) {
+      const o = y * (w * 3 + 1) + 1 + x * 3;
+      raw[o] = x % 256;
+      raw[o + 1] = y % 256;
+      raw[o + 2] = 128;
+    }
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", zlib.deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
+async function call(token, method, path, body) {
+  const headers = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body !== undefined && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)
+  });
+  const text = await res.text();
+  return { status: res.status, data: text ? JSON.parse(text) : undefined };
+}
+
+async function onboard(name, gender, interestedIn) {
+  const email = `${name.toLowerCase()}_${Date.now()}_${Math.floor(Math.random() * 1e5)}@e2e.invalid`;
+  const reg = await call(null, "POST", "/auth/register", { email, password: PASSWORD });
+  assert(reg.status === 201, `register ${name}: ${reg.status}`);
+  const token = reg.data.accessToken;
+  const profile = await call(token, "PUT", "/profile", {
+    firstName: name,
+    birthDate: "1994-04-12",
+    gender,
+    bio: `Hello from ${name}`,
+    city: "Paris",
+    interests: [1, 3]
+  });
+  assert(profile.status === 200, `profile ${name}: ${profile.status}`);
+  const prefs = await call(token, "PUT", "/preferences", {
+    interestedIn,
+    minAge: 18,
+    maxAge: 60,
+    maxDistanceKm: null,
+    showDistance: true
+  });
+  assert(prefs.status === 200, `preferences ${name}: ${prefs.status}`);
+  const form = new FormData();
+  form.append("photo", new Blob([makePng()], { type: "image/png" }), "photo.png");
+  const photo = await call(token, "POST", "/profile/photos", form);
+  assert(photo.status === 201, `photo ${name}: ${photo.status}`);
+  return { name, email, token, id: reg.data.user.id };
+}
+
+function openSocket(token) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${API.replace(/^http/, "ws")}/ws`);
+    const events = [];
+    const waiters = [];
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token }));
+    ws.onerror = () => reject(new Error("websocket error"));
+    ws.onmessage = (m) => {
+      const event = JSON.parse(String(m.data));
+      if (event.type === "ready") return resolve({ ws, next });
+      events.push(event);
+      waiters.splice(0).forEach((w) => w());
+    };
+    async function next(type, timeoutMs = 4000) {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const idx = events.findIndex((e) => e.type === type);
+        if (idx >= 0) return events.splice(idx, 1)[0];
+        const left = deadline - Date.now();
+        if (left <= 0) throw new Error(`timed out waiting for ${type}`);
+        await new Promise((r) => {
+          waiters.push(r);
+          setTimeout(r, left);
+        });
+      }
     }
   });
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  return { status: response.status, ok: response.ok, payload };
-}
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-async function register(email) {
-  const res = await request("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password: PASSWORD })
-  });
-  assert(res.status === 201, `register failed for ${email}: ${res.status} ${JSON.stringify(res.payload)}`);
-  return res.payload;
 }
 
 async function main() {
-  console.log(`[e2e-smoke] API: ${API_BASE_URL}`);
+  console.log(`Smoke testing ${API}`);
+  const health = await call(null, "GET", "/health");
+  assert(health.status === 200, `health: ${health.status}`);
+  step("health");
 
-  const email1 = uniqueEmail("mobile_e2e_a");
-  const email2 = uniqueEmail("mobile_e2e_b");
+  const ana = await onboard("Ana", "woman", ["man"]);
+  const ben = await onboard("Ben", "man", ["woman"]);
+  step("register + profile + preferences + photo for two users");
 
-  const auth1 = await register(email1);
-  const auth2 = await register(email2);
-  assert(auth1?.token && auth2?.token, "expected tokens after register");
+  const unauth = await call(null, "GET", "/discover");
+  assert(unauth.status === 401, "discover must require auth");
+  step("protected endpoints reject anonymous requests");
 
-  const login1 = await request("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email: email1, password: PASSWORD })
+  const feed = await call(ben.token, "GET", "/discover?limit=20");
+  assert(feed.status === 200, `discover: ${feed.status}`);
+  assert(
+    feed.data.profiles.some((p) => p.userId === ana.id),
+    "Ben should discover Ana"
+  );
+  assert(!feed.data.profiles.some((p) => p.userId === ben.id), "no self in discover");
+  step("discovery returns compatible profiles");
+
+  const sockAna = await openSocket(ana.token);
+  const sockBen = await openSocket(ben.token);
+
+  const first = await call(ben.token, "POST", "/swipes", { userId: ana.id, action: "like" });
+  assert(first.status === 200 && first.data.matched === false, "one-sided like must not match");
+  const second = await call(ana.token, "POST", "/swipes", { userId: ben.id, action: "like" });
+  assert(second.data.matched === true && second.data.match, "mutual like must match");
+  const dup = await call(ana.token, "POST", "/swipes", { userId: ben.id, action: "like" });
+  assert(dup.data.duplicate === true, "repeated like is a no-op");
+  step("like -> match (no duplicates)");
+
+  const matchEvent = await sockBen.next("match.new");
+  assert(matchEvent.data.profile.firstName === "Ana", "Ben gets a live match event");
+  step("realtime match notification");
+
+  const conversationId = second.data.match.conversationId;
+  const sent = await call(ben.token, "POST", `/conversations/${conversationId}/messages`, {
+    body: "Bonjour Ana 👋"
   });
-  assert(login1.status === 200, `login failed: ${login1.status} ${JSON.stringify(login1.payload)}`);
-  assert(login1.payload?.user?.id === auth1.user.id, "login user mismatch");
+  assert(sent.status === 201, `send: ${sent.status}`);
+  const live = await sockAna.next("message.new");
+  assert(live.data.body === "Bonjour Ana 👋", "Ana receives the message live");
+  step("realtime chat delivery");
 
-  const users = await request("/users", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(users.status === 200, `users failed: ${users.status}`);
-  const seesUser2 = Array.isArray(users.payload?.users) && users.payload.users.some((u) => u.id === auth2.user.id);
-  assert(seesUser2, "users list should include second user");
+  const conv = await call(ana.token, "GET", "/conversations");
+  assert(conv.data.conversations[0].unreadCount === 1, "unread count = 1");
+  await call(ana.token, "POST", `/conversations/${conversationId}/read`);
+  const read = await sockBen.next("message.read");
+  assert(read.data.conversationId === conversationId, "Ben sees the read receipt live");
+  const after = await call(ana.token, "GET", "/conversations");
+  assert(after.data.conversations[0].unreadCount === 0, "unread cleared");
+  step("read receipts + unread counters");
 
-  const createPost = await request("/posts", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({ title: "Smoke post", body: "Validating the generic post feed." })
-  });
-  assert(createPost.status === 201, `create post failed: ${createPost.status}`);
+  const photoId = (await call(ana.token, "GET", "/profile")).data.photos[0].id;
+  const anonPhoto = await call(null, "GET", `/photos/${photoId}`);
+  assert(anonPhoto.status === 401, "photos are private");
+  step("photos require authentication");
 
-  const listPosts = await request("/posts", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listPosts.status === 200, `list posts failed: ${listPosts.status}`);
-  const seesNewPost =
-    Array.isArray(listPosts.payload?.posts) && listPosts.payload.posts.some((post) => post.id === createPost.payload?.id);
-  assert(seesNewPost, "posts list should include created post");
+  const intruder = await onboard("Eve", "woman", ["man"]);
+  const peek = await call(intruder.token, "GET", `/conversations/${conversationId}/messages`);
+  assert(peek.status === 404, "non-members cannot read a conversation");
+  step("conversation permissions");
 
-  const send = await request(`/chats/${auth2.user.id}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({ content: "hello from mobile e2e smoke" })
-  });
-  assert(send.status === 201, `send message failed: ${send.status}`);
+  const notes = await call(ana.token, "GET", "/notifications");
+  assert(
+    notes.data.notifications.some((n) => n.type === "new_match"),
+    "match notification stored"
+  );
+  step("notifications");
 
-  const listMessages = await request(`/chats/${auth2.user.id}/messages`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listMessages.status === 200, `list messages failed: ${listMessages.status}`);
-  assert(Array.isArray(listMessages.payload?.messages) && listMessages.payload.messages.length > 0, "messages should not be empty");
+  const block = await call(ana.token, "POST", "/blocks", { userId: ben.id });
+  assert(block.status === 204, "block");
+  const gone = await call(ben.token, "GET", `/conversations/${conversationId}/messages`);
+  assert(gone.status === 404, "block dissolves the conversation");
+  step("block");
 
-  const createNotification = await request("/notifications", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({
-      type: "system",
-      title: "Smoke notification",
-      body: "Validating the generic notification flow."
-    })
-  });
-  assert(createNotification.status === 201, `create notification failed: ${createNotification.status}`);
+  for (const user of [ana, ben, intruder]) {
+    const del = await call(user.token, "POST", "/me/delete", { password: PASSWORD });
+    assert(del.status === 204, `delete ${user.name}: ${del.status}`);
+    const login = await call(null, "POST", "/auth/login", { email: user.email, password: PASSWORD });
+    assert(login.status === 401, "deleted account cannot log in");
+  }
+  step("account deletion");
 
-  const listNotifications = await request("/notifications", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listNotifications.status === 200, `list notifications failed: ${listNotifications.status}`);
-  const seesNotification =
-    Array.isArray(listNotifications.payload?.notifications) &&
-    listNotifications.payload.notifications.some((item) => item.id === createNotification.payload?.id);
-  assert(seesNotification, "notifications list should include created notification");
-
-  const markRead = await request(`/notifications/${createNotification.payload.id}/read`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(markRead.status === 200, `mark notification read failed: ${markRead.status}`);
-  assert(markRead.payload?.isRead === true, "notification should be marked as read");
-
-  console.log("[e2e-smoke] PASS register/login/users/posts/chat/notifications");
+  sockAna.ws.close();
+  sockBen.ws.close();
+  console.log("\nAll smoke checks passed.");
 }
 
-main().catch((err) => {
-  console.error(`[e2e-smoke] FAIL ${err instanceof Error ? err.message : String(err)}`);
+main().catch((error) => {
+  console.error(`\nSmoke test failed: ${error.message}`);
   process.exit(1);
 });
