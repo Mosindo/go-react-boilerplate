@@ -7,24 +7,21 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is Ember, a 100% free dating application (founder decision, supersedes the former domain-agnostic boilerplate goal).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- no subscription, paywall, paid boost, artificial like limit, or mandatory ads
+- 18+ only, enforced server-side
+- never expose exact location, birth date or email of other users
+- every important rule is enforced on the server
 
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- profiles (profile, preferences, interests, photos)
+- matching (discover, swipes, matches)
 - chat
 - notifications
-- files
+- safety (blocks, reports)
 
 ---
 
@@ -55,22 +52,25 @@ Core reusable modules:
 
 Target structure:
 
-`cmd/api/main.go`  
+`cmd/api/main.go`, `cmd/seed/main.go`  
 `internal/`
+- `server/` (router wiring, integration tests)
 - `platform/`
   - `config/`
-  - `db/`
+  - `db/` (+ `migrations/`)
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `pagination/`
+  - `realtime/`
+  - `storage/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +130,12 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `profiles (is_visible, gender)`
+- `conversation_members (user_id)`
+- `messages (conversation_id, created_at, id)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `swipes` incoming likes (partial)
 
 ---
 
@@ -143,20 +143,21 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
+- `gofmt -l .` (must print nothing), `go vet ./...`
+- `go test ./...` with `DATABASE_URL_TEST` set so integration tests run
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/internal/server`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth (`/auth/*`, `/me`), token validation, password recovery, account deletion
+- Profiles, preferences, photos (`/profile*`, `/photos/:id`)
+- Discovery and matching (`/discover`, `/swipes`, `/matches`, `/likes/received`)
+- Chat (`/conversations*`) and realtime (`/ws`)
+- Notifications (`/notifications*`)
+- Safety (`/blocks`, `/reports`)
 
 ---
 
@@ -171,17 +172,18 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+  - profile + photo + preferences
+  - discover loads
+  - like -> match
+  - chat send/read (realtime)
   - notifications read flow
+  (automated by `npm run e2e:smoke` in `apps/mobile`)
 
 ---
 
@@ -207,7 +209,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Anything that paywalls or limits core features (see PRODUCT GOAL)
 
 ---
 

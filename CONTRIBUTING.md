@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Ember.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- The product stays 100% free: no paywalls, subscriptions, paid boosts or artificial like limits.
+- Every important rule is enforced server-side; never trust the client.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -37,7 +37,7 @@ Use short, descriptive branch names:
 - `docs/architecture-update`
 - `chore/qa-lite-cleanup`
 
-For automated agent work, use the `codex/` prefix.
+For automated agent work, use the `claude/` or `codex/` prefix.
 
 ## Pull Request Workflow
 
@@ -73,25 +73,18 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
-
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+export DATABASE_URL_TEST=postgres://postgres:postgres@localhost:5432/app_test   # integration tests
+gofmt -l . && go vet ./... && go test -race -count=1 ./... && go build ./cmd/api
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm ci && npx tsc --noEmit && npm run lint && npm run format:check && npm test
 ```
 
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+For flows that cross the API boundary, also run `npm run e2e:smoke` against a running stack (see README).
 
 ## Documentation Expectations
 

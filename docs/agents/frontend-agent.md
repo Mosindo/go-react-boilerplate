@@ -2,8 +2,7 @@
 
 ## Responsibility
 
-- Integrate React Query into the mobile frontend
-- Implement auth hooks such as `useAuth`, `useLogin`, `useRegister`, and `useCurrentUser`
+- Maintain the Expo mobile app (TanStack Query for server state, `AuthProvider` for the session)
 - Connect hooks through the existing API client abstraction
 - Handle loading, error, and session state coherently
 
@@ -12,7 +11,7 @@
 - Must use the existing API client layer
 - No direct `fetch` calls from screens or components
 - Shared logic belongs in reusable hooks/modules, not screens
-- Must preserve existing navigation and working chat behavior
+- Must preserve the onboarding, discovery, matching and chat flows
 
 ## Allowed Actions
 
