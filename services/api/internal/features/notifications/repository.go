@@ -6,127 +6,106 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var (
-	ErrNotificationNotFound = errors.New("notification not found")
-)
-
-type StoredNotification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
-
 type Repository interface {
-	ListNotifications(ctx context.Context, userID string, limit, offset int) ([]StoredNotification, error)
-	CreateNotification(ctx context.Context, userID, kind, title, body string) (StoredNotification, error)
-	MarkRead(ctx context.Context, userID, notificationID string) (StoredNotification, error)
+	List(ctx context.Context, userID string, limit int, beforeAt *time.Time, beforeID string) ([]Notification, error)
+	UnreadCount(ctx context.Context, userID string) (int, error)
+	MarkRead(ctx context.Context, userID, id string) error
+	MarkAllRead(ctx context.Context, userID string) error
 }
 
 type PGRepository struct {
-	dbPool *pgxpool.Pool
+	pool *pgxpool.Pool
 }
 
-func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
-	return &PGRepository{dbPool: dbPool}
+func NewPGRepository(pool *pgxpool.Pool) *PGRepository {
+	return &PGRepository{pool: pool}
 }
 
-func (r *PGRepository) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]StoredNotification, error) {
-	rows, err := r.dbPool.Query(ctx, `
-		SELECT id, user_id, type, title, body, is_read, created_at, read_at
-		FROM notifications
-		WHERE user_id = $1
-		ORDER BY created_at DESC, id DESC
-		LIMIT $2 OFFSET $3
-	`, userID, limit, offset)
+// InsertTx records a notification inside the caller's transaction. Message
+// notifications are coalesced: while one is still unread for a conversation no
+// further row is added, so a burst of messages produces a single entry.
+// It reports whether a row was created.
+func InsertTx(ctx context.Context, tx pgx.Tx, userID, kind, actorID, conversationID string) (bool, error) {
+	tag, err := tx.Exec(ctx, `
+		INSERT INTO notifications (user_id, type, actor_id, conversation_id)
+		SELECT $1, $2, $3, $4
+		WHERE $2 <> 'new_message' OR NOT EXISTS (
+			SELECT 1 FROM notifications
+			WHERE user_id = $1 AND type = 'new_message' AND conversation_id = $4 AND read_at IS NULL)
+	`, userID, kind, actorID, conversationID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+func (r *PGRepository) List(ctx context.Context, userID string, limit int, beforeAt *time.Time, beforeID string) ([]Notification, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT n.id, n.type, n.conversation_id, n.read_at, n.created_at,
+		       a.user_id, a.first_name,
+		       (SELECT ph.id FROM photos ph WHERE ph.user_id = a.user_id ORDER BY ph.position LIMIT 1)
+		FROM notifications n
+		LEFT JOIN profiles a ON a.user_id = n.actor_id
+		WHERE n.user_id = $1
+		  AND ($2::timestamptz IS NULL OR (n.created_at, n.id) < ($2, $3::uuid))
+		ORDER BY n.created_at DESC, n.id DESC
+		LIMIT $4
+	`, userID, beforeAt, nullUUID(beforeID), limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	notifications := make([]StoredNotification, 0)
+	out := []Notification{}
 	for rows.Next() {
-		var notification StoredNotification
-		var readAt *time.Time
-		if err := rows.Scan(
-			&notification.ID,
-			&notification.UserID,
-			&notification.Type,
-			&notification.Title,
-			&notification.Body,
-			&notification.IsRead,
-			&notification.CreatedAt,
-			&readAt,
-		); err != nil {
+		var n Notification
+		var actorID, actorName *string
+		var photoID *string
+		if err := rows.Scan(&n.ID, &n.Type, &n.ConversationID, &n.ReadAt, &n.CreatedAt, &actorID, &actorName, &photoID); err != nil {
 			return nil, err
 		}
-		notification.ReadAt = readAt
-		notifications = append(notifications, notification)
-	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return notifications, nil
-}
-
-func (r *PGRepository) CreateNotification(ctx context.Context, userID, kind, title, body string) (StoredNotification, error) {
-	var notification StoredNotification
-	var readAt *time.Time
-	err := r.dbPool.QueryRow(ctx, `
-		INSERT INTO notifications (user_id, type, title, body)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, user_id, type, title, body, is_read, created_at, read_at
-	`, userID, kind, title, body).Scan(
-		&notification.ID,
-		&notification.UserID,
-		&notification.Type,
-		&notification.Title,
-		&notification.Body,
-		&notification.IsRead,
-		&notification.CreatedAt,
-		&readAt,
-	)
-	if err != nil {
-		return StoredNotification{}, err
-	}
-	notification.ReadAt = readAt
-	return notification, nil
-}
-
-func (r *PGRepository) MarkRead(ctx context.Context, userID, notificationID string) (StoredNotification, error) {
-	var notification StoredNotification
-	var readAt *time.Time
-	err := r.dbPool.QueryRow(ctx, `
-		UPDATE notifications
-		SET is_read = TRUE,
-		    read_at = COALESCE(read_at, NOW())
-		WHERE id = $1
-		  AND user_id = $2
-		RETURNING id, user_id, type, title, body, is_read, created_at, read_at
-	`, notificationID, userID).Scan(
-		&notification.ID,
-		&notification.UserID,
-		&notification.Type,
-		&notification.Title,
-		&notification.Body,
-		&notification.IsRead,
-		&notification.CreatedAt,
-		&readAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return StoredNotification{}, ErrNotificationNotFound
+		if actorID != nil && actorName != nil {
+			n.Actor = &Actor{UserID: *actorID, FirstName: *actorName, PhotoID: photoID}
 		}
-		return StoredNotification{}, err
+		out = append(out, n)
 	}
-	notification.ReadAt = readAt
-	return notification, nil
+	return out, rows.Err()
+}
+
+func nullUUID(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func (r *PGRepository) UnreadCount(ctx context.Context, userID string) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL`, userID).Scan(&n)
+	return n, err
+}
+
+func (r *PGRepository) MarkRead(ctx context.Context, userID, id string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE notifications SET read_at = COALESCE(read_at, NOW()) WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "22P02" {
+			return ErrNotFound
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *PGRepository) MarkAllRead(ctx context.Context, userID string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE notifications SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL`, userID)
+	return err
 }
