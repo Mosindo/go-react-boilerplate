@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deletePhoto, reorderPhotos, uploadPhoto } from "../api/profile";
 import type { OwnProfile, PhotoRef } from "../api/types";
 import { errorMessage } from "../lib/errors";
-import { PhotoImage, Text, useToast } from "../ui";
+import { PhotoImage, Text, useActionSheet, useToast } from "../ui";
 import { MIN_TOUCH, radius, spacing } from "../theme/tokens";
 import { useTheme } from "../theme/ThemeProvider";
 
@@ -39,6 +39,7 @@ async function pickAndPrepare(): Promise<string | null> {
 export function PhotosManager({ photos }: Props) {
   const { colors } = useTheme();
   const toast = useToast();
+  const sheet = useActionSheet();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
 
@@ -93,19 +94,20 @@ export function PhotosManager({ photos }: Props) {
     ]);
 
   const openMenu = (photo: PhotoRef, index: number) => {
-    const actions = [
-      ...(index > 0
-        ? [{ text: "Définir comme photo principale", onPress: () => makePrimary.mutate(photo.id) }]
-        : []),
-      ...(index > 0 ? [{ text: "Déplacer vers la gauche", onPress: () => move(index, -1) }] : []),
-      ...(index < photos.length - 1
-        ? [{ text: "Déplacer vers la droite", onPress: () => move(index, 1) }]
-        : []),
-      { text: "Remplacer", onPress: () => void add(index) },
-      { text: "Supprimer", style: "destructive" as const, onPress: () => confirmDelete(photo) },
-      { text: "Annuler", style: "cancel" as const }
-    ];
-    Alert.alert("Photo", undefined, actions);
+    sheet.show({
+      title: index === 0 ? "Photo principale" : `Photo ${index + 1}`,
+      actions: [
+        ...(index > 0
+          ? [{ label: "Définir comme photo principale", onPress: () => makePrimary.mutate(photo.id) }]
+          : []),
+        ...(index > 0 ? [{ label: "Déplacer vers la gauche", onPress: () => move(index, -1) }] : []),
+        ...(index < photos.length - 1
+          ? [{ label: "Déplacer vers la droite", onPress: () => move(index, 1) }]
+          : []),
+        { label: "Remplacer", onPress: () => void add(index) },
+        { label: "Supprimer", destructive: true, onPress: () => confirmDelete(photo) }
+      ]
+    });
   };
 
   return (

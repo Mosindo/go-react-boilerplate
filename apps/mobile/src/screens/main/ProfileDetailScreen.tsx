@@ -9,7 +9,7 @@ import { MatchModal } from "../../components/MatchModal";
 import { distanceLabel } from "../../components/SwipeCard";
 import { errorMessage } from "../../lib/errors";
 import type { MainStackParams } from "../../navigation/types";
-import { Chip, ErrorState, Loading, PhotoImage, Screen, Text, useToast } from "../../ui";
+import { Chip, ErrorState, Loading, PhotoImage, Screen, Text, useActionSheet, useToast } from "../../ui";
 import { MIN_TOUCH, radius, spacing } from "../../theme/tokens";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -20,6 +20,7 @@ export default function ProfileDetailScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const toast = useToast();
+  const sheet = useActionSheet();
   const queryClient = useQueryClient();
   const [photoIndex, setPhotoIndex] = useState(0);
   const [match, setMatch] = useState<Match | null>(null);
@@ -87,17 +88,17 @@ export default function ProfileDetailScreen({ navigation, route }: Props) {
           accessibilityLabel="Plus d'options"
           style={styles.menu}
           onPress={() =>
-            Alert.alert(profile?.firstName ?? "Profil", undefined, [
-              {
-                text: "Signaler",
-                onPress: () => profile && navigation.navigate("Report", { userId, name: profile.firstName })
-              },
-              { text: "Bloquer", style: "destructive", onPress: doBlock },
-              ...(matchId
-                ? [{ text: "Supprimer le match", style: "destructive" as const, onPress: doUnmatch }]
-                : []),
-              { text: "Annuler", style: "cancel" as const }
-            ])
+            sheet.show({
+              title: profile?.firstName ?? "Profil",
+              actions: [
+                {
+                  label: "Signaler",
+                  onPress: () => profile && navigation.navigate("Report", { userId, name: profile.firstName })
+                },
+                { label: "Bloquer", destructive: true, onPress: doBlock },
+                ...(matchId ? [{ label: "Supprimer le match", destructive: true, onPress: doUnmatch }] : [])
+              ]
+            })
           }
           testID="profile-menu"
         >

@@ -5,7 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/auth/AuthProvider";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "./src/theme/ThemeProvider";
-import { ToastProvider } from "./src/ui";
+import { ActionSheetProvider, ToastProvider } from "./src/ui";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,10 +25,12 @@ export default function App() {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <ToastProvider>
-            <AuthProvider>
-              <ThemedStatusBar />
-              <RootNavigator />
-            </AuthProvider>
+            <ActionSheetProvider>
+              <AuthProvider>
+                <ThemedStatusBar />
+                <RootNavigator />
+              </AuthProvider>
+            </ActionSheetProvider>
           </ToastProvider>
         </QueryClientProvider>
       </ThemeProvider>

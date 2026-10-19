@@ -1,3 +1,4 @@
+export { ActionSheetProvider, useActionSheet } from "./ActionSheet";
 export { Avatar, PhotoImage, photoSource } from "./PhotoImage";
 export { Button } from "./Button";
 export { Chip } from "./Chip";

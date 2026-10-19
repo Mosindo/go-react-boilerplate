@@ -20,7 +20,7 @@ import { formatDayHeader, formatTime } from "../../lib/dates";
 import { errorMessage } from "../../lib/errors";
 import { insertMessage } from "../../realtime/RealtimeProvider";
 import type { MainStackParams } from "../../navigation/types";
-import { ErrorState, Loading, Text, useToast } from "../../ui";
+import { ErrorState, Loading, Text, useActionSheet, useToast } from "../../ui";
 import { MIN_TOUCH, radius, spacing } from "../../theme/tokens";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -33,6 +33,7 @@ export default function ChatScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const toast = useToast();
+  const sheet = useActionSheet();
   const queryClient = useQueryClient();
   const messages = useMessages(conversationId);
   const conversation = useQuery({
@@ -63,44 +64,46 @@ export default function ChatScreen({ navigation, route }: Props) {
 
   const openMenu = useCallback(() => {
     if (!peer) return;
-    Alert.alert(peer.firstName, undefined, [
-      {
-        text: "Voir le profil",
-        onPress: () =>
-          navigation.navigate("ProfileDetail", { userId: peer.userId, profile: peer, conversationId })
-      },
-      {
-        text: "Signaler",
-        onPress: () => navigation.navigate("Report", { userId: peer.userId, name: peer.firstName })
-      },
-      {
-        text: "Bloquer",
-        style: "destructive",
-        onPress: () =>
-          Alert.alert(
-            `Bloquer ${peer.firstName} ?`,
-            "La conversation et le match seront supprimés. Cette personne ne pourra plus vous voir.",
-            [
-              { text: "Annuler", style: "cancel" },
-              {
-                text: "Bloquer",
-                style: "destructive",
-                onPress: () => {
-                  blockUser(peer.userId)
-                    .then(() => {
-                      void queryClient.invalidateQueries();
-                      navigation.popToTop();
-                      toast.show(`${peer.firstName} a été bloqué(e).`, "success");
-                    })
-                    .catch((e) => toast.show(errorMessage(e), "error"));
+    sheet.show({
+      title: peer.firstName,
+      actions: [
+        {
+          label: "Voir le profil",
+          onPress: () =>
+            navigation.navigate("ProfileDetail", { userId: peer.userId, profile: peer, conversationId })
+        },
+        {
+          label: "Signaler",
+          onPress: () => navigation.navigate("Report", { userId: peer.userId, name: peer.firstName })
+        },
+        {
+          label: "Bloquer",
+          destructive: true,
+          onPress: () =>
+            Alert.alert(
+              `Bloquer ${peer.firstName} ?`,
+              "La conversation et le match seront supprimés. Cette personne ne pourra plus vous voir.",
+              [
+                { text: "Annuler", style: "cancel" },
+                {
+                  text: "Bloquer",
+                  style: "destructive",
+                  onPress: () => {
+                    blockUser(peer.userId)
+                      .then(() => {
+                        void queryClient.invalidateQueries();
+                        navigation.popToTop();
+                        toast.show(`${peer.firstName} a été bloqué(e).`, "success");
+                      })
+                      .catch((e) => toast.show(errorMessage(e), "error"));
+                  }
                 }
-              }
-            ]
-          )
-      },
-      { text: "Annuler", style: "cancel" }
-    ]);
-  }, [conversationId, navigation, peer, queryClient, toast]);
+              ]
+            )
+        }
+      ]
+    });
+  }, [conversationId, navigation, peer, queryClient, sheet, toast]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
