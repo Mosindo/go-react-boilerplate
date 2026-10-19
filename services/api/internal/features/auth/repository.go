@@ -53,7 +53,7 @@ type Repository interface {
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
-	CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (bool, error)
 	GetActivePasswordReset(ctx context.Context, userID string, now time.Time) (StoredReset, error)
 	RecordResetAttempt(ctx context.Context, resetID string) error
 	CompletePasswordReset(ctx context.Context, resetID, userID, passwordHash string, now time.Time) error
@@ -213,23 +213,37 @@ func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash s
 	return nil
 }
 
-func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+// CreatePasswordReset stores a new recovery code, invalidating older ones. It
+// reports false (and stores nothing) when a code was already issued in the last
+// minute, so the endpoint cannot be used to flood someone's inbox.
+func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (bool, error) {
 	tx, err := r.dbPool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// Only the newest code is valid.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('reset:' || $1::text, 0))`, userID); err != nil {
+		return false, err
+	}
+	var recent bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM password_resets WHERE user_id = $1 AND created_at > NOW() - INTERVAL '60 seconds')`,
+		userID).Scan(&recent); err != nil {
+		return false, err
+	}
+	if recent {
+		return false, nil
+	}
 	if _, err := tx.Exec(ctx, `UPDATE password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
-		return err
+		return false, err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)
 	`, userID, tokenHash, expiresAt); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit(ctx)
+	return true, tx.Commit(ctx)
 }
 
 func (r *PGRepository) GetActivePasswordReset(ctx context.Context, userID string, now time.Time) (StoredReset, error) {

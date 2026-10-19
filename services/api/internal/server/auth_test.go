@@ -53,6 +53,7 @@ func TestAuthLifecycle(t *testing.T) {
 	}
 	login.decode(t, &tokens)
 
+	staleToken := tokens.AccessToken
 	me := e.do("GET", "/me", tokens.AccessToken, nil)
 	if me.Status != 200 {
 		t.Fatalf("me: %d", me.Status)
@@ -81,6 +82,9 @@ func TestAuthLifecycle(t *testing.T) {
 	if r := e.do("POST", "/auth/refresh", "", map[string]string{"refreshToken": next.RefreshToken}); r.Status != 401 {
 		t.Fatalf("refresh after logout must fail, got %d", r.Status)
 	}
+	if r := e.do("GET", "/me", staleToken, nil); r.Status != 401 {
+		t.Fatalf("access token must stop working right after logout, got %d", r.Status)
+	}
 }
 
 func TestTokenValidation(t *testing.T) {
@@ -102,8 +106,17 @@ func TestTokenValidation(t *testing.T) {
 		return s
 	}
 	valid := jwt.MapClaims{"uid": u.ID, "sid": "s", "exp": time.Now().Add(time.Minute).Unix()}
+	var sessionID string
+	if err := e.pool.QueryRow(t.Context(), `SELECT id FROM sessions WHERE user_id=$1`, u.ID).Scan(&sessionID); err != nil {
+		t.Fatal(err)
+	}
+	valid["sid"] = sessionID
 	if r := e.do("GET", "/me", sign(jwt.SigningMethodHS256, []byte(testSecret), valid), nil); r.Status != 200 {
 		t.Fatalf("sanity: valid token should pass, got %d", r.Status)
+	}
+	unknownSession := jwt.MapClaims{"uid": u.ID, "sid": "00000000-0000-0000-0000-000000000000", "exp": time.Now().Add(time.Minute).Unix()}
+	if r := e.do("GET", "/me", sign(jwt.SigningMethodHS256, []byte(testSecret), unknownSession), nil); r.Status != 401 {
+		t.Fatalf("a correctly signed token for an unknown session must be refused, got %d", r.Status)
 	}
 	cases := map[string]string{
 		"wrong secret": sign(jwt.SigningMethodHS256, []byte("another-secret-another-secret-0000"), valid),
@@ -134,6 +147,11 @@ func TestPasswordRecovery(t *testing.T) {
 		t.Fatalf("forgot: %d", r.Status)
 	}
 	code := e.mailer.code(u.Email)
+	// A second request within a minute is accepted but must not issue a new code (inbox flooding).
+	e.do("POST", "/auth/password/forgot", "", map[string]string{"email": u.Email})
+	if e.mailer.code(u.Email) != code {
+		t.Fatal("recovery codes must be throttled per account")
+	}
 	if len(code) != 10 {
 		t.Fatalf("expected a 10 char code, got %q", code)
 	}
@@ -192,5 +210,14 @@ func TestAuthRateLimit(t *testing.T) {
 	}
 	if !limited {
 		t.Fatal("login endpoint should rate limit bursts")
+	}
+}
+
+func TestRequestBodyLimit(t *testing.T) {
+	e := newEnv(t)
+	huge := strings.Repeat("a", 2<<20)
+	r := e.do("POST", "/auth/login", "", map[string]string{"email": "x@test.invalid", "password": huge})
+	if r.Status != http.StatusBadRequest && r.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized JSON bodies must be rejected, got %d", r.Status)
 	}
 }

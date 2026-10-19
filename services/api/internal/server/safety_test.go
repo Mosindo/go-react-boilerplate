@@ -152,6 +152,9 @@ func TestDeleteAccountRemovesEverything(t *testing.T) {
 	if r := e.do("POST", "/auth/login", "", map[string]string{"email": a.Email, "password": a.Password}); r.Status != 401 {
 		t.Fatalf("deleted account cannot log in, got %d", r.Status)
 	}
+	if r := a.do("GET", "/me", nil); r.Status != 401 {
+		t.Fatalf("the deleted account's access token must stop working immediately, got %d", r.Status)
+	}
 	b.expect(404, "GET", "/conversations/"+conv, nil)
 	if contains(b.discover(), a.ID) {
 		t.Fatal("deleted users vanish from discover")

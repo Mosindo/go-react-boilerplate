@@ -24,6 +24,7 @@ import (
 	"example.com/api/internal/server"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const testSecret = "integration-secret-0123456789abcdef-xyz"
@@ -94,7 +95,7 @@ func newEnvWithLimits(t *testing.T, limits server.Limits) *env {
 	mailer := &captureMailer{codes: map[string]string{}}
 	hub := realtime.NewHub()
 	router, err := server.New(server.Deps{
-		Pool: pool, JWTSecret: []byte(testSecret), Store: store, Mailer: mailer, Hub: hub, Limits: limits,
+		Pool: pool, JWTSecret: []byte(testSecret), Store: store, Mailer: mailer, Hub: hub, Limits: limits, BcryptCost: bcrypt.MinCost,
 	})
 	if err != nil {
 		t.Fatal(err)

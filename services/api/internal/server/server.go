@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"net/url"
 
 	"example.com/api/internal/features/auth"
@@ -29,6 +30,8 @@ type Deps struct {
 	Hub            *realtime.Hub
 	// Limits overrides the default abuse-protection budgets (tests only).
 	Limits Limits
+	// BcryptCost overrides the password hashing cost (tests only; 0 = default).
+	BcryptCost int
 }
 
 // Limits are per-client request budgets, expressed per minute with a burst.
@@ -57,15 +60,28 @@ func New(d Deps) (*gin.Engine, error) {
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(d.AllowedOrigins))
+	r.Use(middleware.BodyLimit(1 << 20))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
 
-	requireUser := middleware.RequireUser(d.JWTSecret)
+	sessionLive := func(ctx context.Context, userID, sessionID string) (bool, error) {
+		var live bool
+		err := d.Pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM sessions
+				WHERE id::text = $1 AND user_id::text = $2 AND revoked_at IS NULL AND expires_at > NOW())`,
+			sessionID, userID).Scan(&live)
+		return live, err
+	}
+	requireUser := middleware.RequireUser(d.JWTSecret, sessionLive)
 
 	authService := auth.NewService(auth.NewPGRepository(d.Pool), d.JWTSecret, d.Mailer)
 	profilesService := profiles.NewService(profiles.NewPGRepository(d.Pool), d.Store)
+	if d.BcryptCost > 0 {
+		authService.SetBcryptCost(d.BcryptCost)
+	}
 	authService.AddDeletionHook(profilesService)
 
 	matchingService := matching.NewService(matching.NewPGRepository(d.Pool), d.Hub)
@@ -86,7 +102,14 @@ func New(d Deps) (*gin.Engine, error) {
 
 	r.GET("/ws", middleware.RateLimitByIP(60, 20), d.Hub.Handler(func(token string) (string, error) {
 		claims, err := middleware.ParseAccessToken(d.JWTSecret, token)
-		return claims.UserID, err
+		if err != nil {
+			return "", err
+		}
+		live, err := sessionLive(context.Background(), claims.UserID, claims.SessionID)
+		if err != nil || !live {
+			return "", middleware.ErrInvalidToken
+		}
+		return claims.UserID, nil
 	}, originHosts(d.AllowedOrigins)))
 	return r, nil
 }

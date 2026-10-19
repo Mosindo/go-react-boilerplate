@@ -49,6 +49,7 @@ type Service struct {
 	jwtSecret []byte
 	mailer    Mailer
 	hooks     []DeletionHook
+	cost      int
 }
 
 func NewService(repo Repository, jwtSecret []byte, mailer Mailer) *Service {
@@ -56,7 +57,13 @@ func NewService(repo Repository, jwtSecret []byte, mailer Mailer) *Service {
 		repo:      repo,
 		jwtSecret: jwtSecret,
 		mailer:    mailer,
+		cost:      bcrypt.DefaultCost,
 	}
+}
+
+// SetBcryptCost lowers the hashing cost; intended for tests only.
+func (s *Service) SetBcryptCost(cost int) {
+	s.cost = cost
 }
 
 func (s *Service) AddDeletionHook(h DeletionHook) {
@@ -65,7 +72,7 @@ func (s *Service) AddDeletionHook(h DeletionHook) {
 
 func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
 	normalizedEmail := normalizeEmail(email)
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.cost)
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
@@ -272,7 +279,8 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.repo.CreatePasswordReset(ctx, stored.User.ID, hashRefreshToken(code), time.Now().Add(resetCodeTTL)); err != nil {
+	created, err := s.repo.CreatePasswordReset(ctx, stored.User.ID, hashRefreshToken(code), time.Now().Add(resetCodeTTL))
+	if err != nil || !created {
 		return err
 	}
 	return s.mailer.SendPasswordReset(ctx, stored.User.Email, code)
@@ -304,7 +312,7 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		return ErrInvalidResetCode
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), s.cost)
 	if err != nil {
 		return err
 	}

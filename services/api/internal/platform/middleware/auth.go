@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -44,7 +45,14 @@ func ParseAccessToken(secret []byte, tokenString string) (AccessClaims, error) {
 	return AccessClaims{UserID: userID, SessionID: sessionID}, nil
 }
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionValidator reports whether the session behind an access token is still
+// live (not logged out, reset, expired or deleted along with its account).
+type SessionValidator func(ctx context.Context, userID, sessionID string) (bool, error)
+
+// RequireUser authenticates the request. When validate is non-nil, the token's
+// session must also still be active, so logout, password reset and account
+// deletion take effect immediately instead of when the access token expires.
+func RequireUser(secret []byte, validate SessionValidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
@@ -57,6 +65,19 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 			c.Abort()
 			platformerrors.Respond(c, 401, "unauthorized", "invalid token")
 			return
+		}
+		if validate != nil {
+			live, err := validate(c.Request.Context(), claims.UserID, claims.SessionID)
+			if err != nil {
+				c.Abort()
+				platformerrors.Respond(c, 503, "unavailable", "could not verify session")
+				return
+			}
+			if !live {
+				c.Abort()
+				platformerrors.Respond(c, 401, "unauthorized", "session expired")
+				return
+			}
 		}
 		c.Set("userID", claims.UserID)
 		c.Set("sessionID", claims.SessionID)
