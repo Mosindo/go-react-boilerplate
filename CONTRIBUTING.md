@@ -77,20 +77,24 @@ Run these checks before pushing changes:
 
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+gofmt -l .            # must print nothing
+go vet ./...
+TEST_DATABASE_URL=postgres://app:app@localhost:5432/app?sslmode=disable go test ./...
+go build ./cmd/api ./cmd/seed
 ```
 
 ```bash
 cd apps/mobile
 npx tsc --noEmit
+npm run lint
+npm test
 ```
 
-If the change touches integrated flows, also run:
+If the change touches integrated flows, also boot the stack (`docker compose up --build -d`,
+`docker compose exec api ./seed`) and run:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+API_URL=http://localhost:18080 node scripts/smoke-api.js
 ```
 
 ## Documentation Expectations

@@ -8,7 +8,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Lumen: a complete free dating app built on the boilerplate - profiles, photos, preferences,
+  discovery, likes/passes, matches, real-time chat (WebSocket), notifications, blocks, reports,
+  password recovery and account deletion.
+- Tracked, transactional database migrations (`schema_migrations`) and a dating schema.
+- `cmd/seed` demo data (`@demo.invalid` accounts, refuses to run in production).
+- API contract in `docs/API.md`, Go integration tests (journey, permissions, security, WebSocket)
+  and `scripts/smoke-api.js`.
+
+### Changed
+- Product pivot from a generic SaaS boilerplate to a dating app; the sessions/JWT foundation was kept.
+- Docker Compose consolidated at the repository root with an uploads volume and a non-root API image.
+- CI now runs Postgres-backed Go tests, mobile lint/format/typecheck/tests and a Docker smoke journey.
+
+### Removed
+- Stripe billing, posts, comments, organizations and the old generic chat/files/users modules were moved to `archive/legacy-saas/` (not built). The app has no payments of any kind.
 
 ## [0.1.0] - 2026-03-17
 

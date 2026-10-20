@@ -7,24 +7,20 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is now **Lumen**, a 100% free dating app (no subscriptions, paywalls, boosts or
+artificial like limits - never add them). The fullstack foundation stays reusable.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- discovery (swipes + matches)
 - chat
+- safety (blocks + reports)
 - notifications
-- files
+
+The previous SaaS demo code (billing, posts, comments, organizations) lives in `archive/legacy-saas/` and is not built.
+API contract: `docs/API.md`.
 
 ---
 
@@ -65,11 +61,11 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -130,12 +126,12 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `swipes (target_id, action)`
+- `matches (user_a)` / `matches (user_b)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, created_at)`
 
 ---
 
@@ -143,20 +139,18 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `TEST_DATABASE_URL=... go test ./...` (integration tests skip without it; always run them with a Postgres)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/internal/app`):
+- Critical journey (register -> profile -> discover -> like -> match -> chat -> notifications)
+- Conversation permissions, blocks, reports, account deletion
+- Auth/JWT security, password recovery, rate limiting, photo upload rules, WebSocket
 
 ---
 
@@ -171,15 +165,16 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml` (repository root)
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
+- A frontend is only "ready" after a real smoke test (`scripts/smoke-api.js` for the API, Maestro flow for the app):
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile, photo, location)
+  - discover loads
+  - like -> match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +202,6 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
 
 ---
 

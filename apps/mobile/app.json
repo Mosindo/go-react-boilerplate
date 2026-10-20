@@ -1,12 +1,35 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lumen",
+    "slug": "lumen",
+    "scheme": "lumen",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.lumen.dating",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Lumen needs access to your photos so you can add pictures to your profile.",
+        "NSLocationWhenInUseUsageDescription": "Lumen uses your approximate location to show you people nearby. Exact coordinates are never shared."
+      }
+    },
+    "android": {
+      "package": "app.lumen.dating",
+      "permissions": ["ACCESS_COARSE_LOCATION"]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        { "photosPermission": "Lumen needs access to your photos so you can add pictures to your profile." }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lumen uses your approximate location to show you people nearby. Exact coordinates are never shared."
+        }
+      ],
+      "expo-secure-store"
     ]
   }
 }

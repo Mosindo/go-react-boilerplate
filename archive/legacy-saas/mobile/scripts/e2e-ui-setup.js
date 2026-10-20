@@ -2,7 +2,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const API_BASE_URL = process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080";
+const API_BASE_URL =
+  process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080";
 const PASSWORD = process.env.MOBILE_E2E_PASSWORD || "Password123";
 const NOTIFICATION_TITLE = "Boilerplate ready";
 

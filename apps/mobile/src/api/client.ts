@@ -1,29 +1,14 @@
 import { Platform } from "react-native";
-import { getAccessToken } from "../store/tokenStore";
-import { showGlobalError } from "../shared/feedback";
-
-export type ApiErrorPayload = {
-  error?: string;
-};
-
-function normalizeBaseUrl(value: string): string {
-  return value.replace(/\/+$/, "");
-}
-
-function developmentFallbackBaseUrl(): string {
-  return Platform.OS === "android" ? "http://10.0.2.2:18080" : "http://localhost:18080";
-}
+import { clearTokens, getTokens, saveTokens } from "../store/tokenStore";
+import { normalizeBaseUrl } from "../lib/url";
+import type { AuthSession } from "./types";
 
 function resolveApiBaseUrl(): string {
-  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (explicitBaseUrl) {
-    return normalizeBaseUrl(explicitBaseUrl);
-  }
-
+  const explicit = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (explicit) return normalizeBaseUrl(explicit);
   if (__DEV__) {
-    return developmentFallbackBaseUrl();
+    return Platform.OS === "android" ? "http://10.0.2.2:18080" : "http://localhost:18080";
   }
-
   return "";
 }
 
@@ -31,139 +16,132 @@ export const API_BASE_URL = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   public status: number;
-  public data: unknown;
 
-  constructor(status: number, data: unknown, message?: string) {
-    super(message ?? `API request failed (${status})`);
+  constructor(status: number, message: string) {
+    super(message);
     this.name = "ApiError";
     this.status = status;
-    this.data = data;
   }
 }
 
-async function getToken(): Promise<string | null> {
-  return getAccessToken();
+export type RequestOptions = {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  body?: unknown;
+  form?: FormData;
+  auth?: boolean;
+  signal?: AbortSignal;
+};
+
+const REQUEST_TIMEOUT_MS = 15_000;
+
+let authLostHandler: (() => void) | null = null;
+let refreshInFlight: Promise<string | null> | null = null;
+
+export function setAuthLostHandler(handler: (() => void) | null): void {
+  authLostHandler = handler;
 }
 
-function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, string>): Headers {
-  const headers = new Headers();
-
-  headers.set("Accept", "application/json");
-
-  if (base) {
-    new Headers(base).forEach((value, key) => {
-      headers.set(key, value);
-    });
+async function rawFetch(
+  path: string,
+  options: RequestOptions,
+  accessToken: string | null
+): Promise<Response> {
+  if (!API_BASE_URL) {
+    throw new ApiError(0, "The API address is not configured. Set EXPO_PUBLIC_API_URL for this build.");
   }
-
-  if (injected) {
-    for (const [k, v] of Object.entries(injected)) {
-      if (!headers.has(k)) {
-        headers.set(k, v);
-      }
-    }
-  }
-
-  return headers;
-}
-
-function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
-  return body !== undefined && body !== null && !(body instanceof FormData);
-}
-
-function formatNetworkHint(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return "Network error. Check your connection and API availability, then try again.";
-  }
-
-  if (!__DEV__) {
-    return "API base URL is not configured for this build. Set EXPO_PUBLIC_API_URL and try again.";
-  }
-
-  if (Platform.OS === "android") {
-    return "Network error. Android emulators usually need 10.0.2.2, and physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  if (Platform.OS === "ios") {
-    return "Network error. iOS simulators can use localhost, but physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  return "Network error. Check your connection and try again.";
-}
-
-function requireApiBaseUrl(): string {
-  if (API_BASE_URL) {
-    return API_BASE_URL;
-  }
-
-  const message = "API base URL is not configured. Set EXPO_PUBLIC_API_URL for this build.";
-  showGlobalError(message);
-  throw new Error(message);
-}
-
-export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  options.signal?.addEventListener("abort", () => controller.abort(), { once: true });
 
-  const token = await getToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  let body: BodyInit | undefined;
+  if (options.form) {
+    body = options.form;
+  } else if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(options.body);
+  }
 
   try {
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        controller.abort();
-      } else {
-        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
-      }
-    }
-
-    const headers = mergeHeaders(options?.headers, authHeader);
-    if (!headers.has("Content-Type") && shouldSetJsonContentType(options?.body)) {
-      headers.set("Content-Type", "application/json");
-    }
-    const response = await fetch(`${requireApiBaseUrl()}${path}`, {
-      ...options,
+    return await fetch(`${API_BASE_URL}${path}`, {
+      method: options.method ?? "GET",
       headers,
+      body,
       signal: controller.signal
     });
-
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type") ?? "";
-      let data: unknown = null;
-      try {
-        data = contentType.includes("application/json") ? await response.json() : await response.text();
-      } catch {
-        data = null;
-      }
-
-      const apiPayload = data as ApiErrorPayload | null;
-      let message = apiPayload?.error ?? `API request failed (${response.status})`;
-      if (response.status === 401) {
-        message = apiPayload?.error ?? "Your session is no longer valid. Please sign in again.";
-      }
-      if (response.status >= 500 || response.status === 401) {
-        showGlobalError(message);
-      }
-      throw new ApiError(response.status, data, message);
+  } catch (error) {
+    if ((error as { name?: string }).name === "AbortError") {
+      throw new ApiError(0, "The request timed out. Please try again.");
     }
-
-    const text = await response.text();
-    if (!text) {
-      return undefined as T;
-    }
-    return JSON.parse(text) as T;
-  } catch (err) {
-    const name = (err as { name?: string }).name;
-    if (name === "AbortError") {
-      showGlobalError("The request timed out. Please try again.");
-      throw new Error("API request timeout (10s)");
-    }
-
-    if (err instanceof TypeError) {
-      showGlobalError(formatNetworkHint());
-    }
-    throw err;
+    throw new ApiError(0, "Network error. Check your connection and try again.");
   } finally {
-    clearTimeout(timeoutId);
+    clearTimeout(timeout);
   }
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const tokens = await getTokens();
+      if (!tokens?.refreshToken) return null;
+      try {
+        const response = await rawFetch(
+          "/auth/refresh",
+          { method: "POST", body: { refreshToken: tokens.refreshToken } },
+          null
+        );
+        if (!response.ok) {
+          await clearTokens();
+          return null;
+        }
+        const session = (await response.json()) as AuthSession;
+        await saveTokens({ accessToken: session.accessToken, refreshToken: session.refreshToken });
+        return session.accessToken;
+      } catch {
+        // Transient failure: keep tokens so a later request can retry.
+        return null;
+      }
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function toApiError(response: Response): Promise<ApiError> {
+  let message = `Request failed (${response.status})`;
+  try {
+    const data = (await response.json()) as { error?: string };
+    if (data.error) message = data.error;
+  } catch {
+    // Non-JSON error body.
+  }
+  return new ApiError(response.status, message);
+}
+
+export async function apiRequest<T = void>(path: string, options: RequestOptions = {}): Promise<T> {
+  const useAuth = options.auth !== false;
+  let token = useAuth ? ((await getTokens())?.accessToken ?? null) : null;
+  let response = await rawFetch(path, options, token);
+
+  if (response.status === 401 && useAuth) {
+    token = await refreshAccessToken();
+    if (token) {
+      response = await rawFetch(path, options, token);
+    }
+    if (response.status === 401 || !token) {
+      const stillHasTokens = await getTokens();
+      if (!stillHasTokens) authLostHandler?.();
+    }
+  }
+
+  if (!response.ok) throw await toApiError(response);
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+export async function currentAccessToken(): Promise<string | null> {
+  return (await getTokens())?.accessToken ?? null;
 }

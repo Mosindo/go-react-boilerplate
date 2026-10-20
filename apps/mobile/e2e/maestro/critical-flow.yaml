@@ -1,10 +1,11 @@
 appId: ${APP_ID}
-name: go-react-saas Critical Flow
+name: Lumen critical flow (register -> onboarding -> discover -> like -> chat)
 ---
 - launchApp:
     clearState: true
 
-- assertVisible: Login
+# Registration
+- tapOn: Create an account
 - tapOn:
     id: auth-email-input
 - inputText: ${TEST_EMAIL}
@@ -14,35 +15,62 @@ name: go-react-saas Critical Flow
 - tapOn:
     id: auth-submit-button
 
+# Onboarding: basics
 - assertVisible:
-    id: home-screen
+    id: onboarding-title
+- tapOn:
+    id: onboarding-name
+- inputText: Maestro
+- tapOn:
+    id: dob-day
+- inputText: "12"
+- tapOn:
+    id: dob-month
+- inputText: "4"
+- tapOn:
+    id: dob-year
+- inputText: "1994"
+- tapOn:
+    id: gender-woman
+- tapOn:
+    id: onboarding-next
 
+# Onboarding: who you want to meet
 - tapOn:
-    id: home-post-title-input
-- inputText: Maestro go-react-saas post
+    id: interested-man
 - tapOn:
-    id: home-post-body-input
-- inputText: Validating the generic home feed from the UI flow.
-- tapOn:
-    id: home-post-submit-button
-- assertVisible: Maestro go-react-saas post
+    id: onboarding-next
 
-- tapOn: Chat
+# Onboarding: location (city fallback)
+- tapOn:
+    id: onboarding-city
+- inputText: Lyon
+- tapOn:
+    id: onboarding-next
+
+# Onboarding: about you
+- tapOn:
+    id: bio-input
+- inputText: Hello from the E2E suite
+- tapOn:
+    id: onboarding-next
+
+# Onboarding: photos (requires a seeded photo in the simulator library)
+- tapOn:
+    id: photo-add-button
+- tapOn:
+    id: onboarding-next
+
+# Discover -> like -> match -> chat (needs the seeded demo user who already liked this account)
 - assertVisible:
-    id: chat-screen
-- tapOn: ${CONTACT_EMAIL}
+    id: like-button
 - tapOn:
-    id: chat-message-input
-- inputText: maestro ui ping
+    id: like-button
 - tapOn:
-    id: chat-send-button
-- assertVisible: maestro ui ping
-
-- tapOn: Notifications
-- assertVisible:
-    id: notifications-screen
-- assertVisible: ${NOTIFICATION_TITLE}
-
-- tapOn: Profile
-- assertVisible:
-    id: profile-screen
+    id: match-message-button
+- tapOn:
+    id: message-input
+- inputText: Hi there!
+- tapOn:
+    id: message-send
+- assertVisible: Hi there!

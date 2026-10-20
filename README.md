@@ -1,289 +1,152 @@
-# go-react-saas
+# Lumen
 
-`go-react-saas` is a reusable fullstack monorepo for building social networks, forums, SaaS products, marketplaces, and community apps with a shared Go API, PostgreSQL database, Docker-based infrastructure, and React / React Native clients.
+Lumen is a **100% free dating app**: no subscriptions, no paywall, no paid boosts, no artificial like
+limits, no mandatory ads. Two people can create an account and a profile, add photos, discover
+nearby profiles, like or pass, match when interest is mutual, chat in real time, get notified, manage
+privacy, block or report someone, and delete their account.
 
-## Project Overview
+It started as the `go-react-saas` boilerplate; the Go / PostgreSQL / Expo foundation was kept and the
+SaaS demo features were archived (`archive/legacy-saas/`, not built).
 
-This repository provides a production-minded starting point for fullstack products that need:
-- a typed mobile frontend
-- a modular Go API
-- explicit PostgreSQL persistence
-- session-based authentication with refresh-token rotation
-- multi-tenant SaaS foundations with organizations and subscriptions
-- containerized local development
-- predictable smoke and QA scripts
+## Stack
 
-The codebase is intentionally generic. Core modules can be composed and extended without assuming a single business vertical.
+| Layer | Technology |
+|---|---|
+| API | Go 1.24, Gin, PostgreSQL 16, `pgxpool` (no ORM), JWT HS256 + rotating refresh tokens, bcrypt, gorilla/websocket |
+| Mobile | Expo 54 / React Native 0.81, TypeScript (strict), React Navigation, TanStack Query, `expo-image-picker`, `expo-location` |
+| Infra | Docker, Docker Compose, GitHub Actions |
 
-The default Docker Compose project name is `go-react-saas`, which keeps generated container, network, and volume names stable across environments.
+Architecture, data model and security decisions: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+REST + WebSocket contract: [`docs/API.md`](docs/API.md).
 
-## Stack Description
+## Features
 
-### Backend
-- Go
-- Gin
-- PostgreSQL
-- `pgxpool`
-- JWT authentication with access tokens + refresh tokens
-- explicit SQL queries without an ORM
+- **Accounts**: register, login, refresh, logout, password recovery by emailed code, account deletion (password required; erases every row and photo file).
+- **Profile**: first name, age (18+ enforced server side), gender, bio, city, up to 10 interests, 1-6 photos (reorder, primary, delete, replace), approximate location.
+- **Preferences & privacy**: genders you want to meet, age range, max distance, visible in discovery on/off, show distance on/off.
+- **Discovery**: swipe deck (with Like / Pass buttons), full profile view, mutual preference filtering, ranking by shared interests then distance, never shows the same person twice.
+- **Matches**: mutual like creates exactly one match + conversation (race-safe); unmatch.
+- **Chat**: real-time (WebSocket), timestamps, read receipts, unread counts, per-user conversation deletion, 2000 char messages.
+- **Notifications**: matches and messages, stored and pushed live; unread badge.
+- **Safety**: block (dissolves match, hides both ways), report with reason, rate limiting, protected photos.
 
-### Frontend
-- React Native with Expo
-- React-compatible structure for additional clients
-- TypeScript
-- React Navigation
-- React Query for auth/session orchestration
+## Quick start (Docker)
 
-### Infrastructure
-- Docker
-- Docker Compose
-- GitHub Actions for QA automation
-
-## Monorepo Structure
-
-```text
-.
-├─ apps/
-│  └─ mobile/
-│     ├─ App.tsx
-│     ├─ babel.config.js
-│     ├─ e2e/
-│     ├─ scripts/
-│     └─ src/
-│        ├─ api/
-│        ├─ components/
-│        ├─ screens/
-│        ├─ store/
-│        ├─ theme/
-│        └─ utils/
-├─ docs/
-│  └─ ARCHITECTURE.md
-├─ infra/
-│  └─ docker-compose.yml
-├─ scripts/
-│  ├─ qa-lite.ps1
-│  ├─ smoke-all.ps1
-│  └─ smoke-api.ps1
-├─ services/
-│  └─ api/
-│     ├─ cmd/api/
-│     └─ internal/
-│        ├─ features/
-│        └─ platform/
-├─ AGENTS.md
-├─ CHANGELOG.md
-├─ CODE_OF_CONDUCT.md
-├─ CONTRIBUTING.md
-└─ README.md
-```
-
-## Backend Architecture Overview
-
-The API uses a feature-first structure with a small shared platform layer.
-
-- `services/api/cmd/api/main.go` is the composition root
-- `services/api/internal/platform` contains cross-cutting concerns such as config, database setup, middleware, logging, and shared errors
-- `services/api/internal/features` contains domain modules such as `auth`, `users`, `chat`, `posts`, `comments`, `notifications`, `files`, and `billing`
-
-Each feature follows the same shape:
-- `handler.go`
-- `service.go`
-- `repository.go`
-- `model.go`
-- `routes.go`
-
-This keeps routing, business logic, and SQL separated while making new modules easy to add.
-
-For a deeper breakdown, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Frontend Architecture Overview
-
-The mobile app is organized around generic product surfaces:
-- authentication
-- home feed
-- chat
-- notifications
-- profile
-- session restoration and refresh-token aware auth state
-
-Within `apps/mobile/src`:
-- `api` contains REST clients
-- `hooks` contains React Query-powered auth/session hooks
-- `screens` contains route-level UI
-- `shared/ui` contains reusable UI primitives and tokens
-- `shared/layout` contains global layout and navigation shells
-- `shared/feedback` contains reusable loading, error, and empty states
-- `store` contains token/session persistence
-- `theme` contains shared design tokens
-- `utils` contains shared helpers
-
-The current frontend shell is designed to be reused and extended rather than tied to a single product concept.
-
-## How To Run Locally
-
-## Prerequisites
-
-- Node.js 20+
-- npm
-- Go 1.23+ with toolchain support
-- Docker Desktop or Docker Engine
-
-## 1. Prepare environment
-
-Copy .env.example to .env and provide a strong JWT_SECRET before starting the stack.
-
-## 2. Start PostgreSQL and the API with Docker
-
-PowerShell:
-
-```powershell
-$env:JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-$env:APP_BASE_URL='http://localhost:18080'
+```bash
+cp .env.example .env
+# put a random value in JWT_SECRET (>= 32 chars):
+sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 32)/" .env
 docker compose up --build -d
+docker compose exec api ./seed          # optional demo users (demo-*@demo.invalid / demo-password-123)
+curl http://localhost:18080/health      # {"status":"ok"}
 ```
 
-Bash:
+Migrations run automatically when the API starts. Photos live in the `uploads_data` volume.
+
+## Local development without Docker
+
+Requirements: Go 1.24+, Node 20+, PostgreSQL 14+.
 
 ```bash
-export JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-export APP_BASE_URL='http://localhost:18080'
-docker compose up --build -d
-```
+# database
+createdb app    # or any database; then set DATABASE_URL
 
-The API is exposed on `http://localhost:18080`.
-
-Optional Stripe billing variables:
-
-```powershell
-$env:STRIPE_SECRET_KEY='sk_test_...'
-$env:STRIPE_WEBHOOK_SECRET='whsec_...'
-$env:STRIPE_PRICE_ID='price_...'
-```
-
-Health check:
-
-```bash
-curl http://localhost:18080/health
-```
-
-## 3. Run the API directly
-
-PowerShell:
-
-```powershell
+# API
 cd services/api
-$env:DATABASE_URL='postgresql://app:app@localhost:5432/app?sslmode=disable'
-$env:JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-go run ./cmd/api
-```
+export DATABASE_URL=postgres://app:app@localhost:5432/app?sslmode=disable
+export JWT_SECRET=$(openssl rand -hex 32)
+export UPLOAD_DIR=./data/uploads
+go run ./cmd/api                 # migrates, then listens on :8080
+go run ./cmd/seed                # optional demo data (never runs with APP_ENV=production)
+go run ./cmd/seed -reset         # remove demo data
 
-Bash:
-
-```bash
-cd services/api
-export DATABASE_URL='postgresql://app:app@localhost:5432/app?sslmode=disable'
-export JWT_SECRET='replace-with-a-random-secret-at-least-32-characters-long'
-go run ./cmd/api
-```
-
-## 4. Start the mobile app
-
-```bash
+# mobile
 cd apps/mobile
-npm install
-npm run start
+npm ci
+EXPO_PUBLIC_API_URL=http://<LAN_IP>:18080 npx expo start
 ```
 
-Other launch targets:
+On a physical phone **never use `localhost`**: set `EXPO_PUBLIC_API_URL` to your computer's LAN IP and
+make sure nothing else uses the API host port (`docker compose ps`, `curl http://<LAN_IP>:18080/health`).
+`npm run start:phone` detects the LAN IP for you. Android emulators reach the host at `10.0.2.2`
+(the dev fallback in `src/api/client.ts` already uses it).
+
+Demo logins after seeding: `demo-ines@demo.invalid` (woman) and `demo-hugo@demo.invalid` (man), password `demo-password-123`.
+Demo accounts use the reserved `.invalid` TLD so they can never be real users or receive mail.
+
+## Environment variables
+
+See [`.env.example`](.env.example).
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `DATABASE_URL` | yes | - | PostgreSQL connection string |
+| `JWT_SECRET` | yes | - | HS256 signing key, >= 32 chars, not a placeholder |
+| `PORT` | no | `8080` | API port |
+| `APP_ENV` | no | `development` | `development`, `production` or `test`. Production never logs recovery codes and the seed refuses to run |
+| `UPLOAD_DIR` | no | `./data/uploads` | Photo storage directory |
+| `ALLOWED_ORIGINS` | no | empty | CORS / WebSocket origins for web clients |
+| `TRUSTED_PROXIES` | no | none | Reverse proxies whose `X-Forwarded-For` is trusted (rate limiting uses the client IP) |
+| `APP_NAME` | no | `Lumen` | Name used in emails |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USERNAME` `SMTP_PASSWORD` `SMTP_FROM` | for recovery in prod | - | Email delivery. Without `SMTP_HOST`, development prints the recovery code in the API log |
+| `TEST_DATABASE_URL` | for tests | - | Database used by integration tests (they use throwaway schemas) |
+| `EXPO_PUBLIC_API_URL` | mobile | dev fallback | API base URL baked into the app (public by design, never put secrets in it) |
+
+## Database and migrations
+
+SQL files in `services/api/internal/platform/db/migrations` are embedded in the binary, applied in
+order inside a transaction when the API starts, and recorded in `schema_migrations`. Add a new
+`NNN_name.sql`; never edit an applied one. To start over locally: `docker compose down -v`.
+
+## Tests and quality gates
 
 ```bash
-npm run android
-npm run ios
-npm run web
-```
-
-For physical devices, set:
-
-```bash
-EXPO_PUBLIC_API_URL=http://<LAN_IP>:18080
-```
-
-## 5. Run checks
-
-Backend:
-
-```bash
+# API: needs a PostgreSQL; integration tests create and drop their own schema
 cd services/api
-go test ./...
-go build ./cmd/api
-```
+export TEST_DATABASE_URL=postgres://app:app@localhost:5432/app?sslmode=disable
+gofmt -l .            # prints nothing
+go vet ./...
+go test -race ./...
+go build ./cmd/api ./cmd/seed
 
-Mobile:
-
-```bash
+# Mobile
 cd apps/mobile
-npx tsc --noEmit
-npx expo export --platform android --output-dir .expo-audit
+npx tsc --noEmit && npm run lint && npm run format:check && npm test
+
+# Black-box journey against a running stack (after `docker compose up` + seed)
+API_URL=http://localhost:18080 node scripts/smoke-api.js
 ```
 
-Repository-wide QA:
+What is covered: `internal/app` runs the full journey over HTTP against PostgreSQL (register -> profile ->
+discover -> like -> match -> chat -> notifications), conversation permissions, blocks, reports, account
+deletion, preference filtering, concurrent likes, JWT forgery, refresh replay, password recovery, rate
+limiting, photo upload validation and the WebSocket. Unit tests cover age rules, distance bucketing,
+image processing, limiter, config and cursors. The mobile app has unit tests (validation, pagination, realtime cache
+reducers, API client token refresh) and component tests (auth form, swipe deck). A Maestro flow for the
+UI journey lives in `apps/mobile/e2e/maestro` (needs a simulator/device; not run in CI).
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+## Build and deploy
 
-## Stripe Billing And MCP
+- **API**: `docker build -t lumen-api services/api` produces a small non-root image (`./api`, `./seed`) with a health check on `/health`. Run behind a TLS-terminating reverse proxy, set `APP_ENV=production`, a strong `JWT_SECRET`, `SMTP_*`, `TRUSTED_PROXIES`, and mount a persistent volume on `/data/uploads` (or implement `storage.Store` for object storage).
+- **Mobile**: set `EXPO_PUBLIC_API_URL` to your public HTTPS API and build with EAS (`eas build`) or `npx expo export`.
+- Scaling out: the rate limiter and the WebSocket hub are in-process. Behind several API replicas, move them to a shared store (Redis) behind the existing `middleware.Limiter` / `realtime.Publisher` seams.
 
-Backend billing is already wired for:
-- `POST /billing/checkout`
-- `GET /billing/subscription`
-- `POST /billing/webhook`
+## Key decisions
 
-Required environment variables for a live Stripe flow:
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_ID`
-- `APP_BASE_URL`
+- **Free forever**: nothing in the schema or API models plans, credits or limits; swipes are only rate limited against abuse (240/min).
+- **Reused foundation**: kept Go/Gin/pgx, sessions with rotating refresh tokens, Expo/React Query. Replaced Tamagui with a small in-repo UI kit (less native/build surface).
+- **Privacy by construction**: coordinates stored at ~1 km, never returned; distance is bucketed; photos are re-encoded (metadata stripped) and only served to people allowed to see the profile.
+- **One eligibility rule**: the same SQL decides what discovery shows and what a swipe accepts, so clients cannot bypass preferences or blocks.
+- **Swipes are final**: a like or pass is recorded once (409 afterwards) and survives unmatching, so the pair never resurfaces. Undo/rewind was left out for simplicity.
+- **Match = 1:1 conversation**; hiding a conversation is per user and clears that user's visible history; a new message brings it back.
+- **No "who liked you" list and no like notifications**: only matches and messages notify, which keeps the feature set honest and paywall-free.
+- **Recovery by emailed code** (no deep-link infrastructure needed): the app has an "enter code" screen.
+- **Single-instance realtime** with REST as source of truth; clients refetch after reconnect.
+- **Access tokens are checked against their session** (cached 10 s) so logout, password reset and deletion cut access almost immediately.
+- **Legacy code archived, not deleted**: `archive/legacy-saas/`.
 
-`APP_BASE_URL` should be the public URL that Stripe redirects back to after checkout. In local Docker runs, `http://localhost:18080` is fine for backend verification. For device testing or hosted environments, use a reachable public or LAN URL instead.
+## Known limitations
 
-Codex MCP Stripe reference config is stored in [config.toml](.codex/config.toml). The shared Codex config on this machine now also includes:
-
-```toml
-[mcp_servers.stripe]
-url = "https://mcp.stripe.com"
-```
-
-## How To Add New Features
-
-Use the existing vertical-slice pattern and keep naming generic.
-
-### Backend
-1. Add or update a migration in `services/api/internal/platform/db/migrations`.
-2. Create a new feature folder under `services/api/internal/features/<feature>`.
-3. Implement `model.go`, `repository.go`, `service.go`, `handler.go`, and `routes.go`.
-4. Keep SQL in repositories and HTTP concerns in handlers.
-5. Register the feature in `services/api/cmd/api/main.go`.
-6. Add tests before expanding the public API surface.
-
-Current SaaS-oriented backend foundations include:
-- organizations for tenant identity
-- sessions for refresh-token lifecycle
-- subscriptions for billing state
-- billing endpoints for Stripe checkout and webhook flows
-
-### Frontend
-1. Add API client functions in `apps/mobile/src/api`.
-2. Add or extend screens in `apps/mobile/src/screens`.
-3. Extract reusable UI into `apps/mobile/src/shared/ui`.
-4. Keep layout concerns in `shared/layout` and stateful feedback in `shared/feedback`.
-5. Keep tokens and storage concerns centralized in `theme` and `store`.
-6. Re-run TypeScript and smoke checks after changes.
-
-## Additional Documentation
-
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- [CHANGELOG.md](CHANGELOG.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-
+- Moderation is report collection only (`reports` table, `status` column); there is no admin UI.
+- Push notifications (APNs/FCM) are not implemented; notifications are in-app and live over WebSocket.
+- The UI was verified through type-checking, lint, unit/component tests and an Expo bundle export, not on a physical device in this environment.
