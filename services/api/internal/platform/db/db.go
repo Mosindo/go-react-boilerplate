@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-//go:embed migrations/*.sql
+//go:embed sql/*.sql
 var migrationsFS embed.FS
 
 func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
@@ -35,8 +36,6 @@ func ConnectWithRetry(ctx context.Context, databaseURL string, maxWait, retryInt
 	}
 
 	deadline := time.Now().Add(maxWait)
-	var lastErr error
-
 	for {
 		attemptCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		pool, err := Connect(attemptCtx, databaseURL)
@@ -44,12 +43,9 @@ func ConnectWithRetry(ctx context.Context, databaseURL string, maxWait, retryInt
 		if err == nil {
 			return pool, nil
 		}
-		lastErr = err
-
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("connect db after retry window %s: %w", maxWait, lastErr)
+			return nil, fmt.Errorf("connect db after retry window %s: %w", maxWait, err)
 		}
-
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("connect db canceled: %w", ctx.Err())
@@ -58,33 +54,70 @@ func ConnectWithRetry(ctx context.Context, databaseURL string, maxWait, retryInt
 	}
 }
 
+// migrationLockID serialises concurrent migrators (several API replicas booting together).
+const migrationLockID int64 = 727_001
+
+// RunMigrations applies, in filename order, every embedded migration that has not been recorded in
+// schema_migrations yet. Each migration runs in its own transaction.
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
-	entries, err := fs.ReadDir(migrationsFS, "migrations")
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLockID); err != nil {
+		return fmt.Errorf("migration lock: %w", err)
+	}
+	defer func() { _, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationLockID) }()
+
+	if _, err := conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			name TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	entries, err := fs.ReadDir(migrationsFS, "sql")
 	if err != nil {
 		return fmt.Errorf("read embedded migrations: %w", err)
 	}
-
-	var files []string
+	var names []string
 	for _, e := range entries {
-		if e.IsDir() {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		var applied bool
+		if err := conn.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = $1)`, name).Scan(&applied); err != nil {
+			return fmt.Errorf("check migration %s: %w", name, err)
+		}
+		if applied {
 			continue
 		}
-		name := e.Name()
-		if len(name) > 4 && name[len(name)-4:] == ".sql" {
-			files = append(files, "migrations/"+name)
-		}
-	}
-	sort.Strings(files)
-
-	for _, file := range files {
-		sqlBytes, err := migrationsFS.ReadFile(file)
+		body, err := migrationsFS.ReadFile("sql/" + name)
 		if err != nil {
-			return fmt.Errorf("read embedded migration %s: %w", file, err)
+			return fmt.Errorf("read migration %s: %w", name, err)
 		}
-		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
-			return fmt.Errorf("exec migration %s: %w", file, err)
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", name, err)
+		}
+		if _, err := tx.Exec(ctx, string(body)); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("exec migration %s: %w", name, err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (name) VALUES ($1)`, name); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("record migration %s: %w", name, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %s: %w", name, err)
 		}
 	}
-
 	return nil
 }

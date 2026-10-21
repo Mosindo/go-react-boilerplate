@@ -1,35 +1,26 @@
 package notifications
 
-import "time"
+import (
+	"time"
+
+	"example.com/api/internal/platform/storage"
+)
 
 type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
+	ID             string              `json:"id"`
+	Type           string              `json:"type"`
+	ConversationID *string             `json:"conversationId"`
+	Actor          storage.UserSummary `json:"actor"`
+	ReadAt         *time.Time          `json:"readAt"`
+	CreatedAt      time.Time           `json:"createdAt"`
 }
 
-type NotificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
+type Page struct {
+	Items       []Notification `json:"items"`
+	UnreadCount int            `json:"unreadCount"`
+	NextBefore  *string        `json:"nextBefore"`
 }
 
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
-}
-
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+type MarkReadRequest struct {
+	IDs []string `json:"ids"`
 }

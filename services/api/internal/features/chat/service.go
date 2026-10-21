@@ -4,167 +4,151 @@ import (
 	"context"
 	"errors"
 	"strings"
-)
+	"time"
+	"unicode"
+	"unicode/utf8"
 
-var (
-	ErrUserNotFound         = errors.New("user not found")
-	ErrValidateChatTarget   = errors.New("could not validate chat target")
-	ErrMessageContentNeeded = errors.New("message content required")
+	perr "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/realtime"
+	"example.com/api/internal/platform/storage"
 )
 
 type Service struct {
-	repo Repository
+	repo      Repository
+	signer    *storage.Signer
+	publisher realtime.Publisher
 }
 
-const (
-	defaultChatsLimit        = 20
-	maxChatsLimit            = 100
-	defaultChatMessagesLimit = 200
-	maxChatMessagesLimit     = 500
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, signer *storage.Signer, publisher realtime.Publisher) *Service {
+	return &Service{repo: repo, signer: signer, publisher: publisher}
 }
 
-func (s *Service) ListChats(ctx context.Context, organizationID, userID string) ([]ChatSummary, error) {
-	chats, err := s.repo.ListChats(ctx, organizationID, userID)
-	if err != nil {
-		return nil, err
+func notFound() error { return perr.NotFound("conversation_not_found", "conversation not found") }
+
+func mapErr(err error) error {
+	if errors.Is(err, ErrNotFound) {
+		return notFound()
 	}
+	return err
+}
 
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
+func (s *Service) ListConversations(ctx context.Context, me, before string, limit int) (ConversationPage, error) {
+	var cursor *time.Time
+	if before != "" {
+		t, err := time.Parse(time.RFC3339Nano, before)
+		if err != nil {
+			return ConversationPage{}, perr.Invalid("invalid_cursor", "before must be an RFC 3339 timestamp")
 		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
+		cursor = &t
+	}
+	rows, err := s.repo.ListConversations(ctx, me, cursor, limit+1)
+	if err != nil {
+		return ConversationPage{}, err
+	}
+	page := ConversationPage{Items: []Conversation{}}
+	if len(rows) > limit {
+		rows = rows[:limit]
+		next := rows[len(rows)-1].UpdatedAt.Format(time.RFC3339Nano)
+		page.NextBefore = &next
+	}
+	for _, r := range rows {
+		c := Conversation{
+			ID: r.ID, MatchID: r.MatchID, UnreadCount: r.Unread, UpdatedAt: r.UpdatedAt,
+			User: storage.UserSummary{ID: r.OtherID, FirstName: r.OtherName, ThumbURL: s.signer.ThumbURL(r.OtherPhotoID)},
 		}
-		payload = append(payload, item)
-	}
-
-	return payload, nil
-}
-
-func (s *Service) ListChatsWithPagination(ctx context.Context, organizationID, userID string, limit, offset int) ([]ChatSummary, error) {
-	normalizedLimit := normalizeChatsLimit(limit)
-	normalizedOffset := normalizeChatsOffset(offset)
-	chats, err := s.repo.ListChatsWithPagination(ctx, organizationID, userID, normalizedLimit, normalizedOffset)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
+		if r.LastBody != nil && r.LastSender != nil && r.LastAt != nil {
+			c.LastMessage = &LastMessage{Body: *r.LastBody, SenderID: *r.LastSender, CreatedAt: *r.LastAt}
 		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
-		}
-		payload = append(payload, item)
+		page.Items = append(page.Items, c)
 	}
-
-	return payload, nil
+	return page, nil
 }
 
-func (s *Service) ListMessages(ctx context.Context, organizationID, userID, otherUserID string) ([]ChatMessage, error) {
-	return s.ListMessagesWithLimit(ctx, organizationID, userID, otherUserID, defaultChatMessagesLimit)
-}
-
-func (s *Service) ListMessagesWithLimit(ctx context.Context, organizationID, userID, otherUserID string, limit int) ([]ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return nil, err
+func (s *Service) Messages(ctx context.Context, me, convID string, beforeID int64, limit int) (MessagePage, error) {
+	if !isUUID(convID) {
+		return MessagePage{}, notFound()
 	}
-
-	normalizedLimit := normalizeChatMessagesLimit(limit)
-	messages, err := s.repo.ListMessages(ctx, userID, otherUserID, normalizedLimit)
+	msgs, otherRead, err := s.repo.Messages(ctx, me, convID, beforeID, limit+1)
 	if err != nil {
-		return nil, err
+		return MessagePage{}, mapErr(err)
 	}
-	payload := make([]ChatMessage, 0, len(messages))
-	for _, message := range messages {
-		payload = append(payload, ChatMessage{
-			ID:              message.ID,
-			SenderUserID:    message.SenderUserID,
-			RecipientUserID: message.RecipientUserID,
-			Content:         message.Content,
-			CreatedAt:       message.CreatedAt,
-		})
+	page := MessagePage{Items: []Message{}, OtherLastReadAt: &otherRead}
+	if len(msgs) > limit {
+		msgs = msgs[:limit]
+		next := msgs[len(msgs)-1].ID
+		page.NextBefore = &next
 	}
-	return payload, nil
+	page.Items = append(page.Items, msgs...)
+	return page, nil
 }
 
-func (s *Service) SendMessage(ctx context.Context, organizationID, userID, otherUserID, content string) (ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return ChatMessage{}, err
+func (s *Service) Send(ctx context.Context, me, convID, body string) (Message, error) {
+	if !isUUID(convID) {
+		return Message{}, notFound()
 	}
-
-	normalizedContent := strings.TrimSpace(content)
-	if normalizedContent == "" {
-		return ChatMessage{}, ErrMessageContentNeeded
+	body = cleanBody(body)
+	if body == "" {
+		return Message{}, perr.Invalid("empty_message", "message cannot be empty")
 	}
-
-	message, err := s.repo.CreateMessage(ctx, userID, otherUserID, normalizedContent)
+	if utf8.RuneCountInString(body) > maxMessageRunes {
+		return Message{}, perr.Invalid("message_too_long", "message must be at most 2000 characters")
+	}
+	msg, recipient, err := s.repo.Send(ctx, me, convID, body)
 	if err != nil {
-		return ChatMessage{}, err
+		return Message{}, mapErr(err)
 	}
-
-	return ChatMessage{
-		ID:              message.ID,
-		SenderUserID:    message.SenderUserID,
-		RecipientUserID: message.RecipientUserID,
-		Content:         message.Content,
-		CreatedAt:       message.CreatedAt,
-	}, nil
+	s.publisher.Publish(recipient, realtime.Event{Type: "message.new", Data: msg})
+	s.publisher.Publish(recipient, realtime.Event{Type: "notification.new", Data: map[string]string{"type": "message"}})
+	return msg, nil
 }
 
-func (s *Service) ensureCanChat(ctx context.Context, organizationID, userID, otherUserID string) error {
-	exists, err := s.repo.UserExists(ctx, organizationID, otherUserID)
+func (s *Service) MarkRead(ctx context.Context, me, convID string) error {
+	if !isUUID(convID) {
+		return notFound()
+	}
+	other, err := s.repo.MarkRead(ctx, me, convID)
 	if err != nil {
-		return ErrValidateChatTarget
+		return mapErr(err)
 	}
-	if !exists {
-		return ErrUserNotFound
-	}
-
+	s.publisher.Publish(other, realtime.Event{Type: "conversation.read", Data: map[string]any{
+		"conversationId": convID, "userId": me, "readAt": time.Now().UTC(),
+	}})
 	return nil
 }
 
-func normalizeChatMessagesLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatMessagesLimit
+// Hide removes the conversation from the caller's list only (local deletion). It reappears when a
+// new message arrives, showing only messages newer than the deletion.
+func (s *Service) Hide(ctx context.Context, me, convID string) error {
+	if !isUUID(convID) {
+		return notFound()
 	}
-	if limit > maxChatMessagesLimit {
-		return maxChatMessagesLimit
-	}
-	return limit
+	return mapErr(s.repo.Hide(ctx, me, convID))
 }
 
-func normalizeChatsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatsLimit
-	}
-	if limit > maxChatsLimit {
-		return maxChatsLimit
-	}
-	return limit
+// cleanBody trims and drops control characters other than newlines/tabs.
+func cleanBody(v string) string {
+	v = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' || !unicode.IsControl(r) {
+			return r
+		}
+		return -1
+	}, v)
+	return strings.TrimSpace(v)
 }
 
-func normalizeChatsOffset(offset int) int {
-	if offset < 0 {
-		return 0
+func isUUID(v string) bool {
+	if len(v) != 36 {
+		return false
 	}
-	return offset
+	for i, r := range v {
+		switch {
+		case i == 8 || i == 13 || i == 18 || i == 23:
+			if r != '-' {
+				return false
+			}
+		case !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F'):
+			return false
+		}
+	}
+	return true
 }

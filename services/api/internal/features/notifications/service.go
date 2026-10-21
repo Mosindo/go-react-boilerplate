@@ -2,118 +2,80 @@ package notifications
 
 import (
 	"context"
-	"errors"
-	"strings"
-	"unicode/utf8"
+	"time"
+
+	perr "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/storage"
 )
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
-)
+const maxMarkIDs = 100
 
 type Service struct {
-	repo Repository
+	repo   Repository
+	signer *storage.Signer
 }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, signer *storage.Signer) *Service {
+	return &Service{repo: repo, signer: signer}
 }
 
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
-	}
-	return payload, nil
-}
-
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
-	if err != nil {
-		return Notification{}, err
-	}
-	return mapStoredNotification(notification), nil
-}
-
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
-	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
+func (s *Service) List(ctx context.Context, userID, before string, limit int) (Page, error) {
+	var cursor *time.Time
+	if before != "" {
+		t, err := time.Parse(time.RFC3339Nano, before)
+		if err != nil {
+			return Page{}, perr.Invalid("invalid_cursor", "before must be an RFC 3339 timestamp")
 		}
-		return Notification{}, err
+		cursor = &t
 	}
-	return mapStoredNotification(notification), nil
+	rows, err := s.repo.List(ctx, userID, cursor, limit+1)
+	if err != nil {
+		return Page{}, err
+	}
+	unread, err := s.repo.UnreadCount(ctx, userID)
+	if err != nil {
+		return Page{}, err
+	}
+	page := Page{Items: []Notification{}, UnreadCount: unread}
+	if len(rows) > limit {
+		rows = rows[:limit]
+		next := rows[len(rows)-1].CreatedAt.Format(time.RFC3339Nano)
+		page.NextBefore = &next
+	}
+	for _, r := range rows {
+		page.Items = append(page.Items, Notification{
+			ID: r.ID, Type: r.Type, ConversationID: r.ConversationID, ReadAt: r.ReadAt, CreatedAt: r.CreatedAt,
+			Actor: storage.UserSummary{ID: r.ActorID, FirstName: r.ActorName, ThumbURL: s.signer.ThumbURL(r.ActorPhotoID)},
+		})
+	}
+	return page, nil
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
+func (s *Service) MarkRead(ctx context.Context, userID string, ids []string) error {
+	if len(ids) > maxMarkIDs {
+		return perr.Invalid("too_many_ids", "too many ids")
 	}
+	for _, id := range ids {
+		if !isUUID(id) {
+			return perr.Invalid("invalid_id", "ids must be notification ids")
+		}
+	}
+	return s.repo.MarkRead(ctx, userID, ids)
 }
 
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
+func isUUID(v string) bool {
+	if len(v) != 36 {
+		return false
 	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
+	for i, r := range v {
+		switch {
+		case i == 8 || i == 13 || i == 18 || i == 23:
+			if r != '-' {
+				return false
+			}
+		case !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F'):
+			return false
+		}
 	}
-	return limit
-}
-
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+	return true
 }
