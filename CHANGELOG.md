@@ -1,27 +1,21 @@
-# go-react-saas Changelog
+# Alma Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented here.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
-- Placeholder for upcoming unreleased changes.
-
-## [0.1.0] - 2026-03-17
+## [1.0.0] - 2026-10-21
 
 ### Added
-- Introduced a standardized documentation set with `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `docs/ARCHITECTURE.md`.
-- Added a generic changelog for future platform releases.
+- Dating product end to end: accounts with a server-enforced 18+ age gate, profiles, preferences, interests, photos (6 max, re-encoded, signed URLs), discovery with mutual eligibility, likes / passes, race-free matching, real-time chat with read receipts, notifications, blocking, reporting, privacy controls and full account deletion.
+- Expo client in French with a light / dark design system, swipe deck with button fallbacks, onboarding wizard and web support.
+- Embedded SQL migrations tracked in `schema_migrations`.
+- Session revocation checked on every request; rate limiting; account recovery by e-mailed code.
+- `cmd/seed` demo data (development only, marked `is_demo`), Playwright critical-flow test, CI with PostgreSQL.
 
 ### Changed
-- Converted the repository from a single-product application into `go-react-saas`, a reusable fullstack boilerplate.
-- Repositioned the repository as `go-react-saas`, a reusable fullstack boilerplate for social, forum, SaaS, marketplace, and community products.
-- Updated project descriptions, examples, and documentation to use generic module language.
-- Aligned the documentation with the feature-first backend and generic frontend shell.
+- Repository repositioned from the generic `go-react-saas` boilerplate to the Alma dating app (see README for the decisions).
 
 ### Removed
-- Removed legacy status and daily log documents tied to earlier single-product tracking.
-- Removed remaining product-specific naming from repository-level documentation.
+- Stripe billing, organizations / multi-tenancy, posts, comments, votes, generic files module, Tamagui, PowerShell smoke scripts and agent docs tied to the SaaS boilerplate.

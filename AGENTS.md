@@ -1,30 +1,29 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Alma
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Alma**, a 100 % free dating application (Go API + Expo client), built from the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Alma lets two people create an account and a profile, add photos, discover profiles, like or pass, match on mutual interest, chat in real time, receive notifications, manage preferences and privacy, block or report someone, and delete their account.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- 100 % free: no subscription, paywall, paid boost, artificial like limit, locked essential feature or mandatory ads.
+- 18+ only, enforced server-side at registration.
+- Exact location is never stored or exposed (coordinates are rounded to ~1 km; distances are coarse).
+- Every important rule is enforced server-side; never trust the client.
 
-Core reusable modules:
+Core modules (`services/api/internal/features`):
 - auth
-- users
-- posts
-- comments
+- profiles (profile, preferences, interests)
+- photos
+- discovery
+- matches (swipes + matches)
 - chat
 - notifications
-- files
+- safety (blocks + reports)
 
 ---
 
@@ -55,22 +54,24 @@ Core reusable modules:
 
 Target structure:
 
-`cmd/api/main.go`  
-`internal/`
+`services/api/cmd/api/main.go` (and `cmd/seed`)  
+`services/api/internal/`
 - `platform/`
   - `config/`
   - `db/`
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `httpx/`, `storage/`, `realtime/`, `mail/`, `geo/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matches/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,35 +129,39 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+Required indexes (all present in `internal/platform/db/sql`):
+- `users.email` (unique)
+- `swipes (target_id, swiper_id) WHERE action = 'like'`
+- `matches (user_a, user_b)` unique, `(user_a|user_b, created_at)`
+- `conversation_participants (conversation_id, user_id)` (primary key)
+- `messages (conversation_id, created_at, id)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` unique, `(user_id, created_at)`
+- `blocks (blocked_id, blocker_id)`
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any backend delivery (from `services/api`, with `TEST_DATABASE_URL` pointing to a PostgreSQL test database):
 
-- `gofmt ./...`
-- `go test ./...`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `go test -race -count=1 ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
 
-If tests fail: fix them before continuing.
+Frontend/API changes must also keep these healthy in `apps/mobile`:
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- `npm ci`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run format:check`
+- `npm test`
+- `npm run build:web && npm run e2e:web` for user-flow changes (API running on `:18080`)
+
+If tests fail: fix them before continuing. Never skip tests or disable lint to get green.
+
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`): health, auth (register, login, refresh rotation, recovery, revocation), profile/photos validation, discovery, likes, matches (including concurrent likes), chat and permissions, notifications, blocks, reports, account deletion, WebSocket delivery.
 
 ---
 
@@ -171,17 +176,17 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
+  - register (with birth date) and onboarding (profile, preferences, photo)
   - login
-  - users load
-  - posts load
-  - chat send/read
+  - discover loads, like, match
+  - chat send/read (real time)
   - notifications read flow
+  - block / delete account
 
 ---
 
@@ -207,7 +212,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Introducing any paid feature, paywall or artificial limit on core features
+- Storing or exposing exact user locations
 
 ---
 

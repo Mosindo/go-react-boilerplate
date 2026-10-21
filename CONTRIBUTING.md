@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Alma.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- The product is free for its users: no paywall, subscription, paid boost or artificial limit on core features.
+- Server-side authorisation for every rule that matters; never trust the client.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -35,7 +35,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -57,7 +57,7 @@ For automated agent work, use the `codex/` prefix.
 
 - Keep handlers thin.
 - Keep business logic in services.
-- Keep SQL in repositories.
+- Keep SQL in repositories (no ORM).
 - Use explicit types and clear error handling.
 - Run `gofmt` on all edited Go files.
 - Avoid adding dependencies unless clearly justified.
@@ -73,24 +73,21 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
-
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+export TEST_DATABASE_URL="postgres://alma:alma@localhost:5432/alma_test?sslmode=disable"
+test -z "$(gofmt -l .)" && go vet ./... && go test -race -count=1 ./... && go build ./cmd/api
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm ci && npm run typecheck && npm run lint && npm run format:check && npm test
 ```
 
-If the change touches integrated flows, also run:
+For changes touching user flows, also run the browser scenario (API on :18080):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+EXPO_PUBLIC_API_URL=http://localhost:18080 npm run build:web && npm run e2e:web
 ```
 
 ## Documentation Expectations

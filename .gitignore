@@ -53,3 +53,8 @@ docker-data/
 # Mobile e2e runtime artifacts
 apps/mobile/.e2e/
 
+
+# Alma runtime artifacts
+services/api/data/
+apps/mobile/e2e/test-results/
+apps/mobile/playwright-report/
