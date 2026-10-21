@@ -1,64 +1,26 @@
-import React, { type ReactNode } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
 import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
 
-export type FormFieldProps = {
-  children: ReactNode;
-  containerStyle?: StyleProp<ViewStyle>;
-  error?: string | null;
-  helperText?: string;
-  label?: string;
-  required?: boolean;
-};
+type Props = { label: string; error?: string | null; hint?: string; children: React.ReactNode };
 
-export function FormField({
-  children,
-  containerStyle,
-  error,
-  helperText,
-  label,
-  required = false
-}: FormFieldProps) {
+export function FormField({ label, error, hint, children }: Props) {
   return (
-    <View style={[styles.container, containerStyle]}>
-      {label ? (
-        <View style={styles.labelRow}>
-          <Text tone="secondary" variant="label" weight="semibold">
-            {label}
-          </Text>
-          {required ? (
-            <Text style={styles.required} tone="danger" variant="label" weight="bold">
-              *
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
+    <View style={styles.field}>
+      <Text variant="label">{label}</Text>
       {children}
       {error ? (
-        <Text tone="danger" variant="caption" weight="medium">
+        <Text variant="caption" tone="danger" accessibilityRole="alert">
           {error}
         </Text>
-      ) : helperText ? (
-        <Text tone="muted" variant="caption">
-          {helperText}
+      ) : hint ? (
+        <Text variant="caption" tone="muted">
+          {hint}
         </Text>
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    width: "100%",
-    gap: spacing.sm
-  },
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  required: {
-    color: colors.danger
-  }
-});
+const styles = StyleSheet.create({ field: { gap: spacing.xs } });

@@ -1,52 +1,25 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { StyleSheet, View } from "react-native";
+import { spacing } from "../../theme";
+import { Button } from "../ui/Button";
+import { Text } from "../ui/Text";
 
-type ErrorViewProps = {
-  actionLabel?: string;
-  message: string;
-  onAction?: () => void;
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
-  title?: string;
-  compact?: boolean;
-};
+type Props = { message?: string; onRetry?: () => void; title?: string };
 
-export function ErrorView({
-  actionLabel = "Retry",
-  compact = false,
-  message,
-  onAction,
-  style,
-  testID,
-  title = "Something went wrong"
-}: ErrorViewProps) {
+export function ErrorView({ message, onRetry, title = "Oups, un souci est survenu" }: Props) {
   return (
-    <Card padding={compact ? "sm" : "md"} style={[styles.card, compact ? styles.cardCompact : null, style]} testID={testID}>
-      <View style={styles.copy}>
-        <Text tone="danger" variant={compact ? "label" : "heading"} weight="bold">
-          {title}
-        </Text>
-        <Text tone="muted" variant={compact ? "caption" : "body"}>
-          {message}
-        </Text>
-      </View>
-      {onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="outline" /> : null}
-    </Card>
+    <View style={styles.center} testID="error-view">
+      <Text variant="heading" center>
+        {title}
+      </Text>
+      <Text tone="muted" center>
+        {message ?? "Veuillez réessayer dans un instant."}
+      </Text>
+      {onRetry ? <Button label="Réessayer" variant="secondary" onPress={onRetry} /> : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: spacing.md
-  },
-  cardCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  copy: {
-    flex: 1,
-    gap: spacing.xs
-  }
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl }
 });

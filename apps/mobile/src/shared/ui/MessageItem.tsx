@@ -1,46 +1,40 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { formatClock } from "../../lib/format";
+import { radius, spacing, useTheme } from "../../theme";
 import { Text } from "./Text";
-import { colors, radii, spacing } from "./tokens";
 
-export type MessageItemProps = {
-  content: string;
-  mine?: boolean;
-  style?: StyleProp<ViewStyle>;
-};
+type Props = { body: string; createdAt: string; mine: boolean; read?: boolean; pending?: boolean };
 
-export function MessageItem({ content, mine = false, style }: MessageItemProps) {
+export function MessageItem({ body, createdAt, mine, read, pending }: Props) {
+  const theme = useTheme();
+  const bg = mine ? theme.primary : theme.surface;
+  const fg = mine ? theme.primaryText : theme.text;
   return (
-    <View style={[styles.bubble, mine ? styles.mine : styles.theirs, style]}>
-      <Text style={mine ? styles.mineText : styles.theirsText} tone={mine ? "inverse" : "default"}>
-        {content}
-      </Text>
+    <View style={[styles.wrap, mine ? styles.mine : styles.theirs]}>
+      <View
+        style={[
+          styles.bubble,
+          { backgroundColor: bg, borderColor: mine ? theme.primary : theme.border },
+          mine ? styles.bubbleMine : styles.bubbleTheirs,
+          pending && { opacity: 0.6 }
+        ]}
+      >
+        <Text style={{ color: fg }}>{body}</Text>
+        <Text variant="caption" style={{ color: fg, opacity: 0.75, alignSelf: "flex-end", fontSize: 11 }}>
+          {formatClock(createdAt)}
+          {mine ? (pending ? " · envoi…" : read ? " · Lu" : "") : ""}
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bubble: {
-    maxWidth: "78%",
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm
-  },
-  mine: {
-    alignSelf: "flex-end",
-    backgroundColor: colors.text
-  },
-  theirs: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  mineText: {
-    color: colors.inverse
-  },
-  theirsText: {
-    color: colors.text
-  }
+  wrap: { paddingHorizontal: spacing.lg, paddingVertical: 3, flexDirection: "row" },
+  mine: { justifyContent: "flex-end" },
+  theirs: { justifyContent: "flex-start" },
+  bubble: { maxWidth: "80%", borderRadius: radius.lg, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
+  bubbleMine: { borderBottomRightRadius: 6 },
+  bubbleTheirs: { borderBottomLeftRadius: 6 }
 });

@@ -1,92 +1,39 @@
-import React, { useState } from "react";
-import {
-  StyleSheet,
-  TextInput as RNTextInput,
-  type StyleProp,
-  type TextInputProps as RNTextInputProps,
-  type TextStyle,
-  type ViewStyle
-} from "react-native";
-import { FormField } from "./FormField";
-import { colors, controls, radii, shadows, spacing, typography } from "./tokens";
+import React, { forwardRef } from "react";
+import { StyleSheet, TextInput, type TextInputProps } from "react-native";
+import { fontSize, MIN_TOUCH, radius, spacing, useTheme } from "../../theme";
 
-export type InputProps = Omit<RNTextInputProps, "style"> & {
-  label?: string;
-  helperText?: string;
-  error?: string | null;
-  style?: StyleProp<TextStyle>;
-  containerStyle?: StyleProp<ViewStyle>;
-};
+export type InputProps = TextInputProps & { invalid?: boolean };
+
+export const Input = forwardRef<TextInput, InputProps>(function Input({ invalid, style, multiline, ...rest }, ref) {
+  const theme = useTheme();
+  return (
+    <TextInput
+      ref={ref}
+      placeholderTextColor={theme.textMuted}
+      multiline={multiline}
+      {...rest}
+      style={[
+        styles.input,
+        {
+          backgroundColor: theme.surface,
+          borderColor: invalid ? theme.danger : theme.border,
+          color: theme.text
+        },
+        multiline && styles.multiline,
+        style
+      ]}
+    />
+  );
+});
 
 const styles = StyleSheet.create({
   input: {
+    minHeight: MIN_TOUCH + 4,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    backgroundColor: colors.backgroundElevated,
-    color: colors.text,
-    ...typography.body,
-    minHeight: controls.input.md,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md
+    paddingVertical: spacing.md,
+    fontSize: fontSize.md
   },
-  multiline: {
-    minHeight: controls.input.multiline,
-    textAlignVertical: "top"
-  },
-  inputFocused: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-    ...shadows.focus
-  },
-  inputError: {
-    borderColor: colors.danger
-  },
-  inputDisabled: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.borderStrong,
-    color: colors.textMuted
-  }
+  multiline: { minHeight: 96, textAlignVertical: "top" }
 });
-
-export function Input({
-  containerStyle,
-  error,
-  helperText,
-  label,
-  multiline,
-  style,
-  onBlur,
-  onFocus,
-  ...props
-}: InputProps) {
-  const [focused, setFocused] = useState(false);
-  const disabled = props.editable === false;
-
-  return (
-    <FormField containerStyle={containerStyle} error={error} helperText={helperText} label={label}>
-      <RNTextInput
-        multiline={multiline}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
-        placeholderTextColor={colors.textMuted}
-        selectionColor={colors.primary}
-        style={[
-          styles.input,
-          multiline ? styles.multiline : null,
-          focused && !disabled ? styles.inputFocused : null,
-          error ? styles.inputError : null,
-          disabled ? styles.inputDisabled : null,
-          style
-        ]}
-        {...props}
-      />
-    </FormField>
-  );
-}

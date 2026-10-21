@@ -1,169 +1,188 @@
 import { Platform } from "react-native";
-import { getAccessToken } from "../store/tokenStore";
-import { showGlobalError } from "../shared/feedback";
-
-export type ApiErrorPayload = {
-  error?: string;
-};
+import { clearTokens, getTokens, saveTokens, type AuthTokens } from "../store/tokenStore";
+import type { AuthResponse } from "./types";
 
 function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-function developmentFallbackBaseUrl(): string {
-  return Platform.OS === "android" ? "http://10.0.2.2:18080" : "http://localhost:18080";
-}
-
 function resolveApiBaseUrl(): string {
-  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (explicitBaseUrl) {
-    return normalizeBaseUrl(explicitBaseUrl);
-  }
-
-  if (__DEV__) {
-    return developmentFallbackBaseUrl();
-  }
-
+  const explicit = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (explicit) return normalizeBaseUrl(explicit);
+  if (__DEV__) return Platform.OS === "android" ? "http://10.0.2.2:18080" : "http://localhost:18080";
   return "";
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
+/** Photo URLs are returned relative to the API; make them loadable. */
+export function absoluteUrl(path: string): string {
+  return /^https?:\/\//.test(path) ? path : `${API_BASE_URL}${path}`;
+}
+
+export function websocketUrl(): string {
+  return `${API_BASE_URL.replace(/^http/, "ws")}/ws`;
+}
+
 export class ApiError extends Error {
-  public status: number;
-  public data: unknown;
-
-  constructor(status: number, data: unknown, message?: string) {
-    super(message ?? `API request failed (${status})`);
+  constructor(
+    public status: number,
+    public code: string,
+    message: string
+  ) {
+    super(message);
     this.name = "ApiError";
-    this.status = status;
-    this.data = data;
   }
 }
 
-async function getToken(): Promise<string | null> {
-  return getAccessToken();
+const FRIENDLY: Record<string, string> = {
+  invalid_credentials: "E-mail ou mot de passe incorrect.",
+  email_taken: "Un compte existe déjà avec cet e-mail.",
+  underage: "Vous devez avoir 18 ans ou plus pour utiliser Alma.",
+  rate_limited: "Trop de tentatives. Patientez un instant avant de réessayer.",
+  invalid_code: "Ce code est invalide ou a expiré.",
+  wrong_password: "Mot de passe incorrect.",
+  photo_limit: "Vous pouvez ajouter 6 photos au maximum.",
+  unsupported_type: "Format non pris en charge (JPEG, PNG ou WebP).",
+  file_too_large: "Cette photo est trop lourde (8 Mo maximum).",
+  account_suspended: "Ce compte a été suspendu."
+};
+
+type Listener = () => void;
+let sessionExpiredListener: Listener | null = null;
+/** Called once when the refresh token is rejected and the session cannot be recovered. */
+export function onSessionExpired(listener: Listener | null): void {
+  sessionExpiredListener = listener;
 }
 
-function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, string>): Headers {
-  const headers = new Headers();
+type Options = {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  body?: unknown;
+  form?: FormData;
+  query?: Record<string, string | number | undefined | null>;
+  auth?: boolean;
+  signal?: AbortSignal;
+};
 
-  headers.set("Accept", "application/json");
-
-  if (base) {
-    new Headers(base).forEach((value, key) => {
-      headers.set(key, value);
-    });
-  }
-
-  if (injected) {
-    for (const [k, v] of Object.entries(injected)) {
-      if (!headers.has(k)) {
-        headers.set(k, v);
-      }
-    }
-  }
-
-  return headers;
+function buildUrl(path: string, query?: Options["query"]): string {
+  if (!API_BASE_URL) throw new ApiError(0, "no_api_url", "L'adresse de l'API n'est pas configurée (EXPO_PUBLIC_API_URL).");
+  const params = Object.entries(query ?? {})
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+  return `${API_BASE_URL}${path}${params ? `?${params}` : ""}`;
 }
 
-function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
-  return body !== undefined && body !== null && !(body instanceof FormData);
-}
-
-function formatNetworkHint(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return "Network error. Check your connection and API availability, then try again.";
+async function send(path: string, opts: Options, token: string | null): Promise<Response> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let body: BodyInit | undefined;
+  if (opts.form) body = opts.form;
+  else if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(opts.body);
   }
-
-  if (!__DEV__) {
-    return "API base URL is not configured for this build. Set EXPO_PUBLIC_API_URL and try again.";
-  }
-
-  if (Platform.OS === "android") {
-    return "Network error. Android emulators usually need 10.0.2.2, and physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  if (Platform.OS === "ios") {
-    return "Network error. iOS simulators can use localhost, but physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  return "Network error. Check your connection and try again.";
-}
-
-function requireApiBaseUrl(): string {
-  if (API_BASE_URL) {
-    return API_BASE_URL;
-  }
-
-  const message = "API base URL is not configured. Set EXPO_PUBLIC_API_URL for this build.";
-  showGlobalError(message);
-  throw new Error(message);
-}
-
-export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
-
-  const token = await getToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
-
+  const timeout = setTimeout(() => controller.abort(), opts.form ? 60_000 : 15_000);
+  opts.signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        controller.abort();
-      } else {
-        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
-      }
-    }
-
-    const headers = mergeHeaders(options?.headers, authHeader);
-    if (!headers.has("Content-Type") && shouldSetJsonContentType(options?.body)) {
-      headers.set("Content-Type", "application/json");
-    }
-    const response = await fetch(`${requireApiBaseUrl()}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type") ?? "";
-      let data: unknown = null;
-      try {
-        data = contentType.includes("application/json") ? await response.json() : await response.text();
-      } catch {
-        data = null;
-      }
-
-      const apiPayload = data as ApiErrorPayload | null;
-      let message = apiPayload?.error ?? `API request failed (${response.status})`;
-      if (response.status === 401) {
-        message = apiPayload?.error ?? "Your session is no longer valid. Please sign in again.";
-      }
-      if (response.status >= 500 || response.status === 401) {
-        showGlobalError(message);
-      }
-      throw new ApiError(response.status, data, message);
-    }
-
-    const text = await response.text();
-    if (!text) {
-      return undefined as T;
-    }
-    return JSON.parse(text) as T;
+    return await fetch(buildUrl(path, opts.query), { method: opts.method ?? "GET", headers, body, signal: controller.signal });
   } catch (err) {
-    const name = (err as { name?: string }).name;
-    if (name === "AbortError") {
-      showGlobalError("The request timed out. Please try again.");
-      throw new Error("API request timeout (10s)");
-    }
-
-    if (err instanceof TypeError) {
-      showGlobalError(formatNetworkHint());
-    }
-    throw err;
+    if (err instanceof ApiError) throw err;
+    const aborted = (err as { name?: string }).name === "AbortError";
+    throw new ApiError(
+      0,
+      aborted ? "timeout" : "network",
+      aborted ? "Le serveur met trop de temps à répondre." : "Connexion impossible. Vérifiez votre réseau et réessayez."
+    );
   } finally {
-    clearTimeout(timeoutId);
+    clearTimeout(timeout);
   }
+}
+
+let refreshing: Promise<AuthTokens | null> | null = null;
+
+/** Single-flight token refresh shared by every concurrent request. */
+export function refreshTokens(): Promise<AuthTokens | null> {
+  if (!refreshing) {
+    refreshing = (async () => {
+      const current = await getTokens();
+      if (!current) return null;
+      try {
+        const res = await send("/auth/refresh", { method: "POST", body: { refreshToken: current.refreshToken } }, null);
+        if (!res.ok) {
+          // Only a definitive rejection ends the session; outages keep the tokens.
+          if (res.status === 401 || res.status === 400) {
+            await clearTokens();
+            sessionExpiredListener?.();
+          }
+          return null;
+        }
+        const data = (await res.json()) as AuthResponse;
+        const next = { accessToken: data.accessToken, refreshToken: data.refreshToken };
+        await saveTokens(next);
+        return next;
+      } catch {
+        return null;
+      } finally {
+        setTimeout(() => {
+          refreshing = null;
+        }, 0);
+      }
+    })();
+  }
+  return refreshing;
+}
+
+function jwtExpiry(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: number };
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns an access token valid for at least 30 s, refreshing proactively. */
+export async function getValidAccessToken(): Promise<string | null> {
+  const tokens = await getTokens();
+  if (!tokens) return null;
+  const exp = jwtExpiry(tokens.accessToken);
+  if (exp !== null && exp - Date.now() < 30_000) {
+    return (await refreshTokens())?.accessToken ?? null;
+  }
+  return tokens.accessToken;
+}
+
+async function toError(res: Response): Promise<ApiError> {
+  let code = "http_error";
+  let message = `Une erreur est survenue (${res.status}).`;
+  try {
+    const data = (await res.json()) as { error?: string; code?: string };
+    if (data.code) code = data.code;
+    if (data.error) message = data.error;
+  } catch {
+    // non-JSON error body
+  }
+  return new ApiError(res.status, code, FRIENDLY[code] ?? message);
+}
+
+export async function apiRequest<T = void>(path: string, opts: Options = {}): Promise<T> {
+  const needsAuth = opts.auth !== false;
+  let token = needsAuth ? await getValidAccessToken() : null;
+  let res = await send(path, opts, token);
+
+  if (res.status === 401 && needsAuth) {
+    const next = await refreshTokens();
+    if (next) {
+      token = next.accessToken;
+      res = await send(path, opts, token);
+    }
+  }
+  if (!res.ok) throw await toError(res);
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }

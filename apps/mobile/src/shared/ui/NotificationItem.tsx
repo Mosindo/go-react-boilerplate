@@ -1,73 +1,33 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Badge } from "./Badge";
-import { Card } from "./Card";
-import { Text } from "./Text";
-import { colors, spacing } from "./tokens";
+import { StyleSheet, View } from "react-native";
+import { formatRelative } from "../../lib/format";
+import { spacing, useTheme } from "../../theme";
+import { Avatar } from "./Avatar";
+import { ListItem } from "./ListItem";
 
-export type NotificationItemProps = {
-  body: string;
-  createdAtLabel: string;
-  isRead: boolean;
-  onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
+type Props = {
   title: string;
-  type: string;
+  subtitle: string;
+  actorName: string;
+  actorThumb: string;
+  createdAt: string;
+  unread: boolean;
+  onPress: () => void;
+  testID?: string;
 };
 
-export function NotificationItem({
-  body,
-  createdAtLabel,
-  isRead,
-  onPress,
-  style,
-  title,
-  type
-}: NotificationItemProps) {
+export function NotificationItem({ title, subtitle, actorName, actorThumb, createdAt, unread, onPress, testID }: Props) {
+  const theme = useTheme();
   return (
-    <Pressable disabled={!onPress} onPress={onPress}>
-      <Card style={[styles.card, style]} variant={isRead ? "muted" : "accent"}>
-        <View style={styles.header}>
-          <Text style={styles.title} variant="heading" weight="bold">
-            {title}
-          </Text>
-          <Badge label={isRead ? "Read" : "Unread"} size="sm" variant={isRead ? "muted" : "primary"} />
-        </View>
-        <Text style={styles.type} tone="secondary" variant="eyebrow" weight="bold">
-          {type}
-        </Text>
-        <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta} tone="muted" variant="caption">
-          {createdAtLabel}
-        </Text>
-      </Card>
-    </Pressable>
+    <ListItem
+      testID={testID}
+      title={title}
+      subtitle={`${subtitle} · ${formatRelative(createdAt)}`}
+      onPress={onPress}
+      left={<Avatar name={actorName} uri={actorThumb} />}
+      right={unread ? <View accessibilityLabel="Non lu" style={[styles.dot, { backgroundColor: theme.primary }]} /> : null}
+    />
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.sm
-  },
-  title: {
-    flex: 1,
-    color: colors.text
-  },
-  type: {
-    marginBottom: spacing.sm
-  },
-  body: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
-});
+const styles = StyleSheet.create({ dot: { width: 10, height: 10, borderRadius: 5, marginLeft: spacing.sm } });
