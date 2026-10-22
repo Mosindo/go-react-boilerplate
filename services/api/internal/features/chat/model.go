@@ -1,59 +1,55 @@
 package chat
 
-import "time"
+import (
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+	"example.com/api/internal/features/profiles"
+)
+
+const (
+	MaxMessageRunes      = 2000
+	DefaultConversations = 20
+	MaxConversations     = 50
+	DefaultMessagesLimit = 50
+	MaxMessagesLimit     = 100
+)
+
+type Message struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversationId"`
+	SenderID       string     `json:"senderId"`
+	Content        string     `json:"content"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ReadAt         *time.Time `json:"readAt,omitempty"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type Peer struct {
+	UserID    string             `json:"userId"`
+	FirstName string             `json:"firstName"`
+	Age       int                `json:"age"`
+	Photo     *profiles.PhotoRef `json:"photo,omitempty"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
+type Conversation struct {
+	ID            string    `json:"id"`
+	MatchID       string    `json:"matchId"`
+	Peer          Peer      `json:"peer"`
+	LastMessage   *Message  `json:"lastMessage,omitempty"`
+	UnreadCount   int       `json:"unreadCount"`
+	LastMessageAt time.Time `json:"lastMessageAt"`
 }
 
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
+type ConversationsResponse struct {
+	Conversations []Conversation `json:"conversations"`
+	NextCursor    *time.Time     `json:"nextCursor,omitempty"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type MessagesResponse struct {
+	// Messages are in chronological order (oldest first).
+	Messages   []Message  `json:"messages"`
+	NextCursor *time.Time `json:"nextCursor,omitempty"`
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
-}
-
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
-}
-
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+	Content string `json:"content" binding:"required,max=8000"`
 }

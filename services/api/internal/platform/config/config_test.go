@@ -26,3 +26,29 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadRequiresSMTPInProduction(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("SMTP_HOST", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected production without SMTP to be rejected")
+	}
+	t.Setenv("SMTP_HOST", "smtp.example.org")
+	if _, err := Load(); err != nil {
+		t.Fatalf("expected production with SMTP to load: %v", err)
+	}
+}
+
+func TestLoadDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Port != "8080" || cfg.Env != "development" || cfg.UploadDir == "" {
+		t.Fatalf("unexpected defaults: %#v", cfg)
+	}
+}

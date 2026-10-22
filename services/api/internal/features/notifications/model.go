@@ -1,35 +1,33 @@
 package notifications
 
-import "time"
+import (
+	"time"
+
+	"example.com/api/internal/features/profiles"
+)
+
+const (
+	DefaultLimit = 20
+	MaxLimit     = 50
+)
+
+type Actor struct {
+	UserID    string             `json:"userId"`
+	FirstName string             `json:"firstName"`
+	Photo     *profiles.PhotoRef `json:"photo,omitempty"`
+}
 
 type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
+	ID             string     `json:"id"`
+	Type           string     `json:"type"`
+	Actor          *Actor     `json:"actor,omitempty"`
+	ConversationID string     `json:"conversationId,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ReadAt         *time.Time `json:"readAt,omitempty"`
 }
 
-type NotificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
-}
-
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
-}
-
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+type ListResponse struct {
+	Notifications []Notification `json:"notifications"`
+	UnreadCount   int            `json:"unreadCount"`
+	NextCursor    *time.Time     `json:"nextCursor,omitempty"`
 }
