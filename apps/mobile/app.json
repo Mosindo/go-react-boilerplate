@@ -1,12 +1,42 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Aurore",
+    "slug": "aurore",
+    "scheme": "aurore",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.aurore.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Aurore utilise votre position une seule fois pour trouver des profils près de chez vous. Votre position exacte n'est jamais partagée.",
+        "NSPhotoLibraryUsageDescription": "Aurore a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil."
+      }
+    },
+    "android": {
+      "package": "app.aurore.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Aurore utilise votre position une seule fois pour trouver des profils près de chez vous. Votre position exacte n'est jamais partagée."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aurore a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil."
+        }
+      ]
     ]
   }
 }

@@ -1,12 +1,5 @@
 import React, { type ReactNode } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  View,
-  type PressableProps,
-  type StyleProp,
-  type ViewStyle
-} from "react-native";
+import { Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { Card, type CardVariant } from "./Card";
 import { Text } from "./Text";
 import { colors, spacing } from "./tokens";

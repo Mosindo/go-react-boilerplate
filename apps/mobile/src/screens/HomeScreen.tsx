@@ -1,223 +1,130 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { createPost, listPosts, type Post } from "../api/platform";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Badge, Button, Card, Input, Notice, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useCallback, useRef } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { errorMessage } from "../api/client";
+import { swipe } from "../api/discovery";
+import type { PublicProfile, SwipeAction } from "../api/types";
+import { SwipeDeck, type SwipeDeckHandle } from "../components/SwipeDeck";
+import { useDiscoverQueue } from "../hooks/useDiscoverQueue";
+import { useRealtime } from "../hooks/useRealtime";
+import type { RootStackParamList } from "../navigation/types";
+import { EmptyView, ErrorView, showGlobalError } from "../shared/feedback";
+import { ScreenContainer } from "../shared/layout";
+import { Loader, Text, colors, radii, shadows, spacing } from "../shared/ui";
 
-type HomeScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+/** Discover tab: one profile at a time, swipe or tap to like / pass. */
+export default function HomeScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { queue, status, error, dequeue, requeue, refresh } = useDiscoverQueue();
+  const { announceMatch } = useRealtime();
+  const deck = useRef<SwipeDeckHandle>(null);
 
-function formatPostDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
-}
+  const handleSwipe = useCallback(
+    async (profile: PublicProfile, action: SwipeAction) => {
+      dequeue(profile.userId);
+      try {
+        const result = await swipe(profile.userId, action);
+        if (result.matched && !result.alreadySwiped && result.match) {
+          announceMatch(result.match);
+        }
+      } catch (err) {
+        requeue(profile);
+        showGlobalError(errorMessage(err, "Impossible d'enregistrer votre choix."));
+      }
+    },
+    [announceMatch, dequeue, requeue]
+  );
 
-export default function HomeScreen({ token, currentUserId }: HomeScreenProps) {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextPosts = await listPosts(token);
-      setPosts(nextPosts);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load posts");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function onSubmit() {
-    const normalizedTitle = title.trim();
-    const normalizedBody = body.trim();
-    if (!normalizedTitle || !normalizedBody) {
-      setError("title and body are required");
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-    setFeedback(null);
-    try {
-      const created = await createPost(token, normalizedTitle, normalizedBody);
-      setPosts((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
-      setTitle("");
-      setBody("");
-      setFeedback("Post published.");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "could not create post");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const emptyState = useMemo(() => {
-    if (loading) {
-      return null;
-    }
-    return (
-      <EmptyView
-        message="Share progress, notes, or the first workspace announcement."
-        title="No posts yet"
-      />
-    );
-  }, [loading]);
-
-  if (loading && posts.length === 0) {
-    return (
-      <ScreenContainer testID="home-screen">
-        <LoadingView fullScreen label="Loading workspace..." />
-      </ScreenContainer>
-    );
-  }
+  const hasCard = queue.length > 0;
 
   return (
-    <ScreenContainer testID="home-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || submitting}
-            label="Reload"
-            onPress={load}
-            size="sm"
-            testID="home-reload-button"
-            variant="outline"
-          />
-        }
-        eyebrow="Workspace"
-        style={styles.header}
-        subtitle="Team updates, product notes, and lightweight announcements."
-        title="Home"
-      />
-
-      <Card style={styles.composer} variant="accent">
-        <Text style={styles.sectionTitle} variant="heading" weight="bold">
-          Publish an update
+    <ScreenContainer contentMaxWidth={560} edges={["top", "left", "right"]} testID="discover-screen">
+      <View style={styles.header}>
+        <Text accessibilityRole="header" variant="heading" weight="bold">
+          Découvrir
         </Text>
-        <Input
-          containerStyle={styles.field}
-          label="Title"
-          onChangeText={setTitle}
-          placeholder="Post title"
-          testID="home-post-title-input"
-          value={title}
-        />
-        <Input
-          containerStyle={styles.field}
-          label="Body"
-          multiline
-          numberOfLines={4}
-          onChangeText={setBody}
-          placeholder="Share progress, notes, or an announcement..."
-          style={styles.bodyInput}
-          testID="home-post-body-input"
-          value={body}
-        />
-        <Button
-          fullWidth
-          disabled={loading}
-          label="Publish"
-          loading={submitting}
-          onPress={onSubmit}
-          testID="home-post-submit-button"
-        />
-      </Card>
+        <Pressable accessibilityRole="button" onPress={() => navigation.navigate("Preferences")} testID="open-preferences">
+          <Text tone="primary" variant="label" weight="bold">
+            Filtres
+          </Text>
+        </Pressable>
+      </View>
 
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-      {feedback ? (
-        <Notice description="Your update is now visible in the workspace feed." style={styles.feedback} title={feedback} tone="success" />
-      ) : null}
-
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={posts}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={emptyState}
-        renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle} variant="heading" weight="bold">
-                {item.title}
-              </Text>
-              <Badge label={item.authorUserId === currentUserId ? "You" : "Member"} size="sm" variant="primary" />
-            </View>
-            <Text style={styles.cardBody}>{item.body}</Text>
-            <Text style={styles.meta} tone="muted" variant="caption">
-              {formatPostDate(item.createdAt)}
-            </Text>
-          </Card>
+      <View style={styles.stage}>
+        {hasCard ? (
+          <SwipeDeck
+            onOpen={(profile) => navigation.navigate("ProfileDetail", { userId: profile.userId })}
+            onSwipe={handleSwipe}
+            profiles={queue}
+            ref={deck}
+          />
+        ) : status === "loading" ? (
+          <Loader fullScreen label="Recherche de profils…" />
+        ) : status === "error" ? (
+          <ErrorView
+            actionLabel="Réessayer"
+            message={error ?? "Chargement impossible."}
+            onAction={refresh}
+            title="Impossible de charger les profils"
+          />
+        ) : (
+          <EmptyView
+            actionLabel="Actualiser"
+            message="Élargissez vos filtres d'âge ou de distance, ou revenez un peu plus tard : de nouvelles personnes arrivent chaque jour."
+            onAction={refresh}
+            testID="discover-empty"
+            title="Vous avez fait le tour pour le moment"
+          />
         )}
-      />
+      </View>
+
+      {hasCard ? (
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityLabel="Passer"
+            accessibilityRole="button"
+            onPress={() => deck.current?.swipe("pass")}
+            style={({ pressed }) => [styles.round, pressed ? styles.pressed : null]}
+            testID="pass-button"
+          >
+            <Text style={[styles.glyph, { color: colors.pass }]} weight="bold">
+              ✕
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="J'aime"
+            accessibilityRole="button"
+            onPress={() => deck.current?.swipe("like")}
+            style={({ pressed }) => [styles.round, styles.roundLike, pressed ? styles.pressed : null]}
+            testID="like-button"
+          >
+            <Text style={[styles.glyph, { color: colors.inverse }]} weight="bold">
+              ♥
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: spacing.lg
-  },
-  composer: {
-    marginBottom: spacing.md
-  },
-  sectionTitle: {
-    marginBottom: spacing.lg
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  bodyInput: {
-    minHeight: 120
-  },
-  error: {
-    marginBottom: spacing.sm
-  },
-  feedback: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  },
-  empty: {
-    marginTop: spacing.xxxl
-  },
-  card: {
-    marginBottom: spacing.md
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  stage: { flex: 1, justifyContent: "center" },
+  actions: { flexDirection: "row", justifyContent: "center", gap: spacing.xl, paddingTop: spacing.lg },
+  round: {
+    width: 64,
+    height: 64,
+    borderRadius: radii.pill,
     alignItems: "center",
-    marginBottom: spacing.sm,
-    gap: spacing.sm
+    justifyContent: "center",
+    backgroundColor: colors.backgroundElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card
   },
-  cardTitle: {
-    flex: 1,
-    color: colors.text
-  },
-  cardBody: {
-    color: colors.text,
-    lineHeight: 22
-  },
-  meta: {
-    marginTop: spacing.md
-  }
+  roundLike: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pressed: { transform: [{ scale: 0.94 }] },
+  glyph: { fontSize: 26, lineHeight: 30 }
 });

@@ -1,137 +1,127 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import {
-  listNotifications,
-  markNotificationRead,
-  type Notification
-} from "../api/platform";
-import { Header, ScreenContainer } from "../shared/layout";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "../api/client";
+import { markAllNotificationsRead, markNotificationRead } from "../api/notifications";
+import type { AppNotification } from "../api/types";
+import { PersonAvatar } from "../components/PersonAvatar";
+import { useNotificationsQuery } from "../hooks/useFeeds";
+import { formatShortTime } from "../lib/format";
+import type { RootStackParamList } from "../navigation/types";
 import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Button, NotificationItem, spacing } from "../shared/ui";
+import { ScreenContainer } from "../shared/layout";
+import { Badge, Button, ListItem, Text, spacing } from "../shared/ui";
 
-type NotificationsScreenProps = {
-  token: string;
-};
-
-function formatNotificationDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
+function describe(notification: AppNotification): { title: string; body: string } {
+  const name = notification.actor?.firstName ?? "Quelqu'un";
+  return notification.type === "match"
+    ? { title: "Nouveau match", body: `Vous et ${name} vous plaisez mutuellement.` }
+    : { title: `Message de ${name}`, body: "Vous avez de nouveaux messages non lus." };
 }
 
-export default function NotificationsScreen({ token }: NotificationsScreenProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default function NotificationsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const queryClient = useQueryClient();
+  const query = useNotificationsQuery();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextNotifications = await listNotifications(token);
-      setNotifications(nextNotifications);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load notifications");
-    } finally {
-      setLoading(false);
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  const readOne = useMutation({ mutationFn: markNotificationRead, onSuccess: invalidate });
+  const readAll = useMutation({ mutationFn: markAllNotificationsRead, onSuccess: invalidate });
+
+  const items = query.data?.pages.flatMap((page) => page.notifications) ?? [];
+  const unread = query.data?.pages[0]?.unreadCount ?? 0;
+
+  const open = (notification: AppNotification) => {
+    if (!notification.readAt) {
+      readOne.mutate(notification.id);
     }
-  }, [token]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function onMarkRead(item: Notification) {
-    if (item.isRead) {
-      return;
+    if (notification.conversationId && notification.actor) {
+      navigation.navigate("Chat", {
+        conversationId: notification.conversationId,
+        peerId: notification.actor.userId,
+        name: notification.actor.firstName
+      });
     }
+  };
 
-    try {
-      const updated = await markNotificationRead(token, item.id);
-      setNotifications((prev) => prev.map((current) => (current.id === updated.id ? updated : current)));
-    } catch (markError) {
-      setError(markError instanceof Error ? markError.message : "could not update notification");
-    }
-  }
-
-  const unreadCount = useMemo(
-    () => notifications.filter((item) => !item.isRead).length,
-    [notifications]
-  );
-
-  if (loading && notifications.length === 0) {
+  if (query.isLoading) {
     return (
-      <ScreenContainer testID="notifications-screen">
-        <LoadingView fullScreen label="Loading notifications..." />
+      <ScreenContainer edges={["top", "left", "right"]}>
+        <LoadingView label="Chargement…" />
+      </ScreenContainer>
+    );
+  }
+  if (query.isError) {
+    return (
+      <ScreenContainer edges={["top", "left", "right"]}>
+        <ErrorView actionLabel="Réessayer" message={errorMessage(query.error)} onAction={() => void query.refetch()} />
       </ScreenContainer>
     );
   }
 
   return (
-    <ScreenContainer contentMaxWidth={820} testID="notifications-screen">
-      <Header
-        action={
-          <View style={styles.actions}>
-            <Button
-              disabled={loading}
-              label="Reload"
-              onPress={load}
-              size="sm"
-              testID="notifications-reload-button"
-              variant="outline"
-            />
+    <ScreenContainer contentMaxWidth={640} edges={["top", "left", "right"]} testID="notifications-screen">
+      <FlatList
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListEmptyComponent={
+          <EmptyView message="Matchs et nouveaux messages s'afficheront ici." testID="notifications-empty" title="Rien de nouveau" />
+        }
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Text accessibilityRole="header" variant="heading" weight="bold">
+              Notifications
+            </Text>
+            {unread > 0 ? (
+              <Button
+                label="Tout marquer comme lu"
+                loading={readAll.isPending}
+                onPress={() => readAll.mutate()}
+                size="sm"
+                testID="notifications-read-all"
+                variant="ghost"
+              />
+            ) : null}
           </View>
         }
-        eyebrow="Inbox"
-        subtitle={`${unreadCount} unread`}
-        style={styles.headerShell}
-        title="Notifications"
-      />
-
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={notifications}
+        data={items}
         keyExtractor={(item) => item.id}
-        ListEmptyComponent={
-          <EmptyView
-            message="Notifications from messages, posts, and account activity will appear here."
-            title="No notifications yet"
-          />
-        }
-        renderItem={({ item }) => (
-          <NotificationItem
-            body={item.body}
-            createdAtLabel={formatNotificationDate(item.createdAt)}
-            isRead={item.isRead}
-            onPress={() => void onMarkRead(item)}
-            title={item.title}
-            type={item.type}
-          />
-        )}
+        onEndReached={() => {
+          if (query.hasNextPage && !query.isFetchingNextPage) {
+            void query.fetchNextPage();
+          }
+        }}
+        onRefresh={() => void query.refetch()}
+        refreshing={query.isRefetching}
+        renderItem={({ item }) => {
+          const text = describe(item);
+          return (
+            <ListItem
+              leading={item.actor ? <PersonAvatar name={item.actor.firstName} photo={item.actor.photo} size={48} /> : undefined}
+              onPress={() => open(item)}
+              subtitle={text.body}
+              testID={`notification-${item.type}`}
+              title={text.title}
+              trailing={
+                <View style={styles.trailing}>
+                  <Text tone="muted" variant="caption">
+                    {formatShortTime(item.createdAt)}
+                  </Text>
+                  {!item.readAt ? <Badge label="Nouveau" variant="primary" /> : null}
+                </View>
+              }
+              variant={item.readAt ? "muted" : "accent"}
+            />
+          );
+        }}
       />
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  headerShell: {
-    marginBottom: spacing.lg,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    paddingTop: spacing.md
-  },
-  error: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  }
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  separator: { height: spacing.sm },
+  trailing: { alignItems: "flex-end", gap: spacing.xs }
 });

@@ -1,30 +1,33 @@
+/** Every REST path used by the app, in one place. */
 export const endpoints = {
-  auth: {
-    register: "/auth/register",
-    login: "/auth/login",
-    me: "/me"
-  },
-  users: {
-    list: "/users",
-    detail: (userId: string) => `/users/${userId}`
-  },
-  posts: {
-    list: "/posts",
-    create: "/posts",
-    detail: (postId: string) => `/posts/${postId}`
-  },
-  chat: {
-    chats: "/chats",
-    messages: (userId: string) => `/chats/${userId}/messages`
-  },
-  notifications: {
-    list: "/notifications",
-    create: "/notifications",
-    markRead: (notificationId: string) => `/notifications/${notificationId}/read`
-  },
-  billing: {
-    subscription: "/billing/subscription",
-    checkout: "/billing/checkout",
-    webhook: "/billing/webhook"
-  }
+  health: "/health",
+  register: "/auth/register",
+  login: "/auth/login",
+  logout: "/auth/logout",
+  forgotPassword: "/auth/forgot-password",
+  resetPassword: "/auth/reset-password",
+  me: "/me",
+  profile: "/profile",
+  preferences: "/preferences",
+  interests: "/interests",
+  publicProfile: (userId: string) => `/profiles/${userId}`,
+  photos: "/photos",
+  photo: (id: string) => `/photos/${id}`,
+  photoFile: (id: string) => `/photos/${id}/file`,
+  photoPrimary: (id: string) => `/photos/${id}/primary`,
+  photoOrder: "/photos/order",
+  discover: "/discover",
+  swipes: "/discover/swipes",
+  matches: "/matches",
+  match: (id: string) => `/matches/${id}`,
+  conversations: "/conversations",
+  conversation: (id: string) => `/conversations/${id}`,
+  messages: (id: string) => `/conversations/${id}/messages`,
+  markRead: (id: string) => `/conversations/${id}/read`,
+  notifications: "/notifications",
+  notificationsReadAll: "/notifications/read-all",
+  notificationRead: (id: string) => `/notifications/${id}/read`,
+  blocks: "/blocks",
+  block: (userId: string) => `/blocks/${userId}`,
+  reports: "/reports"
 } as const;

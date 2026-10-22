@@ -1,32 +1,34 @@
 export const colors = {
-  primary: "#4c6fff",
-  primarySoft: "#e8edff",
-  primaryBorder: "#cad5ff",
+  primary: "#c4455c",
+  primarySoft: "#fbeaec",
+  primaryBorder: "#f1c6cd",
   primaryForeground: "#ffffff",
-  secondary: "#475467",
-  secondarySoft: "#eef2f6",
-  background: "#f6f8fc",
+  secondary: "#6b5a63",
+  secondarySoft: "#f4ecee",
+  background: "#fbf7f4",
   backgroundElevated: "#ffffff",
   surface: "#ffffff",
-  surfaceMuted: "#f8fafc",
-  surfaceSubtle: "#eef2f6",
-  surfaceAccent: "#eef3ff",
-  border: "#e3e8f2",
-  borderStrong: "#c9d3e1",
-  text: "#101828",
-  textMuted: "#667085",
-  textSubtle: "#98a2b3",
-  success: "#027a48",
-  successSoft: "#ecfdf3",
-  successBorder: "#abefc6",
-  warning: "#b54708",
-  warningSoft: "#fff6e0",
-  warningBorder: "#fedf89",
-  danger: "#d92d20",
-  dangerSoft: "#fef3f2",
-  dangerBorder: "#fecdca",
+  surfaceMuted: "#f7f1ee",
+  surfaceSubtle: "#f1e9e6",
+  surfaceAccent: "#fdf0f1",
+  border: "#eadfda",
+  borderStrong: "#d6c7c1",
+  text: "#2a1e26",
+  textMuted: "#6f6068",
+  textSubtle: "#a09098",
+  success: "#2f7d5b",
+  successSoft: "#eaf6f0",
+  successBorder: "#bfe3d1",
+  warning: "#9a5b0b",
+  warningSoft: "#fff4e0",
+  warningBorder: "#f5d9a6",
+  danger: "#b3261e",
+  dangerSoft: "#fdeceb",
+  dangerBorder: "#f4c7c3",
   inverse: "#ffffff",
-  overlay: "rgba(15, 23, 42, 0.38)"
+  like: "#2f9e6e",
+  pass: "#7a6b74",
+  overlay: "rgba(42, 30, 38, 0.45)"
 } as const;
 
 export const spacing = {
@@ -107,7 +109,7 @@ export const typography = {
 
 export const controls = {
   button: {
-    sm: 40,
+    sm: 44,
     md: 50,
     lg: 56
   },
@@ -124,21 +126,21 @@ export const controls = {
 
 export const shadows = {
   card: {
-    shadowColor: "#0b1220",
+    shadowColor: "#2a1e26",
     shadowOpacity: 0.08,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     elevation: 4
   },
   floating: {
-    shadowColor: "#0b1220",
+    shadowColor: "#2a1e26",
     shadowOpacity: 0.12,
     shadowRadius: 30,
     shadowOffset: { width: 0, height: 14 },
     elevation: 8
   },
   focus: {
-    shadowColor: "#4c6fff",
+    shadowColor: "#c4455c",
     shadowOpacity: 0.16,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },
