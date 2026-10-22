@@ -5,104 +5,144 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  backend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgres://postgres:postgres@localhost:5432/app_test?sslmode=disable
+    defaults:
+      run:
+        working-directory: services/api
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: services/api/go.mod
           cache: true
           cache-dependency-path: services/api/go.sum
-
-      - name: Install Go dependencies
-        working-directory: services/api
-        run: go mod download
-
-      - name: Run Go tests
-        working-directory: services/api
-        run: go test ./...
-
-      - name: Run Go vet static checks
-        working-directory: services/api
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - name: go vet
         run: go vet ./...
+      - name: Tests (unit + integration against Postgres)
+        run: go test -race ./...
+      - name: Build
+        run: go build ./cmd/api ./cmd/seed
 
-      - name: Build the backend
-        working-directory: services/api
-        run: go build ./cmd/api
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20.19.4
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: apps/mobile
-        run: npm ci
-
-      - name: Verify TypeScript
-        working-directory: apps/mobile
+      - run: npm ci
+      - name: Typecheck
         run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Format
+        run: npm run format:check
+      - name: Unit tests
+        run: npm test -- --ci
+      - name: Build the web bundle
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18081
+          CI: "1"
+        run: npx expo export --clear --platform web --output-dir dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api/go.mod
+          cache: true
+          cache-dependency-path: services/api/go.sum
+      - name: Start the API for end-to-end tests
+        working-directory: services/api
+        env:
+          JWT_SECRET: ci-e2e-secret-0123456789abcdef0123456789abcdef
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_e2e?sslmode=disable
+          UPLOAD_DIR: ${{ runner.temp }}/uploads
+          PORT: "18081"
+          ALLOWED_ORIGINS: http://localhost:19006
+        run: |
+          go build -o ${{ runner.temp }}/api ./cmd/api
+          nohup ${{ runner.temp }}/api > ${{ runner.temp }}/api.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://localhost:18081/health && exit 0; sleep 1; done
+          cat ${{ runner.temp }}/api.log; exit 1
+      - name: API smoke
+        env:
+          MOBILE_E2E_API_URL: http://localhost:18081
+        run: node scripts/e2e-smoke.js
+      - name: Browser end-to-end (sign up, match, chat)
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: API log on failure
+        if: failure()
+        run: cat ${{ runner.temp }}/api.log || true
 
-      - name: Build Docker image
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
         run: docker build -t api-test ./services/api
-
-      - name: Verify Docker runtime (/health=200)
+      - name: Verify runtime (/health = 200)
         shell: bash
         run: |
           set -euo pipefail
-
           cleanup() {
             docker rm -f api-test-run postgres-test >/dev/null 2>&1 || true
             docker network rm api-test-network >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
-
           docker network create api-test-network >/dev/null
-
-          echo "Starting Postgres for container health verification..."
-          docker run -d --name postgres-test \
-            --network api-test-network \
-            --network-alias postgres \
-            -e POSTGRES_USER=postgres \
-            -e POSTGRES_PASSWORD=postgres \
-            -e POSTGRES_DB=app \
-            postgres:15-alpine >/dev/null
-
-          echo "Waiting for Postgres readiness..."
+          docker run -d --name postgres-test --network api-test-network --network-alias postgres \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=app postgres:16-alpine >/dev/null
           for i in {1..30}; do
-            if docker exec postgres-test pg_isready -U postgres -d app >/dev/null 2>&1; then
-              break
-            fi
+            docker exec postgres-test pg_isready -U postgres -d app >/dev/null 2>&1 && break
             sleep 1
           done
-
-          echo "Starting API container..."
-          docker run -d --name api-test-run \
-            --network api-test-network \
-            -p 18081:8080 \
+          docker run -d --name api-test-run --network api-test-network -p 18081:8080 \
             -e DATABASE_URL="postgres://postgres:postgres@postgres:5432/app?sslmode=disable" \
-            -e JWT_SECRET="ci-jwt-secret-32-chars-minimum-value" \
-            -e PORT="8080" \
-            api-test >/dev/null
-
-          echo "Waiting for /health=200..."
+            -e JWT_SECRET="ci-jwt-secret-32-chars-minimum-value-x" api-test >/dev/null
           for i in {1..30}; do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18081/health || true)"
-            if [ "$code" = "200" ]; then
-              echo "Health OK."
-              exit 0
-            fi
+            [ "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18081/health || true)" = "200" ] && exit 0
             sleep 1
           done
-
-          echo "Container logs (api-test-run):"
           docker logs api-test-run || true
           exit 1
-

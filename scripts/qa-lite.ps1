@@ -2,30 +2,22 @@ param(
   [string]$ApiBaseUrl = "http://localhost:18080"
 )
 
+# Local quality gate: formatting, vet, build, tests, typecheck, lint, then the API smoke flow.
+# Backend integration tests need DATABASE_URL_TEST (an empty throwaway database).
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $reportDir = Join-Path $repoRoot ".smoke"
+New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 $reportPath = Join-Path $reportDir "qa-lite-report.txt"
-$goCacheDir = Join-Path $repoRoot ".cache\\go-build"
-
-if (-not (Test-Path $reportDir)) {
-  New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
-}
-
-if (-not (Test-Path $goCacheDir)) {
-  New-Item -ItemType Directory -Path $goCacheDir -Force | Out-Null
-}
-
-$env:GOCACHE = $goCacheDir
-
 $results = New-Object System.Collections.Generic.List[string]
 $failed = $false
 
 function Run-Step([string]$name, [scriptblock]$action) {
   try {
     & $action
+    if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
     $results.Add("PASS - $name")
   }
   catch {
@@ -36,75 +28,27 @@ function Run-Step([string]$name, [scriptblock]$action) {
 
 Push-Location $repoRoot
 try {
-  Run-Step "Backend gofmt" {
+  Run-Step "gofmt" {
     Push-Location ".\services\api"
     try {
-      $unformatted = @(Get-ChildItem -Recurse -Filter *.go | ForEach-Object { gofmt -l $_.FullName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-      if ($LASTEXITCODE -ne 0) { throw "gofmt check failed with exit code $LASTEXITCODE" }
-      if ($unformatted.Count -gt 0) {
-        throw ("gofmt check failed. Unformatted files:`n{0}" -f ($unformatted -join [Environment]::NewLine))
-      }
+      $unformatted = gofmt -l .
+      if ($unformatted) { throw "unformatted files:`n$unformatted" }
+      $global:LASTEXITCODE = 0
     }
-    finally {
-      Pop-Location
-    }
+    finally { Pop-Location }
   }
-
-  Run-Step "Backend tests (go test ./...)" {
-    Push-Location ".\services\api"
-    try {
-      go test ./... | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "go test exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Backend build (go build ./cmd/api)" {
-    Push-Location ".\services\api"
-    try {
-      go build ./cmd/api
-      if ($LASTEXITCODE -ne 0) { throw "go build exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Mobile TypeScript check (npx tsc --noEmit)" {
-    Push-Location ".\apps\mobile"
-    try {
-      npx tsc --noEmit
-      if ($LASTEXITCODE -ne 0) { throw "tsc exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Smoke API + mobile critique" {
-    & (Join-Path $repoRoot "scripts/smoke-all.ps1") -ApiBaseUrl $ApiBaseUrl
-    if ($LASTEXITCODE -ne 0) { throw "smoke-all exited with code $LASTEXITCODE" }
-  }
+  Run-Step "go vet" { Push-Location ".\services\api"; try { go vet ./... } finally { Pop-Location } }
+  Run-Step "go build" { Push-Location ".\services\api"; try { go build ./cmd/api } finally { Pop-Location } }
+  Run-Step "go test" { Push-Location ".\services\api"; try { go test ./... } finally { Pop-Location } }
+  Run-Step "mobile typecheck" { Push-Location ".\apps\mobile"; try { npx tsc --noEmit } finally { Pop-Location } }
+  Run-Step "mobile lint" { Push-Location ".\apps\mobile"; try { npm run lint } finally { Pop-Location } }
+  Run-Step "mobile unit tests" { Push-Location ".\apps\mobile"; try { npm test } finally { Pop-Location } }
+  Run-Step "API smoke" { & (Join-Path $PSScriptRoot "smoke-api.ps1") -ApiBaseUrl $ApiBaseUrl }
 }
 finally {
   Pop-Location
+  $results | Set-Content -Path $reportPath
+  $results | ForEach-Object { Write-Host $_ }
 }
 
-$stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$header = @(
-  "go-react-saas QA Lite Report",
-  "Generated: $stamp",
-  "API Base URL: $ApiBaseUrl",
-  ""
-)
-
-($header + $results) | Set-Content -Path $reportPath -Encoding UTF8
-Get-Content $reportPath
-
-if ($failed) {
-  exit 1
-}
-
-exit 0
+if ($failed) { exit 1 }

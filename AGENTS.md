@@ -1,30 +1,23 @@
 # AGENTS.md - go-react-saas
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository started as `go-react-saas`, a reusable fullstack boilerplate, and now hosts **Aurore**, a 100% free dating app (no subscription, no paywall, no artificial limits).
+The architecture must remain scalable, secure, maintainable, and easy to evolve. See `README.md` for the current product and `docs/ARCHITECTURE.md` for the structure.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Aurore is a free dating app: accounts, profiles, photos, swipe discovery, reciprocal matches, real-time chat, notifications, blocking, reporting and account deletion.
+Never introduce paid features, usage caps on likes, or ads.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- matching
 - chat
 - notifications
-- files
+- safety
 
 ---
 
@@ -65,12 +58,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -117,6 +110,7 @@ Secrets:
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - see `.env.example` for the optional ones (`UPLOAD_DIR`, `ALLOWED_ORIGINS`, SMTP…)
 
 ---
 
@@ -128,14 +122,15 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+Required indexes (all present in `014_dating_schema.sql`):
+- `users.email` (unique)
+- `profiles (latitude, longitude)` partial on discoverable profiles
+- `swipes (to_user_id, from_user_id)` partial on likes
+- `matches (user_a_id, created_at)` and `(user_b_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `messages (conversation_id, created_at, id)`
+- `notifications (user_id, created_at, id)`
+- `photos (user_id, position)`
 
 ---
 
@@ -150,13 +145,16 @@ Before any backend delivery:
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`, need `DATABASE_URL_TEST`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth (`/auth/*`, `/me`, account deletion)
+- Profile validation, photos (uploads and access control)
+- Discovery, swipes, matches, concurrent mutual likes
+- Chat (`/conversations/...`), permissions, read receipts
+- Notifications, blocks, reports
+- WebSocket (`/ws`)
+
+Frontend: `npx tsc --noEmit`, `npm run lint`, `npm run format:check`, `npm test`, and the Playwright flow (`npx playwright test`) in `apps/mobile`.
 
 ---
 
@@ -175,11 +173,12 @@ Mandatory rules to avoid recurring environment issues:
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
+- A frontend is only "ready" after a real smoke test (`npm run e2e:smoke`, plus the Playwright flow):
   - register
   - login
-  - users load
-  - posts load
+  - profile + photo
+  - discovery loads
+  - like / match
   - chat send/read
   - notifications read flow
 
