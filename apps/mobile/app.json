@@ -1,12 +1,23 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Cléo",
+    "slug": "cleo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Cléo utilise votre position approximative pour vous proposer des profils proches de vous."
+        }
+      ],
+      [
+        "expo-image-picker",
+        { "photosPermission": "Cléo a besoin d'accéder à vos photos pour illustrer votre profil." }
+      ]
     ]
   }
 }

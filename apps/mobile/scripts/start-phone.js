@@ -19,8 +19,9 @@ function getLanIp() {
   throw new Error("No LAN IPv4 found. Connect to Wi-Fi/Ethernet and retry.");
 }
 
-const ip = getLanIp();
-const apiUrl = `http://${ip}:18080`;
+const ip = process.env.EXPO_PUBLIC_API_URL ? "" : getLanIp();
+const apiPort = process.env.API_PORT || "18080";
+const apiUrl = process.env.EXPO_PUBLIC_API_URL || `http://${ip}:${apiPort}`;
 
 console.log(`[mobile] Using API: ${apiUrl}`);
 

@@ -4,5 +4,7 @@
     "strict": true,
     "noEmit": true,
     "moduleResolution": "bundler"
-  }
+  },
+  "include": ["App.tsx", "src/**/*", "__tests__/**/*", "expo-env.d.ts"],
+  "exclude": ["node_modules"]
 }

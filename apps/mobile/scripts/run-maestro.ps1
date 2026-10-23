@@ -44,8 +44,7 @@ try {
 
   Require-Env -Name "TEST_EMAIL"
   Require-Env -Name "TEST_PASSWORD"
-  Require-Env -Name "CONTACT_EMAIL"
-  Require-Env -Name "NOTIFICATION_TITLE"
+  Require-Env -Name "CONTACT_NAME"
 
   Require-Command -Name "maestro" -Hint "Install Maestro CLI and ensure it is in PATH."
 

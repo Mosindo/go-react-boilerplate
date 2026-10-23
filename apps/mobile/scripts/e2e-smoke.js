@@ -1,129 +1,337 @@
-/* eslint-disable no-console */
-const API_BASE_URL = process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080";
-const PASSWORD = "Password123";
+/**
+ * Live-API smoke test of the critical flow, with two throwaway users:
+ * register -> profile/preferences/photo -> discover -> mutual like -> match -> WebSocket message.new
+ * -> read receipt -> notifications -> block -> account deletion.
+ *
+ * Usage: API_URL=http://localhost:18080 npm run e2e:smoke   (EXPO_PUBLIC_API_URL also works)
+ */
+const {
+  API_URL,
+  PASSWORD,
+  assert,
+  call,
+  deleteUser,
+  expectStatus,
+  onboardUser,
+  preferenceInput,
+  profileInput,
+  registerUser
+} = require("./lib/api");
 
-function uniqueEmail(prefix) {
-  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 100000)}@boilerplate.test`;
+function wsUrl() {
+  return `${API_URL.replace(/^http/i, "ws")}/ws`;
 }
 
-async function request(path, init = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {})
-    }
+/** Opens the realtime socket, authenticates in onopen and resolves once the server says ready. */
+function openSocket(token) {
+  return new Promise((resolve, reject) => {
+    const events = [];
+    const waiters = [];
+    const socket = new WebSocket(wsUrl());
+    const timer = setTimeout(() => reject(new Error("websocket: no ready frame within 8s")), 8000);
+    socket.onopen = () => socket.send(JSON.stringify({ type: "auth", token }));
+    socket.onerror = () => reject(new Error("websocket: connection error"));
+    socket.onmessage = (event) => {
+      const frame = JSON.parse(String(event.data));
+      if (frame.type === "ready") {
+        clearTimeout(timer);
+        resolve({
+          events,
+          close: () => socket.close(),
+          ping: () => socket.send(JSON.stringify({ type: "ping" })),
+          waitFor: (type, ms = 8000) =>
+            new Promise((ok, fail) => {
+              const found = events.find((item) => item.type === type);
+              if (found) return ok(found);
+              const timeout = setTimeout(
+                () => fail(new Error(`websocket: no ${type} within ${ms}ms`)),
+                ms
+              );
+              waiters.push({
+                type,
+                ok: (item) => {
+                  clearTimeout(timeout);
+                  ok(item);
+                }
+              });
+            })
+        });
+        return;
+      }
+      events.push(frame);
+      waiters.filter((w) => w.type === frame.type).forEach((w) => w.ok(frame));
+    };
   });
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  return { status: response.status, ok: response.ok, payload };
 }
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-async function register(email) {
-  const res = await request("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password: PASSWORD })
-  });
-  assert(res.status === 201, `register failed for ${email}: ${res.status} ${JSON.stringify(res.payload)}`);
-  return res.payload;
+function step(label) {
+  console.log(`[e2e-smoke] ${label}`);
 }
 
 async function main() {
-  console.log(`[e2e-smoke] API: ${API_BASE_URL}`);
+  console.log(`[e2e-smoke] API: ${API_URL}`);
+  const users = [];
+  let socket = null;
+  try {
+    step("health");
+    expectStatus(await call("/health"), 200, "health");
 
-  const email1 = uniqueEmail("mobile_e2e_a");
-  const email2 = uniqueEmail("mobile_e2e_b");
+    step("register x2");
+    const a = await registerUser("smoke_a");
+    const b = await registerUser("smoke_b");
+    users.push(a, b);
+    expectStatus(
+      await call("/auth/login", { method: "POST", body: { email: a.email, password: PASSWORD } }),
+      200,
+      "login"
+    );
+    const me = expectStatus(await call("/me", { token: a.token }), 200, "me");
+    assert(me.onboarding.completed === false, "fresh account should not be onboarded");
 
-  const auth1 = await register(email1);
-  const auth2 = await register(email2);
-  assert(auth1?.token && auth2?.token, "expected tokens after register");
+    step("interests + profiles + preferences + photo");
+    const interests = expectStatus(
+      await call("/interests", { token: a.token }),
+      200,
+      "interests"
+    ).interests;
+    assert(Array.isArray(interests) && interests.length > 0, "interests list should not be empty");
+    const slugs = interests.slice(0, 2).map((item) => item.slug);
+    await onboardUser(
+      a,
+      profileInput("Alix", "woman", "1995-04-12", slugs),
+      preferenceInput(["man"]),
+      1
+    );
+    await onboardUser(
+      b,
+      profileInput("Boris", "man", "1993-09-30", slugs),
+      preferenceInput(["woman"]),
+      2
+    );
+    const meAfter = expectStatus(await call("/me", { token: a.token }), 200, "me after onboarding");
+    assert(
+      meAfter.onboarding.completed === true,
+      "onboarding should be completed after profile + photo"
+    );
 
-  const login1 = await request("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email: email1, password: PASSWORD })
-  });
-  assert(login1.status === 200, `login failed: ${login1.status} ${JSON.stringify(login1.payload)}`);
-  assert(login1.payload?.user?.id === auth1.user.id, "login user mismatch");
+    const photos = expectStatus(
+      await call("/me/photos", { token: a.token }),
+      200,
+      "list photos"
+    ).photos;
+    assert(photos.length === 1 && photos[0].position === 0, "expected one main photo");
 
-  const users = await request("/users", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(users.status === 200, `users failed: ${users.status}`);
-  const seesUser2 = Array.isArray(users.payload?.users) && users.payload.users.some((u) => u.id === auth2.user.id);
-  assert(seesUser2, "users list should include second user");
+    step("discover");
+    const discoverA = expectStatus(
+      await call("/discover?limit=20", { token: a.token }),
+      200,
+      "discover A"
+    );
+    const cardB = discoverA.profiles.find((card) => card.userId === b.id);
+    assert(cardB, "A should discover B");
+    assert(cardB.age >= 18 && cardB.photos.length === 1, "card shape (age, photos)");
 
-  const createPost = await request("/posts", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({ title: "Smoke post", body: "Validating the generic post feed." })
-  });
-  assert(createPost.status === 201, `create post failed: ${createPost.status}`);
+    step("authenticated photo fetch");
+    const imageResponse = await fetch(`${API_URL}${cardB.photos[0].thumbUrl}`, {
+      headers: { Authorization: `Bearer ${a.token}` }
+    });
+    assert(imageResponse.status === 200, `photo thumb status ${imageResponse.status}`);
+    assert(
+      (imageResponse.headers.get("content-type") || "").startsWith("image/"),
+      "photo should be an image"
+    );
+    const anonymous = await fetch(`${API_URL}${cardB.photos[0].thumbUrl}`);
+    assert(anonymous.status === 401, `photo without token should be 401, got ${anonymous.status}`);
 
-  const listPosts = await request("/posts", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listPosts.status === 200, `list posts failed: ${listPosts.status}`);
-  const seesNewPost =
-    Array.isArray(listPosts.payload?.posts) && listPosts.payload.posts.some((post) => post.id === createPost.payload?.id);
-  assert(seesNewPost, "posts list should include created post");
+    step("mutual like -> match");
+    const first = expectStatus(
+      await call("/swipes", {
+        method: "POST",
+        token: a.token,
+        body: { targetUserId: b.id, action: "like" }
+      }),
+      200,
+      "A likes B"
+    );
+    assert(first.matched === false, "first like must not match");
+    const repeat = expectStatus(
+      await call("/swipes", {
+        method: "POST",
+        token: a.token,
+        body: { targetUserId: b.id, action: "like" }
+      }),
+      200,
+      "repeat like"
+    );
+    assert(repeat.alreadyProcessed === true, "repeated swipe should be idempotent");
+    const discoverB = expectStatus(
+      await call("/discover?limit=20", { token: b.token }),
+      200,
+      "discover B"
+    );
+    assert(
+      discoverB.profiles.some((card) => card.userId === a.id),
+      "B should discover A"
+    );
 
-  const send = await request(`/chats/${auth2.user.id}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({ content: "hello from mobile e2e smoke" })
-  });
-  assert(send.status === 201, `send message failed: ${send.status}`);
+    socket = await openSocket(a.token);
+    const second = expectStatus(
+      await call("/swipes", {
+        method: "POST",
+        token: b.token,
+        body: { targetUserId: a.id, action: "like" }
+      }),
+      200,
+      "B likes A"
+    );
+    assert(second.matched === true && second.match?.id, "second like must create a match");
+    const matchId = second.match.id;
+    await socket.waitFor("match.new");
 
-  const listMessages = await request(`/chats/${auth2.user.id}/messages`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listMessages.status === 200, `list messages failed: ${listMessages.status}`);
-  assert(Array.isArray(listMessages.payload?.messages) && listMessages.payload.messages.length > 0, "messages should not be empty");
+    step("message over REST, delivered over WebSocket");
+    const sent = expectStatus(
+      await call(`/matches/${matchId}/messages`, {
+        method: "POST",
+        token: b.token,
+        body: { content: "Bonjour depuis le smoke test" }
+      }),
+      201,
+      "send message"
+    );
+    assert(sent.senderId === b.id && sent.readAt === null, "message shape");
+    const live = await socket.waitFor("message.new");
+    assert(
+      live.data.id === sent.id && live.data.content === sent.content,
+      "message.new payload mismatch"
+    );
+    socket.ping();
 
-  const createNotification = await request("/notifications", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({
-      type: "system",
-      title: "Smoke notification",
-      body: "Validating the generic notification flow."
-    })
-  });
-  assert(createNotification.status === 201, `create notification failed: ${createNotification.status}`);
+    step("matches, unread, read receipt");
+    const matches = expectStatus(
+      await call("/matches?limit=20", { token: a.token }),
+      200,
+      "matches"
+    ).matches;
+    const summary = matches.find((item) => item.id === matchId);
+    assert(summary && summary.unreadCount === 1, "A should have 1 unread message");
+    assert(summary.lastMessage?.content === sent.content, "lastMessage should be the sent message");
+    const history = expectStatus(
+      await call(`/matches/${matchId}/messages?limit=30`, { token: a.token }),
+      200,
+      "messages"
+    );
+    assert(history.messages[0].id === sent.id, "history is newest first");
+    expectStatus(
+      await call(`/matches/${matchId}/read`, { method: "POST", token: a.token }),
+      204,
+      "mark read"
+    );
+    const afterRead = expectStatus(
+      await call("/matches?limit=20", { token: a.token }),
+      200,
+      "matches 2"
+    );
+    assert(
+      afterRead.matches.find((m) => m.id === matchId).unreadCount === 0,
+      "unread should reset"
+    );
+    const bHistory = expectStatus(
+      await call(`/matches/${matchId}/messages?limit=30`, { token: b.token }),
+      200,
+      "messages B"
+    );
+    assert(bHistory.messages[0].readAt, "B's message should carry readAt");
 
-  const listNotifications = await request("/notifications", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listNotifications.status === 200, `list notifications failed: ${listNotifications.status}`);
-  const seesNotification =
-    Array.isArray(listNotifications.payload?.notifications) &&
-    listNotifications.payload.notifications.some((item) => item.id === createNotification.payload?.id);
-  assert(seesNotification, "notifications list should include created notification");
+    step("notifications");
+    const notifications = expectStatus(
+      await call("/notifications?limit=20", { token: a.token }),
+      200,
+      "notifications"
+    );
+    assert(notifications.notifications.length > 0, "A should have notifications (match / message)");
+    assert(
+      notifications.notifications.every((n) => n.type === "match" || n.type === "message"),
+      "notification types"
+    );
+    if (notifications.notifications.some((n) => !n.readAt)) {
+      const unread = notifications.notifications.find((n) => !n.readAt);
+      expectStatus(
+        await call(`/notifications/${unread.id}/read`, { method: "POST", token: a.token }),
+        204,
+        "read one"
+      );
+    }
+    expectStatus(
+      await call("/notifications/read-all", { method: "POST", token: a.token }),
+      204,
+      "read all"
+    );
+    const cleared = expectStatus(
+      await call("/notifications?limit=20", { token: a.token }),
+      200,
+      "notifications 2"
+    );
+    assert(cleared.unreadCount === 0, "unreadCount should be 0 after read-all");
 
-  const markRead = await request(`/notifications/${createNotification.payload.id}/read`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(markRead.status === 200, `mark notification read failed: ${markRead.status}`);
-  assert(markRead.payload?.isRead === true, "notification should be marked as read");
+    step("block");
+    expectStatus(
+      await call("/blocks", { method: "POST", token: a.token, body: { userId: b.id } }),
+      204,
+      "block"
+    );
+    const blocks = expectStatus(await call("/blocks", { token: a.token }), 200, "blocks").blocks;
+    assert(
+      blocks.some((item) => item.userId === b.id),
+      "blocks should list B"
+    );
+    const afterBlock = expectStatus(
+      await call("/matches?limit=20", { token: a.token }),
+      200,
+      "matches 3"
+    );
+    assert(!afterBlock.matches.some((m) => m.id === matchId), "block should remove the match");
+    expectStatus(
+      await call(`/blocks/${b.id}`, { method: "DELETE", token: a.token }),
+      204,
+      "unblock"
+    );
 
-  console.log("[e2e-smoke] PASS register/login/users/posts/chat/notifications");
+    step("token refresh");
+    const refreshed = expectStatus(
+      await call("/auth/refresh", { method: "POST", body: { refreshToken: a.refreshToken } }),
+      200,
+      "refresh"
+    );
+    assert(
+      refreshed.accessToken && refreshed.refreshToken !== a.refreshToken,
+      "refresh token should rotate"
+    );
+    a.token = refreshed.accessToken;
+
+    step("account deletion");
+    for (const user of users) {
+      expectStatus(await deleteUser(user), 204, `delete ${user.email}`);
+    }
+    users.length = 0;
+    const gone = await call("/auth/login", {
+      method: "POST",
+      body: { email: a.email, password: PASSWORD }
+    });
+    assert(gone.status === 401, `login after deletion should be 401, got ${gone.status}`);
+
+    console.log(
+      "[e2e-smoke] PASS health/auth/profile/photo/discover/match/chat/ws/notifications/block/delete"
+    );
+  } finally {
+    if (socket) socket.close();
+    for (const user of users) {
+      try {
+        await deleteUser(user);
+      } catch {
+        // best-effort cleanup of throwaway users
+      }
+    }
+  }
 }
 
 main().catch((err) => {
