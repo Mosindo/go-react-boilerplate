@@ -3,168 +3,122 @@ package chat
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	platformerrors "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/pagination"
+	"example.com/api/internal/platform/realtime"
 )
 
-var (
-	ErrUserNotFound         = errors.New("user not found")
-	ErrValidateChatTarget   = errors.New("could not validate chat target")
-	ErrMessageContentNeeded = errors.New("message content required")
-)
+var errNotFound = platformerrors.NotFound("match_not_found", "conversation not found")
+
+// Notifier is implemented by the notifications feature.
+type Notifier interface {
+	NotifyMessage(ctx context.Context, recipientID, matchID, senderID, senderName, preview string) error
+	MarkConversationRead(ctx context.Context, userID, matchID string) error
+}
 
 type Service struct {
-	repo Repository
+	repo     Repository
+	notifier Notifier
+	pub      realtime.Publisher
 }
 
-const (
-	defaultChatsLimit        = 20
-	maxChatsLimit            = 100
-	defaultChatMessagesLimit = 200
-	maxChatMessagesLimit     = 500
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, notifier Notifier, pub realtime.Publisher) *Service {
+	return &Service{repo: repo, notifier: notifier, pub: pub}
 }
 
-func (s *Service) ListChats(ctx context.Context, organizationID, userID string) ([]ChatSummary, error) {
-	chats, err := s.repo.ListChats(ctx, organizationID, userID)
-	if err != nil {
-		return nil, err
+// NormalizeContent trims a message and enforces length and character rules.
+func NormalizeContent(raw string) (string, error) {
+	content := strings.TrimSpace(raw)
+	if content == "" {
+		return "", platformerrors.Validation(map[string]string{"content": "message is empty"})
 	}
-
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
+	if !utf8.ValidString(content) || utf8.RuneCountInString(content) > MaxContentRune {
+		return "", platformerrors.Validation(map[string]string{"content": "message must be at most 2000 characters"})
+	}
+	for _, r := range content {
+		if unicode.IsControl(r) && r != '\n' && r != '\t' {
+			return "", platformerrors.Validation(map[string]string{"content": "message contains invalid characters"})
 		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
+	}
+	return content, nil
+}
+
+func (s *Service) Send(ctx context.Context, userID, matchID, raw string) (Message, error) {
+	content, err := NormalizeContent(raw)
+	if err != nil {
+		return Message{}, err
+	}
+	member, err := s.repo.Member(ctx, matchID, userID)
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return Message{}, errNotFound
 		}
-		payload = append(payload, item)
+		return Message{}, err
 	}
-
-	return payload, nil
-}
-
-func (s *Service) ListChatsWithPagination(ctx context.Context, organizationID, userID string, limit, offset int) ([]ChatSummary, error) {
-	normalizedLimit := normalizeChatsLimit(limit)
-	normalizedOffset := normalizeChatsOffset(offset)
-	chats, err := s.repo.ListChatsWithPagination(ctx, organizationID, userID, normalizedLimit, normalizedOffset)
+	msg, err := s.repo.Insert(ctx, matchID, userID, content)
 	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return Message{}, errNotFound
 		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
+		return Message{}, err
+	}
+	s.pub.Publish(member.OtherUserID, "message.new", msg)
+	s.pub.Publish(userID, "message.new", msg) // other devices of the sender
+	if err := s.notifier.NotifyMessage(ctx, member.OtherUserID, matchID, userID, member.SelfName, content); err != nil {
+		log.Printf(`{"event":"message_notification_failed","error":%q}`, err.Error())
+	}
+	return msg, nil
+}
+
+func (s *Service) List(ctx context.Context, userID, matchID string, limit int, cursor string) (MessagePage, error) {
+	var before *time.Time
+	var beforeID string
+	if cursor != "" {
+		t, id, ok := pagination.Decode(cursor)
+		if !ok {
+			return MessagePage{}, platformerrors.BadRequest("invalid_cursor", "invalid cursor")
 		}
-		payload = append(payload, item)
+		before, beforeID = &t, id
 	}
-
-	return payload, nil
-}
-
-func (s *Service) ListMessages(ctx context.Context, organizationID, userID, otherUserID string) ([]ChatMessage, error) {
-	return s.ListMessagesWithLimit(ctx, organizationID, userID, otherUserID, defaultChatMessagesLimit)
-}
-
-func (s *Service) ListMessagesWithLimit(ctx context.Context, organizationID, userID, otherUserID string, limit int) ([]ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return nil, err
+	if _, err := s.repo.Member(ctx, matchID, userID); err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return MessagePage{}, errNotFound
+		}
+		return MessagePage{}, err
 	}
-
-	normalizedLimit := normalizeChatMessagesLimit(limit)
-	messages, err := s.repo.ListMessages(ctx, userID, otherUserID, normalizedLimit)
+	items, err := s.repo.List(ctx, matchID, userID, limit+1, before, beforeID)
 	if err != nil {
-		return nil, err
+		return MessagePage{}, err
 	}
-	payload := make([]ChatMessage, 0, len(messages))
-	for _, message := range messages {
-		payload = append(payload, ChatMessage{
-			ID:              message.ID,
-			SenderUserID:    message.SenderUserID,
-			RecipientUserID: message.RecipientUserID,
-			Content:         message.Content,
-			CreatedAt:       message.CreatedAt,
-		})
+	var next *string
+	if len(items) > limit {
+		items = items[:limit]
+		last := items[len(items)-1]
+		c := pagination.Encode(last.CreatedAt, last.ID)
+		next = &c
 	}
-	return payload, nil
+	return MessagePage{Messages: items, NextCursor: next}, nil
 }
 
-func (s *Service) SendMessage(ctx context.Context, organizationID, userID, otherUserID, content string) (ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return ChatMessage{}, err
-	}
-
-	normalizedContent := strings.TrimSpace(content)
-	if normalizedContent == "" {
-		return ChatMessage{}, ErrMessageContentNeeded
-	}
-
-	message, err := s.repo.CreateMessage(ctx, userID, otherUserID, normalizedContent)
+func (s *Service) MarkRead(ctx context.Context, userID, matchID string) error {
+	count, readAt, other, err := s.repo.MarkRead(ctx, matchID, userID)
 	if err != nil {
-		return ChatMessage{}, err
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return errNotFound
+		}
+		return err
 	}
-
-	return ChatMessage{
-		ID:              message.ID,
-		SenderUserID:    message.SenderUserID,
-		RecipientUserID: message.RecipientUserID,
-		Content:         message.Content,
-		CreatedAt:       message.CreatedAt,
-	}, nil
-}
-
-func (s *Service) ensureCanChat(ctx context.Context, organizationID, userID, otherUserID string) error {
-	exists, err := s.repo.UserExists(ctx, organizationID, otherUserID)
-	if err != nil {
-		return ErrValidateChatTarget
+	if err := s.notifier.MarkConversationRead(ctx, userID, matchID); err != nil {
+		log.Printf(`{"event":"mark_notification_read_failed","error":%q}`, err.Error())
 	}
-	if !exists {
-		return ErrUserNotFound
+	if count > 0 {
+		s.pub.Publish(other, "message.read", ReadReceipt{MatchID: matchID, ReaderID: userID, ReadAt: readAt})
 	}
-
 	return nil
-}
-
-func normalizeChatMessagesLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatMessagesLimit
-	}
-	if limit > maxChatMessagesLimit {
-		return maxChatMessagesLimit
-	}
-	return limit
-}
-
-func normalizeChatsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatsLimit
-	}
-	if limit > maxChatsLimit {
-		return maxChatsLimit
-	}
-	return limit
-}
-
-func normalizeChatsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
 }

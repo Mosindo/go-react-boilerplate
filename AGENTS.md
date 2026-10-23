@@ -1,7 +1,8 @@
 # AGENTS.md - go-react-saas
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `go-react-saas`, a fullstack boilerplate that now ships a free dating application ("Cléo").
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
+Product rule: the app is 100% free (no subscription, paywall, paid boost, artificial like limit, or mandatory ads).
 
 ---
 
@@ -65,11 +66,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `moderation/`
   - `notifications/`
 
 Each feature should contain:
@@ -130,12 +132,11 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `swipes (target_id, action)` and primary key `(swiper_id, target_id)`
+- `matches (user_a, last_activity_at)` and `(user_b, last_activity_at)`
+- `messages (match_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
 
 ---
 
@@ -146,16 +147,18 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
+- Backend integration tests need `DATABASE_URL_TEST` (or `DATABASE_URL`); without it they are skipped, which does not count as delivered
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
 - Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Profiles and preferences (`/me/profile`, `/me/preferences`), photos (`/me/photos`, `/photos/:id`)
+- Discovery and swipes (`/discover`, `/swipes`), matches (`/matches`)
+- Chat (`/matches/:id/messages`) and realtime (`/ws`)
+- Moderation (`/blocks`, `/reports`) and account deletion (`DELETE /me`)
 - Notifications (`/notifications`)
 
 ---
@@ -178,10 +181,12 @@ Mandatory rules to avoid recurring environment issues:
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
-  - chat send/read
+  - profile + photo
+  - discover load
+  - like / match
+  - chat send/read (realtime)
   - notifications read flow
+  - (`npm run e2e:smoke` in `apps/mobile` automates the API side)
 
 ---
 

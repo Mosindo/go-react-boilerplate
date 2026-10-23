@@ -1,8 +1,8 @@
-name: go-react-boilerplate
+name: go-react-saas
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -21,12 +21,18 @@ services:
     build:
       context: ./services/api
     environment:
+      PORT: "8080"
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value}
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:18080}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a strong random value (32+ characters)}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      AUTH_RATE_PER_MINUTE: ${AUTH_RATE_PER_MINUTE:-20}
+      API_RATE_PER_MINUTE: ${API_RATE_PER_MINUTE:-600}
     ports:
       - "18080:8080"
     depends_on:
@@ -35,5 +41,3 @@ services:
 
 volumes:
   postgres_data:
-
-

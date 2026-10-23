@@ -72,18 +72,51 @@ try {
     }
   }
 
-  Run-Step "Mobile TypeScript check (npx tsc --noEmit)" {
+  Run-Step "Mobile TypeScript check (npm run typecheck)" {
     Push-Location ".\apps\mobile"
     try {
-      npx tsc --noEmit
-      if ($LASTEXITCODE -ne 0) { throw "tsc exited with code $LASTEXITCODE" }
+      npm run typecheck --silent
+      if ($LASTEXITCODE -ne 0) { throw "npm run typecheck exited with code $LASTEXITCODE" }
     }
     finally {
       Pop-Location
     }
   }
 
-  Run-Step "Smoke API + mobile critique" {
+  Run-Step "Mobile lint (npm run lint)" {
+    Push-Location ".\apps\mobile"
+    try {
+      npm run lint --silent
+      if ($LASTEXITCODE -ne 0) { throw "npm run lint exited with code $LASTEXITCODE" }
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
+  Run-Step "Mobile format (npm run format:check)" {
+    Push-Location ".\apps\mobile"
+    try {
+      npm run format:check --silent
+      if ($LASTEXITCODE -ne 0) { throw "npm run format:check exited with code $LASTEXITCODE" }
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
+  Run-Step "Mobile unit tests (npm test)" {
+    Push-Location ".\apps\mobile"
+    try {
+      npm run test --silent
+      if ($LASTEXITCODE -ne 0) { throw "npm run test exited with code $LASTEXITCODE" }
+    }
+    finally {
+      Pop-Location
+    }
+  }
+
+  Run-Step "Smoke API critical flow" {
     & (Join-Path $repoRoot "scripts/smoke-all.ps1") -ApiBaseUrl $ApiBaseUrl
     if ($LASTEXITCODE -ne 0) { throw "smoke-all exited with code $LASTEXITCODE" }
   }

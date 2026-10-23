@@ -13,7 +13,7 @@ Every non-2xx response is `{ "error": "human readable message", "code": "machine
 | Status | Meaning |
 | --- | --- |
 | 400 | invalid input (`code: invalid_request`, `validation_failed`) |
-| 401 | missing/invalid/expired token or wrong credentials |
+| 401 | missing/invalid/expired token, revoked session, or wrong credentials |
 | 403 | forbidden (blocked, suspended account, not a member of the match) |
 | 404 | not found (also used instead of 403 when existence must not leak) |
 | 409 | conflict (`email_taken`, `photo_limit`) |
@@ -48,7 +48,8 @@ type Notification = {
 };
 ```
 
-`url` / `thumbUrl` are relative paths (`/photos/{id}`, `/photos/{id}?size=thumb`). Photos are **not public**: load them
+`url` / `thumbUrl` are relative paths (`/photos/{id}?v={version}`, `/photos/{id}?size=thumb&v={version}`); `v` changes when a photo is replaced, so
+responses can be cached for a day. Use the strings as given. Photos are **not public**: load them
 with the `Authorization` header (`<Image source={{ uri: API_BASE_URL + url, headers: { Authorization } }} />`).
 
 ## Auth
@@ -96,8 +97,9 @@ type ProfileInput = {
   gender: Gender;
   bio: string;                  // <= 500 chars, may be empty
   city: string;                 // 1-80 chars
-  latitude?: number | null;     // optional, stored rounded to ~2km
-  longitude?: number | null;
+  latitude?: number | null;     // optional, stored rounded to ~2km; omitted/null keeps the stored location
+  longitude?: number | null;    // must be sent together with latitude
+  clearLocation?: boolean;      // true removes the stored location
   interests: string[];          // interest slugs, <= 10
 };
 type Profile = { userId: string; firstName: string; birthDate: string; age: number; gender: Gender; bio: string; city: string;
@@ -158,13 +160,18 @@ Only the two members can use these endpoints (404 otherwise).
 | POST | `/reports` | `{ userId, reason, details?, matchId?, block? }` | 201 |
 
 `reason`: `spam`, `fake_profile`, `harassment`, `inappropriate_content`, `underage`, `other`. `details` ≤ 1000 chars.
-Accounts reported by 5 distinct users are automatically suspended pending review.
+Accounts reported by 5 distinct users are automatically suspended pending review: their sessions are revoked (401), new
+logins answer 403 `account_suspended`, and they disappear from discovery and matches. Reviewing reports is a manual
+database operation (see README, "Moderation").
 
 ## Notifications
 
 | Method | Path | Response |
 | --- | --- | --- |
 | GET | `/notifications?limit=20&cursor=` | `{ notifications, unreadCount, nextCursor }` |
+
+A `match` notification is created for the person who liked first. Unread `message` notifications are coalesced into one rolling
+notification per conversation and are cleared when the conversation is read (`POST /matches/{id}/read`).
 | POST | `/notifications/{id}/read` | 204 |
 | POST | `/notifications/read-all` | 204 |
 

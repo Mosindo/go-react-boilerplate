@@ -4,116 +4,95 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unicode/utf8"
-)
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
+	platformerrors "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/pagination"
+	"example.com/api/internal/platform/realtime"
 )
 
 type Service struct {
 	repo Repository
+	pub  realtime.Publisher
 }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, pub realtime.Publisher) *Service {
+	return &Service{repo: repo, pub: pub}
 }
 
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
+func (s *Service) create(ctx context.Context, userID, typ, title, body string, data Data) error {
+	n, err := s.repo.Create(ctx, userID, typ, title, body, data)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
-	}
-	return payload, nil
+	s.pub.Publish(userID, "notification.new", n)
+	return nil
 }
 
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
-	if err != nil {
-		return Notification{}, err
-	}
-	return mapStoredNotification(notification), nil
+// NotifyMatch tells userID that they matched with otherName.
+func (s *Service) NotifyMatch(ctx context.Context, userID, matchID, otherUserID, otherName string) error {
+	return s.create(ctx, userID, TypeMatch, "Nouveau match",
+		"Vous avez un match avec "+otherName+" !", Data{MatchID: matchID, UserID: otherUserID})
 }
 
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
-	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
+// NotifyMessage tells recipientID about a new message (coalesced per conversation).
+func (s *Service) NotifyMessage(ctx context.Context, recipientID, matchID, senderID, senderName, preview string) error {
+	return s.create(ctx, recipientID, TypeMessage, "Message de "+senderName,
+		truncateRunes(strings.TrimSpace(preview), 120), Data{MatchID: matchID, UserID: senderID})
+}
+
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:n-1]) + "…"
+}
+
+func (s *Service) List(ctx context.Context, userID string, limit int, cursor string) (ListResult, error) {
+	var before *time.Time
+	var beforeID string
+	if cursor != "" {
+		t, id, ok := pagination.Decode(cursor)
+		if !ok {
+			return ListResult{}, platformerrors.BadRequest("invalid_cursor", "invalid cursor")
 		}
-		return Notification{}, err
+		before, beforeID = &t, id
 	}
-	return mapStoredNotification(notification), nil
+	items, err := s.repo.List(ctx, userID, limit+1, before, beforeID)
+	if err != nil {
+		return ListResult{}, err
+	}
+	var next *string
+	if len(items) > limit {
+		items = items[:limit]
+		last := items[len(items)-1]
+		c := pagination.Encode(last.CreatedAt, last.ID)
+		next = &c
+	}
+	unread, err := s.repo.UnreadCount(ctx, userID)
+	if err != nil {
+		return ListResult{}, err
+	}
+	return ListResult{Notifications: items, UnreadCount: unread, NextCursor: next}, nil
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
+func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
+	if err := s.repo.MarkRead(ctx, userID, id); err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return platformerrors.NotFound("notification_not_found", "notification not found")
+		}
+		return err
 	}
+	return nil
 }
 
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
-	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
-	}
-	return limit
+func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
+	return s.repo.MarkAllRead(ctx, userID)
 }
 
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+// MarkConversationRead is called when a user opens a conversation.
+func (s *Service) MarkConversationRead(ctx context.Context, userID, matchID string) error {
+	return s.repo.MarkConversationRead(ctx, userID, matchID)
 }

@@ -8,7 +8,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Free dating application on top of the boilerplate: profiles, preferences, private photos (validated, metadata-stripped, resized),
+  discovery with mutual-preference filtering and ranking, atomic likes/matches, realtime chat over WebSocket, notifications,
+  blocking, reporting with automatic suspension, password recovery, account deletion.
+- Migration runner with `schema_migrations` tracking and advisory locking; per-IP/per-user rate limiting; strict JWT validation
+  (HS256, `exp`, `iss`) with live session checks; `cmd/seed` demo data; `docs/API.md` contract; mobile app "Cléo" (Expo, French, light/dark).
+
+### Changed
+- Schema reset: migrations now live in `internal/platform/db/schema/`. Existing databases of the previous boilerplate must be recreated (`docker compose down -v`).
+- Integration tests run against PostgreSQL in CI; mobile CI now runs typecheck, lint, format check and unit tests.
+
+### Removed
+- Stripe billing/subscriptions, organizations (multi-tenancy), posts, comments and generic files are no longer wired into the API.
+  Their source directories still exist and are listed for deletion in the README ("Legacy code pending removal").
 
 ## [0.1.0] - 2026-03-17
 
