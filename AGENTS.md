@@ -1,30 +1,27 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Alba
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Alba**, a 100 % free dating application (Go API + Expo/React Native client), built from the `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Alba lets two adults create a profile, discover each other, like or pass, match when interest is mutual, chat in real time, and stay safe (block, report, delete account).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Product rules that must never be broken:
+- No subscription, paywall, paid boost, artificial like limit, locked essential feature or mandatory ad.
+- Never expose exact location, birth date, email or coordinates of a user to another user.
+- Every business rule is enforced server-side; the client is never trusted.
 
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Core modules:
+- auth (accounts, sessions, password recovery, account deletion)
+- profiles (profile, preferences, interests, coarse location)
+- photos (validated, re-encoded, access-controlled)
+- matching (discovery feed, swipes, matches)
+- chat (match-bound conversations, read state, realtime)
+- safety (blocks, reports)
 - notifications
-- files
 
 ---
 
@@ -65,11 +62,11 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -130,12 +127,13 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `swipes (actor_id, target_id)` (primary key) and `swipes (target_id, action)`
+- `matches (user_low, user_high)` (unique) and `matches (user_high)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `blocks (blocker_id, blocked_id)` and `blocks (blocked_id)`
 
 ---
 
@@ -152,11 +150,13 @@ If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/forgot-password`, `/me`)
+- Profiles and photos (`/me/profile`, `/me/preferences`, `/me/photos`)
+- Discovery and matching (`/discover`, `/swipes`, `/matches/:id`)
+- Chat (`/conversations`, `/conversations/:id/messages`, `/ws`)
+- Safety (`/blocks`, `/reports`)
 - Notifications (`/notifications`)
+- Integration tests need `DATABASE_URL_TEST`; frontend checks are `npm run typecheck`, `npm run lint`, `npm test`, and the Playwright suite (`npm run e2e`)
 
 ---
 
@@ -171,15 +171,16 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile, photo, preferences)
+  - discovery loads
+  - like / match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +208,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing SaaS-style monetization (plans, subscriptions, paywalls, paid boosts)
 
 ---
 

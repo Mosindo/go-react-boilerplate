@@ -31,9 +31,9 @@ const child = spawn(
     stdio: "inherit",
     env: {
       ...process.env,
-      EXPO_PUBLIC_API_URL: apiUrl
-    }
-  }
+      EXPO_PUBLIC_API_URL: apiUrl,
+    },
+  },
 );
 
 child.on("exit", (code) => {

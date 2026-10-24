@@ -70,10 +70,3 @@ func (h *Hub) Publish(userID string, event Event) {
 		}
 	}
 }
-
-// Online reports whether the user has at least one live connection.
-func (h *Hub) Online(userID string) bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.clients[userID]) > 0
-}

@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Alba.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Alba stays 100 % free: no subscription, paywall, paid boost or artificial limit.
+- Never expose exact location, birth date or email of a user to another user.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -32,10 +32,10 @@ Recommended types:
 ## Branch Naming Conventions
 
 Use short, descriptive branch names:
-- `feat/user-profiles`
+- `feat/profile-prompts`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cache`
 
 For automated agent work, use the `codex/` prefix.
 

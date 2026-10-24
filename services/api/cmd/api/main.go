@@ -83,7 +83,7 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           setupRouter(a),
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
+		ReadTimeout:       2 * time.Minute, // uploads of up to 8 MB on slow mobile links
 		IdleTimeout:       120 * time.Second,
 	}
 

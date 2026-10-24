@@ -307,6 +307,18 @@ func TestDiscoveryFilters(t *testing.T) {
 		t.Fatalf("anywhere should include far: %+v", feed)
 	}
 
+	// Unknown positions never exclude anyone (LEAST ignores NULLs in SQL, which once turned "unknown" into 20000 km).
+	noLoc := e.register("noloc")
+	e.onboard(noLoc, profileSpec{Name: "Nolo", Gender: "woman", InterestedIn: []string{"man"}, Age: 30, MaxDistance: iptr(10)})
+	if !hasCard(e.discover(noLoc), near.ID) || !hasCard(e.discover(noLoc), far.ID) {
+		t.Fatal("a viewer without a position must still see candidates despite a max distance")
+	}
+	noLocMan := e.register("nolocman")
+	e.onboard(noLocMan, profileSpec{Name: "Nolan", Gender: "man", InterestedIn: []string{"woman"}, Age: 30})
+	if feed = e.discover(viewer); !hasCard(feed, noLocMan.ID) {
+		t.Fatal("a candidate without a position must stay visible to viewers with a max distance")
+	}
+
 	// discoverable=false removes the profile from feeds and from direct profile/photo access
 	e.expect(e.do("PUT", "/me/profile", hidden.Token, map[string]any{
 		"firstName": "Hidden", "birthDate": time.Now().AddDate(-30, 0, -3).Format("2006-01-02"),

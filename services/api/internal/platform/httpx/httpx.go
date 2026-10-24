@@ -12,11 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	DefaultLimit = 20
-	MaxLimit     = 100
-)
-
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func IsUUID(value string) bool { return uuidPattern.MatchString(value) }

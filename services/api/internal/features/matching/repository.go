@@ -34,10 +34,12 @@ const eligibilityFrom = `
 	JOIN users cu ON cu.id = c.user_id AND cu.status = 'active'
 	JOIN preferences cp ON cp.user_id = c.user_id
 	CROSS JOIN LATERAL (
-		SELECT 6371 * 2 * asin(sqrt(least(1,
+		SELECT CASE WHEN me.latitude IS NULL OR c.latitude IS NULL THEN NULL
+		  ELSE 6371 * 2 * asin(sqrt(least(1,
 			power(sin(radians(c.latitude - me.latitude) / 2), 2) +
 			cos(radians(me.latitude)) * cos(radians(c.latitude)) *
-			power(sin(radians(c.longitude - me.longitude) / 2), 2)))) AS km
+			power(sin(radians(c.longitude - me.longitude) / 2), 2))))
+		  END AS km
 	) d
 	WHERE me.user_id = $1
 	  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = me.user_id)

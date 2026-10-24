@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -8,7 +8,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Alba, a free dating application built on the boilerplate: profiles, preferences, interests, coarse geolocation, photo upload pipeline, discovery feed, likes/passes, mutual matches, match-bound chat with read receipts and WebSocket delivery, notifications, blocks, reports, password recovery and account deletion.
+- Expo client rewritten around the new product (onboarding, swipe deck, chat, settings) with a light/dark design system.
+- Demo seed (`go run ./cmd/seed`), cross-platform API smoke test (`scripts/smoke.mjs`) and a Playwright browser end-to-end suite.
+- Tracked, transactional database migrations guarded by an advisory lock.
+- Per-process rate limiting, trusted-proxy configuration and graceful shutdown.
+
+### Changed
+- Docker Compose consolidated into a single root `docker-compose.yml`; `infra/` removed.
+- CI now runs formatting, vet, race-enabled tests against PostgreSQL, mobile typecheck/lint/tests, the API smoke test and the browser E2E suite.
+
+### Removed
+- Stripe billing and subscriptions, organizations/multi-tenancy, posts, comments, votes, the user directory and the generic files module.
+- Tamagui and the PowerShell QA scripts.
 
 ## [0.1.0] - 2026-03-17
 
