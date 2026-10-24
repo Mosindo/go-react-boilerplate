@@ -1,59 +1,59 @@
 package chat
 
-import "time"
+import (
+	"errors"
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+	"example.com/api/internal/features/profiles"
+)
+
+const (
+	MaxMessageRunes     = 2000
+	DefaultConvLimit    = 30
+	MaxConvLimit        = 50
+	DefaultMessageLimit = 40
+	MaxMessageLimit     = 100
+)
+
+var (
+	ErrNotFound       = errors.New("conversation not found")
+	ErrEmptyMessage   = errors.New("message content required")
+	ErrMessageTooLong = errors.New("message too long")
+)
+
+type Message struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversationId"`
+	SenderID       string     `json:"senderId"`
+	Content        string     `json:"content"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ReadAt         *time.Time `json:"readAt,omitempty"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
-}
-
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
-}
-
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type Conversation struct {
+	ID          string        `json:"id"`
+	MatchID     string        `json:"matchId"`
+	User        profiles.Card `json:"user"`
+	LastMessage *Message      `json:"lastMessage,omitempty"`
+	UnreadCount int           `json:"unreadCount"`
+	UpdatedAt   time.Time     `json:"updatedAt"`
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Content string `json:"content" binding:"required"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+type convRow struct {
+	ID          string
+	MatchID     string
+	OtherUserID string
+	Last        *Message
+	UnreadCount int
+	UpdatedAt   time.Time
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+// access describes what the caller may do in a conversation.
+type access struct {
+	OtherUserID string
+	ClearedAt   *time.Time
 }
