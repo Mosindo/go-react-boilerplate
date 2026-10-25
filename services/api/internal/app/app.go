@@ -32,10 +32,12 @@ type Limits struct {
 	Message int
 	Report  int
 	Upload  int
+	// API is the general per-user budget applied to every authenticated request.
+	API int
 }
 
 func DefaultLimits() Limits {
-	return Limits{Auth: 30, Swipe: 150, Message: 60, Report: 10, Upload: 30}
+	return Limits{Auth: 30, Swipe: 150, Message: 60, Report: 10, Upload: 30, API: 600}
 }
 
 type Options struct {
@@ -94,7 +96,7 @@ func New(opts Options) *gin.Engine {
 	safetyService := safety.NewService(safety.NewRepository(opts.Pool), hub)
 	authService := auth.NewService(auth.NewPGRepository(opts.Pool), secret, mail, opts.BcryptCost, chatService.PrepareAccountRemoval)
 
-	requireUser := middleware.RequireUser(secret, authService)
+	requireUser := middleware.RequireUser(secret, authService, middleware.NewRateLimiter(limits.API, time.Minute))
 	minute := time.Minute
 	authLimit := middleware.NewRateLimiter(limits.Auth, minute).Middleware("auth")
 	swipeLimit := middleware.NewRateLimiter(limits.Swipe, minute).Middleware("swipe")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -63,7 +64,8 @@ func Authenticate(ctx context.Context, secret []byte, checker SessionChecker, to
 	return identity, true
 }
 
-func RequireUser(secret []byte, checker SessionChecker) gin.HandlerFunc {
+// RequireUser authenticates the request and applies a general per-user budget (limiter may be nil).
+func RequireUser(secret []byte, checker SessionChecker, limiter *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
@@ -77,6 +79,13 @@ func RequireUser(secret []byte, checker SessionChecker) gin.HandlerFunc {
 		}
 		c.Set("userID", identity.UserID)
 		c.Set("sessionID", identity.SessionID)
+		if limiter != nil {
+			if ok, wait := limiter.Allow("api:" + identity.UserID); !ok {
+				c.Header("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "too many requests, slow down", "code": "rate_limited"})
+				return
+			}
+		}
 		c.Next()
 	}
 }

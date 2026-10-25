@@ -55,7 +55,7 @@ type env struct {
 }
 
 func newEnv(t *testing.T) *env {
-	return newEnvWithLimits(t, app.Limits{Auth: 10000, Swipe: 10000, Message: 10000, Report: 10000, Upload: 10000})
+	return newEnvWithLimits(t, app.Limits{Auth: 10000, Swipe: 10000, Message: 10000, Report: 10000, Upload: 10000, API: 100000})
 }
 
 func newEnvWithLimits(t *testing.T, limits app.Limits) *env {

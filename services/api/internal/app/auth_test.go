@@ -108,7 +108,7 @@ func TestResetCodeAttemptsAreLimited(t *testing.T) {
 }
 
 func TestAuthRateLimit(t *testing.T) {
-	e := newEnvWithLimits(t, app.Limits{Auth: 3, Swipe: 100, Message: 100, Report: 100, Upload: 100})
+	e := newEnvWithLimits(t, app.Limits{Auth: 3, Swipe: 100, Message: 100, Report: 100, Upload: 100, API: 100})
 	body := map[string]string{"email": "x@test.invalid", "password": "whatever-1"}
 	for i := 0; i < 3; i++ {
 		e.expect(e.do("POST", "/auth/login", "", body), 401)
@@ -117,4 +117,16 @@ func TestAuthRateLimit(t *testing.T) {
 	if r.Header.Get("Retry-After") == "" || r.errCode() != "rate_limited" {
 		t.Fatalf("expected Retry-After + rate_limited, got %v %s", r.Header, r.Body)
 	}
+}
+
+func TestGeneralUserRateLimit(t *testing.T) {
+	e := newEnvWithLimits(t, app.Limits{Auth: 100, Swipe: 100, Message: 100, Report: 100, Upload: 100, API: 5})
+	u := e.register("busy")
+	for i := 0; i < 5; i++ {
+		e.expect(u.do("GET", "/me", nil), 200)
+	}
+	e.expect(u.do("GET", "/me", nil), 429)
+	// Budgets are per user.
+	other := e.register("calm")
+	e.expect(other.do("GET", "/me", nil), 200)
 }
