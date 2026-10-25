@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 const API_BASE_URL = process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080";
 const PASSWORD = "Password123";
 
@@ -78,7 +78,8 @@ async function main() {
   });
   assert(listPosts.status === 200, `list posts failed: ${listPosts.status}`);
   const seesNewPost =
-    Array.isArray(listPosts.payload?.posts) && listPosts.payload.posts.some((post) => post.id === createPost.payload?.id);
+    Array.isArray(listPosts.payload?.posts) &&
+    listPosts.payload.posts.some((post) => post.id === createPost.payload?.id);
   assert(seesNewPost, "posts list should include created post");
 
   const send = await request(`/chats/${auth2.user.id}/messages`, {
@@ -93,7 +94,10 @@ async function main() {
     headers: { Authorization: `Bearer ${auth1.token}` }
   });
   assert(listMessages.status === 200, `list messages failed: ${listMessages.status}`);
-  assert(Array.isArray(listMessages.payload?.messages) && listMessages.payload.messages.length > 0, "messages should not be empty");
+  assert(
+    Array.isArray(listMessages.payload?.messages) && listMessages.payload.messages.length > 0,
+    "messages should not be empty"
+  );
 
   const createNotification = await request("/notifications", {
     method: "POST",

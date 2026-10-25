@@ -1,170 +1,106 @@
-import React, { type ReactNode } from "react";
+import React from "react";
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
-  View,
-  type PressableProps,
   type StyleProp,
-  type TextStyle,
-  type ViewStyle
+  type ViewStyle,
+  useAnimatedValue
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { radius, spacing, useTheme } from "../../theme";
+import type { IconName } from "./IconButton";
 import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
-export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
-export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
-  children?: ReactNode;
-  label?: string;
-  loading?: boolean;
+type Props = {
+  label: string;
+  onPress: () => void;
   variant?: ButtonVariant;
-  size?: ButtonSize;
-  fullWidth?: boolean;
+  icon?: IconName;
+  loading?: boolean;
+  disabled?: boolean;
+  accessibilityHint?: string;
+  testID?: string;
   style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
 };
+
+export function Button({
+  label,
+  onPress,
+  variant = "primary",
+  icon,
+  loading = false,
+  disabled = false,
+  accessibilityHint,
+  testID,
+  style
+}: Props) {
+  const { colors } = useTheme();
+  const scale = useAnimatedValue(1);
+  const inactive = disabled || loading;
+
+  const palette = {
+    primary: { background: colors.primary, foreground: colors.onPrimary, border: colors.primary },
+    secondary: { background: colors.surface, foreground: colors.text, border: colors.border },
+    ghost: { background: "transparent", foreground: colors.primary, border: "transparent" },
+    danger: { background: colors.danger, foreground: colors.onDanger, border: colors.danger }
+  }[variant];
+
+  const animateTo = (value: number) => {
+    Animated.spring(scale, { toValue: value, useNativeDriver: true, speed: 40, bounciness: 0 }).start();
+  };
+
+  return (
+    <Pressable
+      accessibilityHint={accessibilityHint}
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
+      onPress={onPress}
+      onPressIn={() => animateTo(0.97)}
+      onPressOut={() => animateTo(1)}
+      testID={testID}
+    >
+      <Animated.View
+        style={[
+          styles.base,
+          {
+            backgroundColor: palette.background,
+            borderColor: palette.border,
+            opacity: disabled ? 0.5 : 1,
+            transform: [{ scale }]
+          },
+          style
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator color={palette.foreground} />
+        ) : (
+          <>
+            {icon ? <Ionicons color={palette.foreground} name={icon} size={20} /> : null}
+            <Text style={{ color: palette.foreground }} variant="label">
+              {label}
+            </Text>
+          </>
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
+    minHeight: 50,
+    borderRadius: radius.pill,
+    borderWidth: 1,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm
   }
 });
-
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
-};
-
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
-
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
-  primary: "inverse",
-  secondary: "primary",
-  destructive: "inverse",
-  success: "inverse",
-  outline: "default",
-  ghost: "secondary"
-};
-
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
-};
-
-export function Button({
-  children,
-  disabled,
-  fullWidth = false,
-  label,
-  loading = false,
-  size = "md",
-  style,
-  textStyle,
-  variant = "primary",
-  ...props
-}: ButtonProps) {
-  const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
-  const labelNode = typeof children === "string" ? children : label;
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={buttonDisabled}
-      style={({ pressed }) => [
-        styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
-        fullWidth ? styles.fullWidth : null,
-        buttonDisabled ? styles.disabled : null,
-        pressed ? styles.pressed : null,
-        style
-      ]}
-      {...props}
-    >
-      <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
-        {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
-            {labelNode}
-          </Text>
-        ) : (
-          children
-        )}
-      </View>
-    </Pressable>
-  );
-}
