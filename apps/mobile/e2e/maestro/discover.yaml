@@ -1,0 +1,40 @@
+# Sign in with an account whose onboarding is complete and reach the swipe deck.
+#
+#   maestro test -e APP_ID=host.exp.exponent -e TEST_EMAIL=demo.alex@demo.invalid \
+#     -e TEST_PASSWORD=demo-password-1 e2e/maestro/discover.yaml
+appId: ${APP_ID}
+name: Lueur - connexion et découverte
+---
+- launchApp:
+    clearState: true
+
+- tapOn:
+    id: welcome-login-button
+- tapOn:
+    id: auth-email-input
+- inputText: ${TEST_EMAIL}
+- tapOn:
+    id: auth-password-input
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: auth-submit-button
+
+- assertVisible:
+    id: discover-screen
+# Either a card is shown or the deck is empty: both are valid outcomes of a fresh account.
+- runFlow:
+    when:
+      visible:
+        id: deck-like-button
+    commands:
+      - tapOn:
+          id: deck-like-button
+- tapOn:
+    id: tab-matches
+- assertVisible:
+    id: matches-screen
+- tapOn:
+    id: tab-profile
+- assertVisible:
+    id: profile-screen

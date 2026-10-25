@@ -37,12 +37,16 @@ function setup(options: {
   const storage = memoryStorage(
     options.tokens === undefined ? { accessToken: "old", refreshToken: "r1" } : options.tokens
   );
-  const fetchImpl: FetchMock = jest.fn((input, init) => Promise.resolve(options.handler(String(input), init)));
+  const fetchImpl: FetchMock = jest.fn((input, init) =>
+    Promise.resolve(
+      options.handler(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, init)
+    )
+  );
   const onSessionExpired = jest.fn();
   const client = createHttpClient({
     baseUrl: "http://api.test",
     storage,
-    fetchImpl: fetchImpl as unknown as typeof fetch,
+    fetchImpl: fetchImpl,
     onSessionExpired
   });
   return { client, storage, fetchImpl, onSessionExpired };
@@ -198,10 +202,7 @@ describe("getFreshAccessToken", () => {
     const withClock = createHttpClient({
       baseUrl: "http://api.test",
       storage,
-      fetchImpl: (() =>
-        Promise.resolve(
-          jsonResponse(200, { accessToken: "renewed", refreshToken: "r2", user: {} })
-        )) as unknown as typeof fetch,
+      fetchImpl: () => Promise.resolve(jsonResponse(200, { accessToken: "renewed", refreshToken: "r2", user: {} })),
       now: () => now
     });
     expect(await withClock.getFreshAccessToken()).toBe(valid);

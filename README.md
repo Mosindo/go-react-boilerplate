@@ -161,6 +161,14 @@ instance, prévoir un bus partagé (voir ci-dessous).
   (`001_init.sql`) remplace celui du boilerplate : une base issue de l'ancien boilerplate doit être recréée.
 * **Modération** : les signalements sont stockés (`reports`, statut `open`) pour traitement par l'équipe ; il n'y a pas encore d'interface d'administration.
 
+## Limites connues
+
+* L'application mobile a été vérifiée par typecheck, lint, 81 tests Jest, un bundle Android (`expo export`) et le parcours API
+  `e2e-smoke.js` (36 contrôles). Elle n'a **pas** été exécutée sur un appareil ou un émulateur : gestes de swipe, sélecteur de photos,
+  géolocalisation et flux Maestro (`apps/mobile/e2e/maestro`) restent à valider manuellement avant une mise en production.
+* Le service WebSocket mobile est testé avec un faux socket ; le endpoint `/ws` réel est couvert côté API.
+* Pas d'interface d'administration pour traiter les signalements.
+
 ## Licence et contribution
 
 Voir [CONTRIBUTING.md](CONTRIBUTING.md) et [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

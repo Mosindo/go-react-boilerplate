@@ -1,10 +1,47 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lueur",
+    "slug": "lueur",
+    "scheme": "lueur",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"]
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#FBF5EE",
+    "primaryColor": "#B84630",
+    "splash": {
+      "backgroundColor": "#FBF5EE",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.lueur.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Lueur a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil.",
+        "NSLocationWhenInUseUsageDescription": "Lueur utilise votre position pour vous montrer des personnes près de chez vous. Seule une distance approximative est affichée."
+      }
+    },
+    "android": {
+      "package": "app.lueur.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#B84630"
+      },
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lueur a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lueur utilise votre position pour vous montrer des personnes près de chez vous. Seule une distance approximative est affichée."
+        }
+      ],
+      "expo-secure-store"
+    ]
   }
 }

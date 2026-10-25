@@ -15,10 +15,10 @@ function getLanIp() {
   throw new Error("No LAN IPv4 found. Connect to Wi-Fi/Ethernet and retry.");
 }
 
-const ip = getLanIp();
-const apiUrl = `http://${ip}:18080`;
+const port = process.env.MOBILE_API_PORT || "18080";
+const apiUrl = process.env.EXPO_PUBLIC_API_URL || `http://${getLanIp()}:${port}`;
 
-console.log(`[mobile] Using API: ${apiUrl}`);
+console.log(`[mobile] Using API: ${apiUrl} (a physical phone cannot reach localhost)`);
 
 const child = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["expo", "start", "--clear"], {
   stdio: "inherit",

@@ -6,7 +6,7 @@ import type { NotificationPages, Paged } from "./cache";
 import type { ConversationItem, MatchItem, Message } from "../api";
 
 function setup(overrides: Partial<EventContext> = {}) {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
   const context: EventContext = {
     currentUserId: "me",
     activeConversationId: null,

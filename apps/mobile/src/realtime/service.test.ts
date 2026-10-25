@@ -27,7 +27,7 @@ class FakeSocket implements SocketLike {
 
 function setup() {
   const sockets: FakeSocket[] = [];
-  const getToken = jest.fn((_force: boolean) => Promise.resolve<string | null>("tok"));
+  const getToken = jest.fn<Promise<string | null>, [boolean]>(() => Promise.resolve("tok"));
   const onEvent = jest.fn();
   const onResync = jest.fn();
   const service = new RealtimeService({
@@ -55,7 +55,7 @@ describe("RealtimeService", () => {
     const { service, sockets, onEvent, onResync } = setup();
     service.start();
     await flush();
-    const socket = sockets[0] as FakeSocket;
+    const socket = sockets[0];
     socket.open();
     expect(JSON.parse(socket.sent[0] ?? "")).toEqual({ type: "auth", token: "tok" });
 

@@ -1,0 +1,69 @@
+# Register a brand-new account and walk through onboarding up to the photo step.
+# The system gallery picker cannot be driven portably, so the flow stops once the photos screen is shown.
+#
+#   maestro test -e APP_ID=host.exp.exponent -e TEST_EMAIL=maestro+$(date +%s)@e2e.invalid \
+#     -e TEST_PASSWORD=maestro-pass-1 e2e/maestro/register-onboarding.yaml
+appId: ${APP_ID}
+name: Lueur - inscription et onboarding
+---
+- launchApp:
+    clearState: true
+
+- assertVisible:
+    id: welcome-screen
+- tapOn:
+    id: welcome-register-button
+
+- tapOn:
+    id: auth-email-input
+- inputText: ${TEST_EMAIL}
+- tapOn:
+    id: auth-password-input
+- inputText: ${TEST_PASSWORD}
+- tapOn:
+    id: auth-confirm-input
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: auth-submit-button
+
+# Step 1: first name, birth date (18+), gender
+- assertVisible:
+    id: onboarding-basics
+- tapOn:
+    id: onboarding-first-name
+- inputText: Maestro
+- tapOn:
+    id: birth-day-input
+- inputText: "14"
+- inputText: "06"
+- inputText: "1990"
+- hideKeyboard
+- tapOn:
+    id: gender-woman
+- tapOn:
+    id: onboarding-basics-next
+
+# Step 2: bio and interests
+- assertVisible:
+    id: onboarding-about
+- tapOn:
+    id: onboarding-bio
+- inputText: Profil de test automatisé
+- hideKeyboard
+- tapOn:
+    id: onboarding-about-next
+
+# Step 3: preferences
+- assertVisible:
+    id: onboarding-preferences
+- tapOn:
+    id: interested-man
+- tapOn:
+    id: onboarding-preferences-next
+
+# Step 4: photos (at least one is required to continue)
+- assertVisible:
+    id: onboarding-photos
+- assertVisible:
+    id: photo-add-button
