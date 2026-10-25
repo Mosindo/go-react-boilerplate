@@ -1,3 +1,8 @@
+# Local stack: PostgreSQL + API. Run from the repository root:
+#   cp .env.example .env   # then set JWT_SECRET
+#   docker compose --env-file .env -f infra/docker-compose.yml up --build
+name: go-react-saas
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -21,8 +26,16 @@ services:
       dockerfile: Dockerfile
     environment:
       PORT: "8080"
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql://app:app@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (see .env.example)}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "18080:8080"
     depends_on:

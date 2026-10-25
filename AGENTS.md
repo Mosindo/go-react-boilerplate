@@ -7,24 +7,26 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is `Lueur`, a 100 % free dating app (formerly the generic `go-react-saas` boilerplate).
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- No subscription, paywall, paid boost, artificial like limit, locked essential feature or mandatory ad.
+- Users must be 18+ (enforced server-side); only the age is exposed, never the birth date.
+- Never expose exact coordinates, addresses or exact distances.
+- Every important rule is enforced server-side; the client is never trusted.
 
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
-- chat
+- profiles (profile, preferences, interests, location)
+- photos
+- discovery (feed + swipes)
+- matches
+- chat (conversations, messages, WebSocket)
+- safety (blocks, reports)
 - notifications
-- files
+
+Contract: `docs/API.md`. Decisions: `README.md` and `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -64,13 +66,8 @@ Target structure:
   - `logger/`
   - `errors/`
 - `features/`
-  - `auth/`
-  - `users/`
-  - `files/`
-  - `chat/`
-  - `posts/`
-  - `comments/`
-  - `notifications/`
+  - `auth/`, `profiles/`, `photos/`, `discovery/`, `matches/`, `chat/`, `safety/`, `notifications/`
+- `app/` (wiring and integration tests)
 
 Each feature should contain:
 - `handler.go`
@@ -130,33 +127,30 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `swipes (from_user_id, to_user_id)` (unique) and `matches (user_a, user_b)` (unique)
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any backend delivery (from `services/api`, with `TEST_DATABASE_URL` pointing to a PostgreSQL):
 
-- `gofmt ./...`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
 - `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/internal/app`):
+- Health, auth lifecycle, token validation, password reset
+- Profile / preferences / location / photos
+- Discovery, swipes, matches (including concurrent likes)
+- Chat, WebSocket, notifications, blocks, reports, account deletion
 
 ---
 
@@ -175,11 +169,10 @@ Mandatory rules to avoid recurring environment issues:
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
+- A frontend is only "ready" after a real smoke test (`node apps/mobile/scripts/e2e-smoke.js`):
+  - register, login
+  - profile + preferences + photo
+  - discovery loads, like, match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +200,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Introducing any paid feature, tracking SDK or advertising
 
 ---
 

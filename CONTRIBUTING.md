@@ -73,24 +73,22 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
-
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+gofmt -l . && go vet ./... && go test -race ./... && go build ./cmd/api ./cmd/seed
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm ci && npm run typecheck && npm run lint && npm run format:check && npm test
 ```
 
-If the change touches integrated flows, also run:
+For flows that cross the API boundary, start the stack and run the journey script:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+docker compose --env-file .env -f infra/docker-compose.yml up --build -d
+MOBILE_E2E_API_URL=http://localhost:18080 node apps/mobile/scripts/e2e-smoke.js
 ```
 
 ## Documentation Expectations
