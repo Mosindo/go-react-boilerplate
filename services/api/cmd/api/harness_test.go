@@ -100,6 +100,7 @@ func newEnv(t *testing.T, mutate ...func(*limits)) *env {
 		swipe:       middleware.NewLimiter(100000, time.Minute),
 		message:     middleware.NewLimiter(100000, time.Minute),
 		report:      middleware.NewLimiter(100000, time.Minute),
+		location:    middleware.NewLimiter(100000, time.Minute),
 	}
 	for _, m := range mutate {
 		m(&l)

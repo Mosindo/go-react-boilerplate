@@ -46,6 +46,7 @@ type limits struct {
 	swipe       *middleware.Limiter
 	message     *middleware.Limiter
 	report      *middleware.Limiter
+	location    *middleware.Limiter
 }
 
 func defaultLimits(authPer10Min int) limits {
@@ -55,6 +56,7 @@ func defaultLimits(authPer10Min int) limits {
 		swipe:       middleware.NewLimiter(600, time.Minute),
 		message:     middleware.NewLimiter(60, time.Minute),
 		report:      middleware.NewLimiter(20, time.Hour),
+		location:    middleware.NewLimiter(30, time.Hour),
 	}
 }
 
@@ -103,6 +105,7 @@ func main() {
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 
@@ -130,6 +133,7 @@ func setupRouter(a *app) (*gin.Engine, error) {
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))
+	r.Use(middleware.BodyLimit(1 << 20))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
@@ -156,7 +160,7 @@ func setupRouter(a *app) (*gin.Engine, error) {
 
 	byUser := func(l *middleware.Limiter) gin.HandlerFunc { return middleware.RateLimitByUser(l) }
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, middleware.RateLimitByIP(a.limits.credentials))
-	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser, byUser(a.limits.location))
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser, byUser(a.limits.upload))
 	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, byUser(a.limits.swipe))
 	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser, byUser(a.limits.message))

@@ -2,11 +2,11 @@ package profiles
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r gin.IRouter, h *Handler, requireUser gin.HandlerFunc) {
+func RegisterRoutes(r gin.IRouter, h *Handler, requireUser, locationLimit gin.HandlerFunc) {
 	r.GET("/interests", requireUser, h.ListInterests)
 	r.GET("/me/profile", requireUser, h.GetOwn)
 	r.PUT("/me/profile", requireUser, h.Save)
 	r.PUT("/me/preferences", requireUser, h.SavePreferences)
-	r.PUT("/me/location", requireUser, h.SaveLocation)
+	r.PUT("/me/location", requireUser, locationLimit, h.SaveLocation)
 	r.PUT("/me/privacy", requireUser, h.SavePrivacy)
 }

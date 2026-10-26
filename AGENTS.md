@@ -1,30 +1,14 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lien
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+Fullstack dating app (Go API + Expo client). The architecture must remain scalable, secure and maintainable.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is **Lien**, a 100 % free dating application (no subscription, paywall, paid boost, artificial like limits or mandatory ads).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Modules: auth, profiles, photos, matching, chat, notifications, safety (blocks/reports). See README.md and docs/ARCHITECTURE.md.
 
 ---
 
@@ -66,10 +50,11 @@ Target structure:
 - `features/`
   - `auth/`
   - `users/`
-  - `files/`
+  - `photos/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `profiles/`
+  - `matching/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -117,6 +102,7 @@ Secrets:
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - see `.env.example` for the optional ones
 
 ---
 
@@ -128,14 +114,13 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
+Required indexes (all defined in migrations):
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `messages (match_id, created_at, id)`
+- `notifications (user_id, created_at, id)`
+- `swipes (from_user_id, to_user_id)` (primary key) and likes received
+- `matches (user_a, user_b)` unique
+- `profiles` discovery indexes (visibility, latitude)
 
 ---
 
@@ -146,17 +131,17 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
 - Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Profiles, photos, discovery (`/me/profile`, `/me/photos`, `/discover`)
+- Matching (`/discover/swipes`) and chat (`/conversations`, `/conversations/:id/messages`)
+- Safety (`/blocks`, `/reports`), notifications (`/notifications`), account deletion (`DELETE /me`)
+- Browser scenario in `e2e/` (sign up -> match -> chat)
 
 ---
 
@@ -171,15 +156,14 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
-  - mobile API fallback
-  - startup scripts
+  - `docker-compose.yml`
+  - mobile API fallback (`apps/mobile/src/api/client.ts`)
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile, photo, location)
+  - discover, like, match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +191,6 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
 
 ---
 

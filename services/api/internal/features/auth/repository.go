@@ -43,6 +43,7 @@ type StoredReset struct {
 	CodeHash  string
 	Attempts  int
 	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
 type Repository interface {
@@ -211,12 +212,12 @@ func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, codeHash
 func (r *PGRepository) GetLatestPasswordReset(ctx context.Context, userID string) (StoredReset, error) {
 	var reset StoredReset
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, code_hash, attempts, expires_at
+		SELECT id, code_hash, attempts, expires_at, created_at
 		FROM password_resets
 		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
 		ORDER BY created_at DESC
 		LIMIT 1
-	`, userID).Scan(&reset.ID, &reset.CodeHash, &reset.Attempts, &reset.ExpiresAt)
+	`, userID).Scan(&reset.ID, &reset.CodeHash, &reset.Attempts, &reset.ExpiresAt, &reset.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return StoredReset{}, ErrRepositoryResetGone

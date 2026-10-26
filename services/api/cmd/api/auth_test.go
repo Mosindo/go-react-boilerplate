@@ -146,3 +146,23 @@ func TestCredentialRateLimit(t *testing.T) {
 		t.Fatal("expected 429")
 	}
 }
+
+func TestForgotPasswordCooldownAndBodyLimit(t *testing.T) {
+	e := newEnv(t)
+	u := e.register(uniqueEmail("cool"))
+	e.expect(e.do("POST", "/auth/password/forgot", "", map[string]string{"email": u.Email}), 202, "first request")
+	_, first := e.mail.last()
+	e.mail.mu.Lock()
+	before := len(e.mail.sent)
+	e.mail.mu.Unlock()
+	e.expect(e.do("POST", "/auth/password/forgot", "", map[string]string{"email": u.Email}), 202, "second request is accepted silently")
+	e.mail.mu.Lock()
+	after := len(e.mail.sent)
+	e.mail.mu.Unlock()
+	if after != before || first == "" {
+		t.Fatalf("a second code must not be mailed within the cooldown (%d -> %d)", before, after)
+	}
+
+	huge := map[string]string{"email": u.Email, "password": strings.Repeat("a", 2<<20)}
+	e.expect(e.do("POST", "/auth/login", "", huge), 400, "oversized JSON body")
+}

@@ -36,6 +36,7 @@ const (
 	refreshTokenTTL  = 30 * 24 * time.Hour
 	resetCodeTTL     = 30 * time.Minute
 	resetMaxAttempts = 5
+	resetCooldown    = time.Minute
 )
 
 // dummyHash lets Login spend the same bcrypt time for unknown emails, so
@@ -207,6 +208,10 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 			return nil
 		}
 		return err
+	}
+	// One code per minute and account: stops the endpoint from being used to spam a mailbox.
+	if last, err := s.repo.GetLatestPasswordReset(ctx, stored.User.ID); err == nil && time.Since(last.CreatedAt) < resetCooldown {
+		return nil
 	}
 	code, err := generateResetCode()
 	if err != nil {

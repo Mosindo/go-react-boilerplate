@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to `Lien`.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Lien stays 100 % free: no subscription, paywall, paid boost or artificial like limit.
+- Enforce every business rule on the server; never trust the client.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -73,25 +73,18 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
-
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+export DATABASE_URL_TEST=postgres://postgres:postgres@localhost:5432/app_test?sslmode=disable
+gofmt -l . && go vet ./... && go test ./... && go build ./cmd/api ./cmd/seed
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
 ```
 
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+For changes to integrated flows, also run the browser scenario in `e2e/` (see README).
 
 ## Documentation Expectations
 

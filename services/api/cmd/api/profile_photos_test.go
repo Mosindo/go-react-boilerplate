@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"example.com/api/internal/platform/middleware"
 )
 
 func TestProfileValidationAndPrivacyRules(t *testing.T) {
@@ -160,4 +162,12 @@ func TestPhotoLifecycleAndSecurity(t *testing.T) {
 		t.Fatal("positions must be compacted")
 	}
 	e.expect(e.do("DELETE", "/me/photos/not-a-uuid", u.Token, nil), 404, "invalid id")
+}
+
+func TestLocationUpdatesAreRateLimited(t *testing.T) {
+	e := newEnv(t, func(l *limits) { l.location = middleware.NewLimiter(2, time.Hour) })
+	u := e.newUser(userSpec{Name: "Limit", Gender: "woman", InterestedIn: []string{"man"}, Lat: parisLat, Lng: parisLng, AgeYears: 30})
+	// newUser already used one update; one more is allowed, then 429.
+	e.expect(e.do("PUT", "/me/location", u.Token, map[string]any{"latitude": 48.9, "longitude": 2.3, "city": "Paris"}), 200, "second update")
+	e.expect(e.do("PUT", "/me/location", u.Token, map[string]any{"latitude": 48.9, "longitude": 2.4, "city": "Paris"}), 429, "third update is throttled")
 }
