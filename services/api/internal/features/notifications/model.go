@@ -2,34 +2,36 @@ package notifications
 
 import "time"
 
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
+
+type Actor struct {
+	UserID    string  `json:"userId"`
+	FirstName string  `json:"firstName"`
+	PhotoURL  *string `json:"photoUrl"`
+}
+
 type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
-
-type NotificationResponse struct {
 	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
 	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
+	MatchID   *string    `json:"matchId"`
+	Actor     *Actor     `json:"actor"`
+	ReadAt    *time.Time `json:"readAt"`
 	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
 }
 
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
+type ListResponse struct {
+	Notifications []Notification `json:"notifications"`
+	UnreadCount   int            `json:"unreadCount"`
+	NextCursor    string         `json:"nextCursor,omitempty"`
 }
 
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+// New describes a notification created by another feature inside its own transaction.
+type New struct {
+	UserID  string
+	Type    string
+	ActorID string
+	MatchID string
 }
