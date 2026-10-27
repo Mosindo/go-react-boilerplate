@@ -89,11 +89,6 @@ func (h *Hub) Disconnect(userID string) {
 	delete(h.clients, userID)
 }
 
-// NoopPublisher is used by tests and tools that do not need realtime delivery.
-type NoopPublisher struct{}
-
-func (NoopPublisher) Publish(string, string, any) {}
-
 // PrepareUserDeletion lets the Hub act as an auth deletion hook: once the account
 // is gone, its live connections are closed.
 func (h *Hub) PrepareUserDeletion(_ context.Context, userID string) (func(), error) {

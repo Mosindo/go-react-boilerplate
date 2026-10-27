@@ -14,7 +14,6 @@ const (
 	MaxBioRunes     = 500
 	MaxFirstName    = 40
 	MaxCityRunes    = 80
-	DefaultMaxDist  = 50
 	MaxDistanceKM   = 20000
 	distanceBucket  = 5
 	coordPrecisionF = 100 // coordinates are rounded to 0.01 degree (~1 km)

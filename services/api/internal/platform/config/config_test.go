@@ -26,3 +26,23 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadDefaultsToProductionAndValidatesEnvironment(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+
+	cfg, err := Load()
+	if err != nil || !cfg.IsProduction() {
+		t.Fatalf("default must be production, got %+v (%v)", cfg, err)
+	}
+
+	t.Setenv("APP_ENV", "development")
+	if cfg, err = Load(); err != nil || cfg.IsProduction() {
+		t.Fatalf("development must be accepted, got %+v (%v)", cfg, err)
+	}
+
+	t.Setenv("APP_ENV", "staging")
+	if _, err = Load(); err == nil {
+		t.Fatal("unknown environments must be rejected")
+	}
+}

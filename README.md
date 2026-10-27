@@ -78,6 +78,7 @@ cd services/api
 export DATABASE_URL="postgres://localhost/ember?sslmode=disable"
 export JWT_SECRET="$(openssl rand -base64 48)"
 export UPLOAD_DIR=./data/uploads
+export APP_ENV=development
 go run ./cmd/api            # migrations are applied automatically on start
 go run ./cmd/seed           # optional demo data
 ```
@@ -91,7 +92,7 @@ API (`.env.example`):
 | `JWT_SECRET` | yes | – | HS256 signing key, ≥ 32 chars, placeholders rejected |
 | `DATABASE_URL` | yes | – | PostgreSQL connection string (Compose sets it for you) |
 | `PORT` | no | `8080` | HTTP port |
-| `APP_ENV` | no | `development` | `production` disables the dev mailer and the seed command |
+| `APP_ENV` | no | `production` | `development` enables the dev mailer (reset codes in the log) and the seed command; the default is the safe one |
 | `UPLOAD_DIR` | no | `./data/uploads` | Where processed photos are stored (a Docker volume in Compose) |
 | `ALLOWED_ORIGINS` | no | – | Browser origins allowed for CORS / WebSocket (web builds only) |
 | `TRUSTED_PROXIES` | no | – | Reverse-proxy IPs/CIDRs trusted for `X-Forwarded-For` (rate limiting) |
@@ -132,7 +133,7 @@ What is covered: auth/sessions/recovery/deletion (service tests), JWT validation
 ## Build and deploy
 
 - **API image**: `docker build -t ember-api services/api` (static binary, non-root user, healthcheck on `/health`, uploads in `/data/uploads`).
-- **Production checklist**: set `APP_ENV=production`, a strong `JWT_SECRET`, a managed PostgreSQL with backups, a persistent volume (or object-storage adapter, see below) for `UPLOAD_DIR`, TLS termination in front of the API (WebSocket upgrade must be allowed), and `TRUSTED_PROXIES` for your proxy. Wire a real `mailer.Mailer` in `cmd/api/main.go` — the default production mailer drops messages, so password recovery e-mails need it.
+- **Production checklist**: leave `APP_ENV` unset or `production`, set a strong `JWT_SECRET`, use a managed PostgreSQL with backups and a persistent volume for `UPLOAD_DIR` (or replace `platform/storage` with an object-storage implementation), TLS termination in front of the API (WebSocket upgrade must be allowed), and `TRUSTED_PROXIES` for your proxy. Wire a real `mailer.Mailer` in `cmd/api/main.go` — the default production mailer drops messages, so password recovery e-mails need it.
 - **Mobile**: build with EAS (`eas build`) after setting `EXPO_PUBLIC_API_URL` to your public HTTPS API URL; the bundle itself is checked in CI with `expo export`.
 
 ## Key technical and product decisions

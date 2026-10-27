@@ -26,7 +26,7 @@ func Load() (Config, error) {
 		Port:           getenv("PORT", "8080"),
 		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		Environment:    strings.ToLower(getenv("APP_ENV", "development")),
+		Environment:    strings.ToLower(getenv("APP_ENV", "production")),
 		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
 		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
 		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),

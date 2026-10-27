@@ -25,6 +25,7 @@ export default tseslint.config(
     files: ["**/*.{js,cjs,mjs}"],
     languageOptions: {
       globals: {
+        Buffer: "readonly",
         process: "readonly",
         console: "readonly",
         fetch: "readonly",
