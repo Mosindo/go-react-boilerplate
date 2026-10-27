@@ -9,27 +9,27 @@ import (
 
 const minJWTSecretLength = 32
 
+func (c Config) IsProduction() bool { return c.Environment == "production" }
+
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripePriceID       string
-	AppBaseURL          string
-	AllowedOrigins      []string
+	Port           string
+	DatabaseURL    string
+	JWTSecret      string
+	Environment    string
+	UploadDir      string
+	AllowedOrigins []string
+	TrustedProxies []string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                getenv("PORT", "8080"),
-		DatabaseURL:         strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		StripeSecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		StripePriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		AppBaseURL:          strings.TrimSpace(os.Getenv("APP_BASE_URL")),
-		AllowedOrigins:      splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		Port:           getenv("PORT", "8080"),
+		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		Environment:    strings.ToLower(getenv("APP_ENV", "development")),
+		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
+		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -38,13 +38,8 @@ func Load() (Config, error) {
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return Config{}, err
 	}
-	if cfg.StripeSecretKey != "" {
-		if cfg.StripePriceID == "" {
-			return Config{}, errors.New("STRIPE_PRICE_ID is required when STRIPE_SECRET_KEY is set")
-		}
-		if cfg.AppBaseURL == "" {
-			return Config{}, errors.New("APP_BASE_URL is required when STRIPE_SECRET_KEY is set")
-		}
+	if cfg.Environment != "development" && cfg.Environment != "production" {
+		return Config{}, errors.New("APP_ENV must be development or production")
 	}
 
 	return cfg, nil

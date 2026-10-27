@@ -2,34 +2,28 @@ package notifications
 
 import "time"
 
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
+
+type Actor struct {
+	UserID    string `json:"userId"`
+	FirstName string `json:"firstName"`
+	PhotoID   string `json:"photoId,omitempty"`
+}
+
 type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
-
-type NotificationResponse struct {
 	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
 	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
+	Actor     *Actor     `json:"actor,omitempty"`
+	RefID     string     `json:"refId,omitempty"` // match id or conversation id depending on type
+	ReadAt    *time.Time `json:"readAt"`
 	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
 }
 
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
-}
-
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+type Page struct {
+	Notifications []Notification `json:"notifications"`
+	UnreadCount   int            `json:"unreadCount"`
+	NextCursor    string         `json:"nextCursor,omitempty"`
 }

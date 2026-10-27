@@ -1,9 +1,15 @@
 package chat
 
-import "github.com/gin-gonic/gin"
+import (
+	"example.com/api/internal/platform/middleware"
+	"github.com/gin-gonic/gin"
+)
 
-func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc) {
-	r.GET("/chats", requireUser, handler.Chats)
-	r.GET("/chats/:userId/messages", requireUser, handler.ChatMessages)
-	r.POST("/chats/:userId/messages", requireUser, handler.SendChatMessage)
+func RegisterRoutes(r gin.IRouter, h *Handler, ws *SocketHandler, requireUser gin.HandlerFunc, messages *middleware.RateLimiter) {
+	r.GET("/conversations", requireUser, h.Conversations)
+	r.GET("/conversations/:id/messages", requireUser, h.Messages)
+	r.POST("/conversations/:id/messages", requireUser, middleware.RateLimit(messages), h.Send)
+	r.POST("/conversations/:id/read", requireUser, h.MarkRead)
+	r.DELETE("/conversations/:id", requireUser, h.Clear)
+	r.GET("/ws", ws.Serve)
 }
