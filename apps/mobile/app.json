@@ -1,12 +1,36 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Ember",
+    "slug": "ember",
+    "scheme": "ember",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.ember.dating",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Ember uses your photos to build your profile.",
+        "NSLocationWhenInUseUsageDescription": "Ember uses your approximate location to show people nearby. Your exact position is never shared."
+      }
+    },
+    "android": {
+      "package": "app.ember.dating",
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        { "photosPermission": "Ember uses your photos to build your profile." }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ember uses your approximate location to show people nearby. Your exact position is never shared."
+        }
+      ]
     ]
   }
 }

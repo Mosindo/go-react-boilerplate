@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Ember.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Ember is free for its users: do not add payments, subscriptions, paywalls or artificial limits.
+- Never expose other users' exact location, birth date or e-mail; enforce every business rule on the server.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -73,25 +73,19 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
-
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+gofmt -l . && go vet ./...
+DATABASE_URL_TEST="postgres://localhost/ember_test?sslmode=disable" go test -race ./...
+go build ./cmd/api ./cmd/seed
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npx tsc --noEmit && npm run lint && npm run format:check && npm test
 ```
 
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+If the change touches an integrated flow, start the API and run `API_URL=http://localhost:18080 npm run e2e:api`.
 
 ## Documentation Expectations
 

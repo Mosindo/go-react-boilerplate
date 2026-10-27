@@ -17,7 +17,7 @@ type Notification struct {
 	ID        string     `json:"id"`
 	Type      string     `json:"type"`
 	Actor     *Actor     `json:"actor,omitempty"`
-	RefID     string     `json:"refId,omitempty"` // match id or conversation id depending on type
+	RefID     string     `json:"refId,omitempty"` // the conversation the notification leads to
 	ReadAt    *time.Time `json:"readAt"`
 	CreatedAt time.Time  `json:"createdAt"`
 }

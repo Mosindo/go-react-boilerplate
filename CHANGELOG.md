@@ -1,27 +1,18 @@
-# go-react-saas Changelog
+# Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
-
-## [0.1.0] - 2026-03-17
-
-### Added
-- Introduced a standardized documentation set with `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `docs/ARCHITECTURE.md`.
-- Added a generic changelog for future platform releases.
-
-### Changed
-- Converted the repository from a single-product application into `go-react-saas`, a reusable fullstack boilerplate.
-- Repositioned the repository as `go-react-saas`, a reusable fullstack boilerplate for social, forum, SaaS, marketplace, and community products.
-- Updated project descriptions, examples, and documentation to use generic module language.
-- Aligned the documentation with the feature-first backend and generic frontend shell.
+- Ember, a 100% free dating app: profiles with up to 6 photos, preferences and interests, discovery swipe deck, atomic mutual-like matching, realtime chat (WebSocket) with read receipts, notifications, blocking, reporting, password recovery and full account deletion.
+- Authenticated photo storage with strict validation and re-encoding.
+- Migration tracking (`schema_migrations`), rate limiting, demo seed command (`cmd/seed`).
+- ESLint, Prettier, Jest (unit + UI), live-API smoke test (`npm run e2e:api`), CI for API, mobile, e2e and Docker build.
 
 ### Removed
-- Removed legacy status and daily log documents tied to earlier single-product tracking.
-- Removed remaining product-specific naming from repository-level documentation.
+- Stripe billing, posts, comments, generic file records, organizations/tenants and the unused Tamagui dependency (out of scope for a free dating product).
+
+### Changed
+- Repository renamed from the `go-react-saas` boilerplate to Ember; JWT claims no longer carry an organization id.

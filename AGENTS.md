@@ -1,30 +1,21 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Ember
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Ember**, a 100% free dating app (Go API + Expo/React Native client) built from the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Ember is a free dating app. There is no subscription, paywall, paid boost, artificial like limit or locked feature, and none may be added.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Core modules (`services/api/internal/features`):
+- auth (accounts, sessions, password recovery, account deletion)
+- profiles (profile, preferences, interests, photos)
+- matching (discovery, swipes, matches)
+- chat (conversations, messages, WebSocket)
 - notifications
-- files
+- safety (blocks, reports)
 
 ---
 
@@ -65,12 +56,11 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -89,6 +79,7 @@ Rules:
 - Domain concerns belong in `features`
 - Never break existing modules while extending the platform
 - Respect the Go backend structure: `handler -> service -> repository`
+- Privacy: never expose exact coordinates, birth dates or e-mail addresses of other users; photos are only served through authorized endpoints
 - Respect the frontend API client abstraction; no direct network access from UI code
 
 ---
@@ -130,12 +121,11 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `swipes (swiper_id, target_id)` and incoming likes `(target_id, swiper_id)`
+- `matches (user_a, user_b)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
 
 ---
 
@@ -143,20 +133,19 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing), `go vet ./...`
+- `DATABASE_URL_TEST=... go test ./...` (integration tests need PostgreSQL)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
+- `npm run e2e:api` (apps/mobile) exercises the critical path against a running API
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`):
+- Health, auth guards
+- Registration -> profile -> photos -> discovery -> like -> match -> chat -> notifications
+- Permissions (conversation access, photo access), blocks, reports, account deletion
+- Simultaneous mutual likes produce exactly one match
 
 ---
 
@@ -171,17 +160,16 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
-  - notifications read flow
+  - register and create a profile with a photo
+  - discovery loads and like/pass work
+  - a mutual like produces a match
+  - chat send/read works in real time
+  - notifications and blocking work
 
 ---
 
@@ -207,7 +195,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Any monetization mechanism (payments, subscriptions, gated features)
 
 ---
 

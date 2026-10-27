@@ -72,7 +72,7 @@ func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
 func (s *Service) Matched(ctx context.Context, matchID, conversationID, userA, userB string) {
 	for _, pair := range [][2]string{{userA, userB}, {userB, userA}} {
 		recipient, actor := pair[0], pair[1]
-		if err := s.repo.Insert(ctx, recipient, TypeMatch, actor, matchID); err != nil {
+		if err := s.repo.Insert(ctx, recipient, TypeMatch, actor, conversationID); err != nil {
 			log.Printf(`{"event":"notify_error","type":"match","error":%q}`, err.Error())
 		}
 		s.pub.Publish(recipient, "match", map[string]string{
