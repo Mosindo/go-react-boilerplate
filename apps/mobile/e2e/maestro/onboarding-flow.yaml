@@ -1,0 +1,42 @@
+appId: ${APP_ID}
+name: Lumen registration and onboarding (up to the photo step)
+# Picking a photo opens the OS gallery, which Maestro cannot drive portably; the photo step is covered by scripts/e2e-smoke.js.
+---
+- launchApp:
+    clearState: true
+
+- tapOn:
+    id: welcome-register
+- tapOn:
+    id: auth-email-input
+- inputText: ${NEW_EMAIL}
+- tapOn:
+    id: auth-password-input
+- inputText: ${TEST_PASSWORD}
+- tapOn:
+    id: auth-submit-button
+
+- assertVisible:
+    id: onboarding-screen
+- tapOn:
+    id: profile-name-input
+- inputText: Sam
+- tapOn:
+    id: profile-birthdate-input
+- inputText: "1994-04-12"
+- tapOn:
+    id: profile-gender-nonbinary
+- tapOn:
+    id: onboarding-next
+- tapOn:
+    id: onboarding-next
+- tapOn:
+    id: profile-city-input
+- inputText: Paris
+- tapOn:
+    id: onboarding-next
+- tapOn:
+    id: pref-interested-woman
+- tapOn:
+    id: onboarding-next
+- assertVisible: Show yourself
