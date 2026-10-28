@@ -8,7 +8,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Lumen dating app: profiles, photos, preferences, discovery, atomic matching, real-time chat, notifications, blocks and reports, password recovery, account deletion.
+- Demo seed command, WebSocket hub, rate limiting, tracked migrations, PostgreSQL-backed integration test suite.
+- Mobile client rewritten (onboarding wizard, swipe deck, chats, light/dark themes, Jest tests, ESLint).
+
+### Removed
+- Stripe billing, organizations/multi-tenancy, posts, comments, generic files module, Tamagui and PowerShell smoke scripts (no paid features by design).
 
 ## [0.1.0] - 2026-03-17
 

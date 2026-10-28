@@ -7,26 +7,15 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is now **Lumen**, a 100 % free dating app (decision of the founder, replacing the generic boilerplate goal).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- no subscription, paywall, paid boost, artificial like limit, locked essential feature or mandatory ad
+- privacy first: never expose exact coordinates, addresses or birth dates to other users
+- every business rule is enforced server-side (never trust the client)
 
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
-
----
+Core modules:
+- auth, profiles, photos, discovery (swipes + matching), chat, notifications, safety (blocks + reports)
 
 # OFFICIAL STACK
 
@@ -65,12 +54,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,14 +117,13 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+Required indexes (all in `001_init.sql`):
+- `users.email` (unique)
+- `messages (match_id, created_at, id)`
+- `match_participants (user_id, match_id)`
+- `notifications (user_id, created_at, id)`
+- `photos (user_id, created_at)`
+- `swipes (target_id, swiper_id) WHERE action = 'like'`
 
 ---
 
@@ -143,20 +131,18 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (no output), `go vet ./...`
+- `go test ./...` with `TEST_DATABASE_URL` set (otherwise the PostgreSQL integration tests are skipped)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api`):
+- Journey: register → profile → photo → discover → like → match → live chat → read → notifications
+- Auth/tokens, password recovery, account deletion
+- Photos validation, permissions (outsiders), blocks, reports, discovery filters
+- Concurrent mutual likes, rate limiting, WebSocket auth
 
 ---
 
@@ -171,17 +157,18 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
-  - login
-  - users load
-  - posts load
+  - onboarding (profile, preferences, photo)
+  - discover loads
+  - like / match
   - chat send/read
   - notifications read flow
+  (`npm run e2e:smoke` automates this against a running API)
 
 ---
 
@@ -207,7 +194,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Adding payments, paywalls or any feature that restricts core functionality behind money
 
 ---
 
