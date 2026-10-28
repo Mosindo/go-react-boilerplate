@@ -151,6 +151,7 @@ Backend coverage includes the whole critical path (`cmd/api/journey_test.go`: re
 - **Password recovery** uses an 8-character code (HMAC-hashed, 30 min, max 5 attempts, single use) and revokes all sessions; the endpoint never reveals whether an email exists.
 - **Photos are never public files.** Random keys on disk, EXIF/GPS dropped by re-encoding, served through an authenticated, access-checked endpoint.
 - **Moderation** is data-only for now: `reports` rows (`status=open`) are reviewed with SQL; there is no admin UI. Reports keep their evidence when the reported account is deleted (`reported_id` becomes NULL).
+- **Residual risks (accepted, documented):** `POST /auth/register` reveals whether an email is registered (409) for usability; a determined attacker with many fake accounts could still narrow someone's area through repeated distance readings (mitigated by 1 km storage grid, 5 km steps, location rate limit, and the option to hide distance); refresh-token reuse is rejected but does not revoke the whole session family.
 - **Not included (by design, documented):** push notifications to the OS (in-app + WebSocket only), email verification, social login, media in chat, admin console.
 
 ## API

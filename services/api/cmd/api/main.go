@@ -133,7 +133,7 @@ func setupRouter(a *app) *gin.Engine {
 	requireUser := middleware.RequireUser(a.jwtSecret)
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
-	r.GET("/ws", a.hub.Handler(a.jwtSecret, a.allowedOrigins))
+	r.GET("/ws", middleware.RateLimitByIP(middleware.NewLimiter(60, time.Minute)), a.hub.Handler(a.jwtSecret, a.allowedOrigins))
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser)
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser)
