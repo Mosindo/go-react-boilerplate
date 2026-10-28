@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { keys } from "../../api/keys";
@@ -44,6 +44,21 @@ export function OnboardingScreen() {
   const [prefs, setPrefs] = useState<Preferences>({ interestedIn: [], minAge: 18, maxAge: 45, maxDistanceKm: 50 });
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [locating, setLocating] = useState(false);
+
+  // Resume: a profile saved in an earlier session (steps 1-3 done) pre-fills the form and skips to preferences.
+  const resumed = useRef(false);
+  useEffect(() => {
+    const saved = profile.data;
+    if (!saved || resumed.current) return;
+    resumed.current = true;
+    setFirstName(saved.firstName);
+    setBirthDate(saved.birthDate);
+    setGender(saved.gender);
+    setBio(saved.bio);
+    setCity(saved.city);
+    setInterestIds(saved.interests.map((i) => i.id));
+    setStep((current) => (current < 3 ? 3 : current));
+  }, [profile.data]);
 
   const saveStep = useMutation({
     mutationFn: async () => {

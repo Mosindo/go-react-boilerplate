@@ -42,6 +42,7 @@ export function ResetPasswordScreen({ navigation, route }: NativeStackScreenProp
         <TextField label="New password" value={password} onChangeText={setPassword} error={errors.password} secureTextEntry hint="At least 8 characters." />
         {mutation.isError ? <Text tone="danger">{errorMessage(mutation.error)}</Text> : null}
         <Button title="Update password" onPress={submit} loading={mutation.isPending} testID="reset-submit" />
+        <Button title="Back to sign in" variant="ghost" onPress={() => navigation.navigate("Login")} />
       </View>
     </Screen>
   );

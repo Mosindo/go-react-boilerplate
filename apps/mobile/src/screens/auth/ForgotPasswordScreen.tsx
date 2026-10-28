@@ -38,6 +38,7 @@ export function ForgotPasswordScreen({ navigation, route }: NativeStackScreenPro
         {mutation.isError ? <Text tone="danger">{errorMessage(mutation.error)}</Text> : null}
         <Button title="Send code" onPress={submit} loading={mutation.isPending} testID="forgot-submit" />
         <Button title="I already have a code" variant="ghost" onPress={() => navigation.navigate("ResetPassword", { email })} />
+        <Button title="Back to sign in" variant="ghost" onPress={() => navigation.popToTop()} />
       </View>
     </Screen>
   );
