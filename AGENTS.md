@@ -1,30 +1,27 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Sillage
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Sillage`, a free dating app (Go API + Expo mobile app) built from the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Sillage is a dating app that is 100 % free for users:
+- no subscription, paywall, paid boost, artificial like limit, mandatory ads
+- accounts, profiles, photos, discovery, likes, matches, realtime chat, notifications
+- blocking, reporting, privacy controls, account deletion
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules (`services/api/internal/features`):
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- discovery (candidates, swipes, matches)
 - chat
 - notifications
-- files
+- safety (blocks, reports)
+
+Business rules are enforced server-side. Never trust the client. Never expose exact coordinates.
 
 ---
 
@@ -55,7 +52,7 @@ Core reusable modules:
 
 Target structure:
 
-`cmd/api/main.go`  
+`services/api/cmd/api/main.go` (and `cmd/seed` for demo data)  
 `internal/`
 - `platform/`
   - `config/`
@@ -63,14 +60,15 @@ Target structure:
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `httpx/`, `realtime/`, `storage/`, `mailer/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,35 +126,34 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+Required indexes (see migrations):
+- `users.email` (unique)
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `swipes (to_user_id, from_user_id)`, `profiles (latitude, longitude)`, `blocks (blocked_id, blocker_id)`
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any delivery (`make lint test build` runs all of it):
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing), `go vet ./...`
+- `DATABASE_URL_TEST=<dedicated db> go test ./...` (integration tests WIPE that database)
+- `go build ./cmd/api ./cmd/seed` in `services/api`
+- In `apps/mobile`: `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run format:check`, `npm test`, `npm run build`
+- `API_URL=... node scripts/smoke.mjs` against a running API for the end-to-end journey
 
-If tests fail: fix them before continuing.
+If tests fail: fix them before continuing. Never skip tests or silence lint to get green.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/*_integration_test.go`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth (`/auth/*`, `/me`), password recovery, account deletion
+- Profiles, preferences, photos (upload validation, ordering, access)
+- Discovery filters, swipes, matches (including concurrent mutual likes)
+- Chat (`/conversations/*`), permissions, read receipts, local deletion
+- Notifications, blocks, reports, rate limiting, WebSocket events
 
 ---
 
@@ -175,12 +172,11 @@ Mandatory rules to avoid recurring environment issues:
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
+- A frontend is only "ready" after a real smoke test (`scripts/smoke.mjs` plus the app on a device):
+  - register and onboarding (profile, photo, preferences)
   - login
-  - users load
-  - posts load
-  - chat send/read
+  - discovery loads, like, match
+  - chat send/read in realtime
   - notifications read flow
 
 ---
@@ -207,7 +203,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Adding paid features (subscriptions, boosts, paywalls, like limits)
+- Exposing exact coordinates, emails or birth dates of other users
 
 ---
 

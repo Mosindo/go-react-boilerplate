@@ -9,4 +9,5 @@ func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc
 	r.GET("/discover", requireUser, handler.Discover)
 	r.POST("/swipes", requireUser, swipeLimit, handler.Swipe)
 	r.DELETE("/matches/:id", requireUser, handler.Unmatch)
+	r.DELETE("/conversations/:id/match", requireUser, handler.UnmatchConversation)
 }

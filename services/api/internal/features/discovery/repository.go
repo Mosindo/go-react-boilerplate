@@ -41,6 +41,7 @@ type Repository interface {
 	Candidates(ctx context.Context, userID string, limit int) ([]*profiles.PublicProfile, error)
 	Swipe(ctx context.Context, userID, targetID, action string) (SwipeResult, error)
 	Unmatch(ctx context.Context, userID, matchID string) (Unmatched, error)
+	UnmatchByConversation(ctx context.Context, userID, conversationID string) (Unmatched, error)
 }
 
 type PGRepository struct {
@@ -328,6 +329,22 @@ func (r *PGRepository) Unmatch(ctx context.Context, userID, matchID string) (Unm
 		return Unmatched{}, ErrMatchNotFound
 	}
 	return u, err
+}
+
+// UnmatchByConversation ends the match behind a conversation the user belongs to.
+func (r *PGRepository) UnmatchByConversation(ctx context.Context, userID, conversationID string) (Unmatched, error) {
+	var matchID string
+	err := r.pool.QueryRow(ctx, `
+		SELECT m.id::text FROM conversations c JOIN matches m ON m.id = c.match_id
+		WHERE c.id = $2 AND (m.user_low_id = $1 OR m.user_high_id = $1)
+	`, userID, conversationID).Scan(&matchID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Unmatched{}, ErrMatchNotFound
+	}
+	if err != nil {
+		return Unmatched{}, err
+	}
+	return r.Unmatch(ctx, userID, matchID)
 }
 
 func orderPair(a, b string) (string, string) {

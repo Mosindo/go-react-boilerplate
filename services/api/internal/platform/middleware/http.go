@@ -121,7 +121,7 @@ func requestLatencyFromContext(c *gin.Context) int64 {
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")
-		if requestID == "" {
+		if !validRequestID(requestID) {
 			requestID = generateRequestID()
 		}
 		c.Set("request_id", requestID)
@@ -136,4 +136,18 @@ func generateRequestID() string {
 		return time.Now().UTC().Format("20060102150405.000000000")
 	}
 	return hex.EncodeToString(buf)
+}
+
+// validRequestID accepts short printable tokens only, so client-supplied IDs
+// cannot bloat or forge log lines.
+func validRequestID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
 }

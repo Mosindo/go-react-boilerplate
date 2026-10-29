@@ -246,3 +246,23 @@ func TestPassNeverMatches(t *testing.T) {
 		t.Fatal("a pass followed by a like must not match")
 	}
 }
+
+func TestUnmatchFromConversationAndPermissions(t *testing.T) {
+	e := newTestEnv(t)
+	a, b, conv := e.matchedPair("Alice", "Bob")
+	c := e.onboard(userSpec{Name: "Carol", Gender: "woman", Into: []string{"man"}})
+
+	e.expect(e.do("DELETE", "/conversations/"+conv+"/match", c.Token, nil), 404) // outsiders cannot end it
+	e.expect(e.do("DELETE", "/conversations/nope/match", a.Token, nil), 404)
+	e.expect(e.do("DELETE", "/conversations/"+conv+"/match", b.Token, nil), 204)
+
+	var list convList
+	e.expect(e.do("GET", "/conversations", a.Token, nil), 200).decode(t, &list)
+	if len(list.Conversations) != 0 {
+		t.Fatal("the match must be gone for both people")
+	}
+	e.expect(e.do("DELETE", "/conversations/"+conv+"/match", a.Token, nil), 404)
+	if contains(e.discoverIDs(a), b.ID) {
+		t.Fatal("unmatched people must not be proposed again")
+	}
+}

@@ -26,3 +26,38 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadRequiresSMTPInProduction(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://app:app@localhost:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "production")
+	if _, err := Load(); err == nil {
+		t.Fatal("production without SMTP must be rejected: recovery emails could never be delivered")
+	}
+
+	t.Setenv("SMTP_HOST", "smtp.example.org")
+	if _, err := Load(); err == nil {
+		t.Fatal("SMTP_FROM is required when SMTP_HOST is set")
+	}
+	t.Setenv("SMTP_FROM", "no-reply@example.org")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("valid production config rejected: %v", err)
+	}
+	if !cfg.IsProduction() || !cfg.SMTP.Enabled() {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestLoadRejectsMissingDatabaseAndInvalidPort(t *testing.T) {
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("DATABASE_URL", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("DATABASE_URL is required")
+	}
+	t.Setenv("DATABASE_URL", "postgres://x")
+	t.Setenv("PORT", "99999")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid PORT must be rejected")
+	}
+}

@@ -86,7 +86,7 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           setupRouter(a),
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
+		ReadTimeout:       2 * time.Minute, // photo uploads over slow mobile links
 		IdleTimeout:       120 * time.Second,
 	}
 

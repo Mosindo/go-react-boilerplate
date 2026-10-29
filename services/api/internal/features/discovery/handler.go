@@ -50,3 +50,11 @@ func (h *Handler) Unmatch(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+func (h *Handler) UnmatchConversation(c *gin.Context) {
+	if err := h.service.UnmatchConversation(c.Request.Context(), c.GetString("userID"), c.Param("id")); err != nil {
+		httpx.Fail(c, "discovery.unmatch_conversation", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

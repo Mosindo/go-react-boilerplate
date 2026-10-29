@@ -1,12 +1,40 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Sillage",
+    "slug": "sillage",
+    "scheme": "sillage",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.sillage.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Sillage a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil.",
+        "NSLocationWhenInUseUsageDescription": "Sillage utilise votre position approximative pour vous proposer des profils près de chez vous."
+      }
+    },
+    "android": {
+      "package": "app.sillage.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION"]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Sillage a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Sillage utilise votre position approximative pour vous proposer des profils près de chez vous."
+        }
+      ]
     ]
   }
 }

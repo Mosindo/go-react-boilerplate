@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -147,5 +149,30 @@ func TestChangePasswordAndDeleteAccount(t *testing.T) {
 		if n != 0 {
 			t.Fatalf("table %s still has %d rows after account deletion", table, n)
 		}
+	}
+}
+
+func TestRateLimitingIsPerClientAddressAndIgnoresSpoofedForwardedFor(t *testing.T) {
+	e := newTestEnv(t)
+	limited := setupRouter(&app{dbPool: e.pool, jwtSecret: []byte(testJWTSecret), store: e.store, mailer: e.mailer, rateLimits: true})
+	e.router = limited
+
+	attempt := func(forwardedFor string) int {
+		req := httptest.NewRequest("POST", "/auth/login", strings.NewReader(`{"email":"nobody@dating.test","password":"whatever-123"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", forwardedFor)
+		w := httptest.NewRecorder()
+		limited.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	for i := 0; i < 30; i++ {
+		if code := attempt(fmt.Sprintf("10.9.8.%d", i)); code != 401 {
+			t.Fatalf("attempt %d: expected 401, got %d", i, code)
+		}
+	}
+	// A different X-Forwarded-For must not buy a fresh budget: no proxy is trusted.
+	if code := attempt("203.0.113.77"); code != 429 {
+		t.Fatalf("expected 429 once the per-IP budget is spent, got %d", code)
 	}
 }

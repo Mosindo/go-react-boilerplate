@@ -73,7 +73,18 @@ func (s *Service) Unmatch(ctx context.Context, userID, matchID string) error {
 	if !profiles.IsUUID(matchID) {
 		return platformerrors.NotFound("match not found")
 	}
-	u, err := s.repo.Unmatch(ctx, userID, matchID)
+	return s.publishUnmatch(s.repo.Unmatch(ctx, userID, matchID))
+}
+
+// UnmatchConversation ends the match that owns the given conversation.
+func (s *Service) UnmatchConversation(ctx context.Context, userID, conversationID string) error {
+	if !profiles.IsUUID(conversationID) {
+		return platformerrors.NotFound("match not found")
+	}
+	return s.publishUnmatch(s.repo.UnmatchByConversation(ctx, userID, conversationID))
+}
+
+func (s *Service) publishUnmatch(u Unmatched, err error) error {
 	if errors.Is(err, ErrMatchNotFound) {
 		return platformerrors.NotFound("match not found")
 	}

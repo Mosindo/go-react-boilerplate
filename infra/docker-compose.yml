@@ -1,16 +1,22 @@
+# Local stack: PostgreSQL + API.
+# Run from the repository root:
+#   cp .env.example .env   # then set JWT_SECRET
+#   docker compose --env-file .env -f infra/docker-compose.yml up --build
+name: sillage
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -20,14 +26,25 @@ services:
       context: ../services/api
       dockerfile: Dockerfile
     environment:
+      APP_ENV: ${APP_ENV:-development}
       PORT: "8080"
-      DATABASE_URL: postgresql://app:app@postgres:5432/app?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (see .env.example)}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
-      - "18080:8080"
+      - "${API_HOST_PORT:-18080}:8080"
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  uploads_data:

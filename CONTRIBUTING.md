@@ -1,11 +1,12 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Sillage, a free dating app (Go API + Expo mobile app).
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Sillage stays 100 % free for users: no paywall, boost, artificial like limit or mandatory ads.
+- Business rules are enforced on the server; never trust the client.
+- Respect `handler -> service -> repository`; SQL only lives in repositories.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -37,7 +38,7 @@ Use short, descriptive branch names:
 - `docs/architecture-update`
 - `chore/qa-lite-cleanup`
 
-For automated agent work, use the `codex/` prefix.
+For automated agent work, use the `claude/` or `codex/` prefix.
 
 ## Pull Request Workflow
 
@@ -73,25 +74,14 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
-
 ```bash
-cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+make lint          # gofmt, go vet, tsc, eslint, prettier
+make test          # API unit + integration tests, mobile Jest tests
+make build         # API binary + mobile bundle
 ```
 
-```bash
-cd apps/mobile
-npx tsc --noEmit
-```
-
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+API integration tests wipe the database named by `DATABASE_URL_TEST`; use a dedicated database (`make test-api TEST_DB=postgres://...`).
+When you touch an integrated flow, also run `API_URL=http://localhost:18080 node scripts/smoke.mjs` against a running API.
 
 ## Documentation Expectations
 
