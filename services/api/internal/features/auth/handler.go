@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -28,6 +29,9 @@ func (h *Handler) Register(c *gin.Context) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
+		case errors.Is(err, ErrWeakPassword), errors.Is(err, ErrInvalidEmail):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": err.Error()})
 		case errors.Is(err, ErrEmailExists):
 			status = http.StatusConflict
 			c.JSON(status, gin.H{"error": "email already exists"})
@@ -45,10 +49,9 @@ func (h *Handler) Register(c *gin.Context) {
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
+			ID:        user.ID,
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
 		},
 	})
 	logger.LogHandlerEvent(c, "auth.register.success", status, map[string]string{"created_user_id": user.ID})
@@ -83,10 +86,9 @@ func (h *Handler) Login(c *gin.Context) {
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
+			ID:        user.ID,
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
 		},
 	})
 	logger.LogHandlerEvent(c, "auth.login.success", status, map[string]string{"authenticated_user_id": user.ID})
@@ -124,10 +126,9 @@ func (h *Handler) Refresh(c *gin.Context) {
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
+			ID:        user.ID,
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
 		},
 	})
 	logger.LogHandlerEvent(c, "auth.refresh.success", status, map[string]string{"authenticated_user_id": user.ID})
@@ -176,9 +177,59 @@ func (h *Handler) Me(c *gin.Context) {
 
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, MeResponse{
-		ID:             user.ID,
-		Email:          user.Email,
-		OrganizationID: user.OrganizationID,
-		CreatedAt:      user.CreatedAt,
+		ID:        user.ID,
+		Email:     user.Email,
+		CreatedAt: user.CreatedAt,
 	})
+}
+
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "auth.forgot.bind", err)
+		return
+	}
+	if err := h.service.RequestPasswordReset(c.Request.Context(), req.Email); err != nil {
+		logger.LogHandlerError(c, "auth.forgot", http.StatusInternalServerError, err)
+	}
+	// Same answer whether or not the account exists.
+	c.JSON(http.StatusAccepted, gin.H{"status": "if the account exists, an email was sent"})
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "auth.reset.bind", err)
+		return
+	}
+	err := h.service.ResetPassword(c.Request.Context(), req.Token, req.Password)
+	switch {
+	case err == nil:
+		c.Status(http.StatusNoContent)
+	case errors.Is(err, ErrWeakPassword):
+		httpx.Fail(c, "auth.reset", http.StatusBadRequest, ErrWeakPassword.Error(), nil)
+	case errors.Is(err, ErrInvalidResetToken):
+		httpx.Fail(c, "auth.reset", http.StatusBadRequest, ErrInvalidResetToken.Error(), nil)
+	default:
+		httpx.Internal(c, "auth.reset", err)
+	}
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "auth.password.bind", err)
+		return
+	}
+	err := h.service.ChangePassword(c.Request.Context(), c.GetString("userID"), req.CurrentPassword, req.NewPassword)
+	switch {
+	case err == nil:
+		c.Status(http.StatusNoContent)
+	case errors.Is(err, ErrWeakPassword):
+		httpx.Fail(c, "auth.password", http.StatusBadRequest, ErrWeakPassword.Error(), nil)
+	case errors.Is(err, ErrInvalidCredentials):
+		httpx.Fail(c, "auth.password", http.StatusForbidden, "current password is incorrect", nil)
+	default:
+		httpx.Internal(c, "auth.password", err)
+	}
 }

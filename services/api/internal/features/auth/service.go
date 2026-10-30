@@ -7,8 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log"
+	"net/mail"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -19,27 +22,57 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrUserNotFound        = errors.New("user not found")
+	ErrInvalidEmail        = errors.New("invalid email address")
+	ErrWeakPassword        = errors.New("password must be 10 to 72 characters")
+	ErrInvalidResetToken   = errors.New("invalid or expired reset token")
 )
 
 const (
 	accessTokenTTL  = 15 * time.Minute
 	refreshTokenTTL = 30 * 24 * time.Hour
+	resetTokenTTL   = time.Hour
 )
+
+// dummyHash is compared against when an email is unknown so that login time
+// does not reveal which accounts exist.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing"), bcrypt.DefaultCost)
+
+// ResetMailer delivers password reset instructions.
+type ResetMailer interface {
+	Send(ctx context.Context, to, subject, body string) error
+}
 
 type Service struct {
 	repo      Repository
 	jwtSecret []byte
+	mailer    ResetMailer
+	appURL    string
 }
 
-func NewService(repo Repository, jwtSecret []byte) *Service {
+func NewService(repo Repository, jwtSecret []byte, mailer ResetMailer, appURL string) *Service {
 	return &Service{
 		repo:      repo,
 		jwtSecret: jwtSecret,
+		mailer:    mailer,
+		appURL:    strings.TrimRight(appURL, "/"),
 	}
+}
+
+func validatePassword(password string) error {
+	if utf8.RuneCountInString(password) < minPasswordLength || len(password) > maxPasswordBytes {
+		return ErrWeakPassword
+	}
+	return nil
 }
 
 func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
 	normalizedEmail := normalizeEmail(email)
+	if err := validateEmail(normalizedEmail); err != nil {
+		return Tokens{}, User{}, err
+	}
+	if err := validatePassword(password); err != nil {
+		return Tokens{}, User{}, err
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return Tokens{}, User{}, err
@@ -68,6 +101,7 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizedEmail)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 			return Tokens{}, User{}, ErrInvalidCredentials
 		}
 		return Tokens{}, User{}, err
@@ -161,6 +195,96 @@ func (s *Service) Me(ctx context.Context, userID string) (User, error) {
 	return toUser(stored), nil
 }
 
+// RequestPasswordReset never reveals whether the email is registered: unknown
+// addresses and delivery failures both look like success to the caller.
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizeEmail(email))
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	token, err := generateRefreshToken()
+	if err != nil {
+		return err
+	}
+	if err := s.repo.CreatePasswordReset(ctx, stored.User.ID, hashRefreshToken(token), time.Now().Add(resetTokenTTL)); err != nil {
+		return err
+	}
+
+	body := "Bonjour,\n\nVoici votre code de réinitialisation de mot de passe (valable 1 heure) :\n\n" + token + "\n"
+	if s.appURL != "" {
+		body += "\nOu ouvrez : " + s.appURL + "/reset?token=" + token + "\n"
+	}
+	body += "\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message."
+	if err := s.mailer.Send(ctx, stored.User.Email, "Réinitialisation de votre mot de passe", body); err != nil {
+		log.Printf(`{"event":"reset_mail_failed","error":%q}`, err.Error())
+	}
+	return nil
+}
+
+func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) error {
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.ConsumePasswordReset(ctx, hashRefreshToken(strings.TrimSpace(token)), string(hash)); err != nil {
+		if errors.Is(err, ErrRepositoryResetInvalid) {
+			return ErrInvalidResetToken
+		}
+		return err
+	}
+	return nil
+}
+
+// ChangePassword also revokes every session, forcing a fresh login everywhere.
+func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+	if err := s.VerifyPassword(ctx, userID, currentPassword); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdatePassword(ctx, userID, string(hash))
+}
+
+func (s *Service) VerifyPassword(ctx context.Context, userID, password string) error {
+	stored, err := s.repo.GetPasswordHash(ctx, userID)
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password)); err != nil {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
+// DeleteAccount removes the user after re-checking the password.
+func (s *Service) DeleteAccount(ctx context.Context, userID, password string) error {
+	if err := s.VerifyPassword(ctx, userID, password); err != nil {
+		return err
+	}
+	if err := s.repo.DeleteUser(ctx, userID); err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Service) issueSessionTokens(ctx context.Context, user User, userAgent, ipAddress string) (Tokens, error) {
 	refreshToken, err := generateRefreshToken()
 	if err != nil {
@@ -193,9 +317,8 @@ func (s *Service) issueSessionTokens(ctx context.Context, user User, userAgent, 
 func signAccessToken(secret []byte, user User, sessionID string) (string, error) {
 	now := time.Now()
 	claims := AccessTokenClaims{
-		UserID:         user.ID,
-		OrganizationID: user.OrganizationID,
-		SessionID:      sessionID,
+		UserID:    user.ID,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(accessTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -225,11 +348,22 @@ func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+// validateEmail accepts only a bare address ("a@b.c"), not "Name <a@b.c>".
+func validateEmail(normalized string) error {
+	if len(normalized) > 254 {
+		return ErrInvalidEmail
+	}
+	addr, err := mail.ParseAddress(normalized)
+	if err != nil || addr.Address != normalized || !strings.Contains(normalized[strings.LastIndex(normalized, "@"):], ".") {
+		return ErrInvalidEmail
+	}
+	return nil
+}
+
 func toUser(stored StoredUser) User {
 	return User{
-		ID:             stored.ID,
-		Email:          stored.Email,
-		OrganizationID: stored.OrganizationID,
-		CreatedAt:      stored.CreatedAt,
+		ID:        stored.ID,
+		Email:     stored.Email,
+		CreatedAt: stored.CreatedAt,
 	}
 }
