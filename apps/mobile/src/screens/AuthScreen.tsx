@@ -1,161 +1,132 @@
-import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet } from "react-native";
-import { useAuth, useLogin, useRegister } from "../hooks/useAuth";
-import { ErrorView } from "../shared/feedback";
-import { Button, Card, Input, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useState } from "react";
+import { StyleSheet, View } from "react-native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useSession } from "../state/session";
+import { errorMessage } from "../hooks/queries";
+import { validateEmail, validateNewPassword } from "../lib/validation";
+import type { AuthStackParamList } from "../navigation/types";
+import { Button, Chip, Input, Screen, Text, spacing, useTheme } from "../ui";
 
-type Mode = "login" | "register";
+type Props = NativeStackScreenProps<AuthStackParamList, "Auth">;
 
-export default function AuthScreen() {
-  const [mode, setMode] = useState<Mode>("login");
+export default function AuthScreen({ navigation }: Props) {
+  const { colors } = useTheme();
+  const { login, register } = useSession();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const { authError, clearAuthError } = useAuth();
-  const loginMutation = useLogin();
-  const registerMutation = useRegister();
+  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
+  const [busy, setBusy] = useState(false);
 
-  const title = useMemo(() => (mode === "login" ? "Welcome back" : "Create your workspace"), [mode]);
-  const subtitle = useMemo(
-    () =>
-      mode === "login"
-        ? "Sign in to continue into your shared SaaS workspace."
-        : "Open a clean account experience with persistent team access.",
-    [mode]
-  );
-  const switchLabel = mode === "login" ? "Need an account? Register" : "Already have an account? Login";
-  const submitting = loginMutation.isPending || registerMutation.isPending;
-  const surfaceError = formError ?? authError;
-
-  async function onSubmit() {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
-      setFormError("email and password are required");
+  const submit = async () => {
+    const next = {
+      email: validateEmail(email) ?? undefined,
+      password:
+        mode === "register"
+          ? (validateNewPassword(password) ?? undefined)
+          : password
+            ? undefined
+            : "Saisissez votre mot de passe."
+    };
+    if (next.email || next.password) {
+      setErrors(next);
       return;
     }
-
-    setFormError(null);
-    clearAuthError();
-
+    setErrors({});
+    setBusy(true);
     try {
       if (mode === "login") {
-        await loginMutation.mutateAsync({ email: normalizedEmail, password });
+        await login(email.trim(), password);
       } else {
-        await registerMutation.mutateAsync({ email: normalizedEmail, password });
+        await register(email.trim(), password);
       }
-    } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "authentication failed");
+    } catch (error) {
+      setErrors({ form: errorMessage(error) });
+      setBusy(false);
     }
-  }
+  };
 
   return (
-    <ScreenContainer centered contentMaxWidth={440}>
-      <Card padding="xl" style={styles.card} variant="accent">
-        <Header
-          centered
-          eyebrow="Go React SaaS"
-          style={styles.header}
-          subtitle={subtitle}
-          title={title}
-        />
-
-        <Text style={styles.intro} tone="secondary">
-          Minimal, secure access for a premium team workspace.
+    <Screen scroll testID="auth-screen" topInset>
+      <View style={styles.brand}>
+        <Text variant="display" tone="primary">
+          Alba
         </Text>
+        <Text tone="muted">Des rencontres sincères, 100 % gratuites. Sans abonnement, sans limite.</Text>
+      </View>
 
+      <View style={styles.modes}>
+        <Chip label="Connexion" onPress={() => setMode("login")} selected={mode === "login"} testID="mode-login" />
+        <Chip
+          label="Créer un compte"
+          onPress={() => setMode("register")}
+          selected={mode === "register"}
+          testID="mode-register"
+        />
+      </View>
+
+      <View style={styles.form}>
         <Input
           autoCapitalize="none"
           autoComplete="email"
-          containerStyle={styles.field}
-          helperText="Use the email tied to your workspace."
+          error={errors.email}
           keyboardType="email-address"
-          label="Email"
-          onChangeText={(value) => {
-            setEmail(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Email"
-          testID="auth-email-input"
+          label="Adresse e-mail"
+          onChangeText={setEmail}
+          testID="auth-email"
+          textContentType="emailAddress"
           value={email}
         />
-
         <Input
           autoCapitalize="none"
-          containerStyle={styles.field}
-          error={formError?.toLowerCase().includes("password") ? formError : null}
-          helperText={mode === "login" ? "Enter your secure password." : "Create a password for future sessions."}
-          label="Password"
-          onChangeText={(value) => {
-            setPassword(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Password"
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
+          error={errors.password}
+          hint={mode === "register" ? "10 caractères minimum." : undefined}
+          label="Mot de passe"
+          onChangeText={setPassword}
+          onSubmitEditing={submit}
           secureTextEntry
-          testID="auth-password-input"
+          testID="auth-password"
+          textContentType={mode === "login" ? "password" : "newPassword"}
           value={password}
         />
-
-        {surfaceError ? (
-          <ErrorView
-            compact
-            message={surfaceError}
-            style={styles.error}
-            title="Authentication issue"
+        {errors.form ? (
+          <Text
+            accessibilityRole="alert"
+            style={[styles.formError, { backgroundColor: colors.dangerSoft }]}
+            tone="danger"
+          >
+            {errors.form}
+          </Text>
+        ) : null}
+        <Button
+          label={mode === "login" ? "Se connecter" : "Créer mon compte"}
+          loading={busy}
+          onPress={submit}
+          testID="auth-submit"
+        />
+        {mode === "login" ? (
+          <Button
+            label="Mot de passe oublié ?"
+            onPress={() => navigation.navigate("Forgot")}
+            testID="auth-forgot"
+            variant="ghost"
           />
         ) : null}
+      </View>
 
-        <Button
-          fullWidth
-          label={mode === "login" ? "Login" : "Register"}
-          loading={submitting}
-          onPress={onSubmit}
-          testID="auth-submit-button"
-        />
-
-        <Pressable
-          disabled={submitting}
-          onPress={() => {
-            setMode((prev) => (prev === "login" ? "register" : "login"));
-            setFormError(null);
-            clearAuthError();
-          }}
-          testID="auth-switch-mode-button"
-        >
-          <Text style={styles.switchText} tone="secondary" variant="label" weight="semibold">
-            {switchLabel}
-          </Text>
-        </Pressable>
-      </Card>
-    </ScreenContainer>
+      {mode === "register" ? (
+        <Text tone="muted" variant="caption">
+          En créant un compte, vous confirmez avoir 18 ans ou plus et vous engagez à respecter les autres membres.
+        </Text>
+      ) : null}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: "100%"
-  },
-  header: {
-    marginBottom: spacing.lg
-  },
-  intro: {
-    marginBottom: spacing.xl,
-    textAlign: "center"
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  switchText: {
-    marginTop: spacing.lg,
-    textAlign: "center"
-  },
-  error: {
-    marginBottom: spacing.sm
-  }
+  brand: { gap: spacing.sm, marginTop: spacing.xxl, marginBottom: spacing.xl },
+  modes: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg },
+  form: { gap: spacing.lg, marginBottom: spacing.lg },
+  formError: { padding: spacing.md, borderRadius: 12, overflow: "hidden" }
 });

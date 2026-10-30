@@ -144,7 +144,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool, store *storage.Disk, password
 
 		if _, err := pool.Exec(ctx, `
 			INSERT INTO profiles (user_id, display_name, birth_date, gender, bio, city, latitude, longitude)
-			VALUES ($1, $2, $3, $4, $5, 'Démo', $6, $7)`, userID, u.name, birth, u.gender, u.bio, uLat, uLon); err != nil {
+			VALUES ($1, $2, $3, $4, $5, '', $6, $7)`, userID, u.name, birth, u.gender, u.bio, uLat, uLon); err != nil {
 			return created, err
 		}
 		if _, err := pool.Exec(ctx, `

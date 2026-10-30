@@ -17,14 +17,8 @@ This boilerplate must support building:
 Keep the repository domain-agnostic by default.
 Avoid hardcoding product language tied to a single vertical unless explicitly requested.
 
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Current product: **Alba**, a free dating app built on this boilerplate.
+Modules: auth, account, profiles, photos, matching, chat, safety (blocks/reports), notifications.
 
 ---
 
@@ -65,11 +59,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `account/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -129,13 +124,11 @@ Secrets:
 - Keep common API paths O(n) over page size
 
 Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `users.email` (unique)
+- `conversation_participants (conversation_id, user_id)` (primary key) and `(user_id, conversation_id)`
+- `messages (conversation_id, created_at, id)`
+- `notifications (user_id, created_at, id)`
+- `swipes (target_id, user_id) WHERE action = 'like'`
 
 ---
 
@@ -146,17 +139,16 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Integration tests need `DATABASE_URL_TEST`; run `go vet ./...` too
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/*_test.go`):
+- Health, auth, password reset
+- Profiles, photos, discovery rules
+- Like/match journey, conversation permissions
+- Safety (block, report), account deletion
 
 ---
 
@@ -171,17 +163,13 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
-  - notifications read flow
+  - `npm run e2e:api` (register, profile, photo, discover, like, match, chat, notifications)
+  - `npm run e2e:web` for the browser journey
 
 ---
 

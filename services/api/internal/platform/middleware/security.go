@@ -70,3 +70,14 @@ func requestIsHTTPS(c *gin.Context) bool {
 	}
 	return strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")), "https")
 }
+
+// LimitBody caps request bodies at max bytes. Multipart uploads are skipped
+// because their handlers enforce a dedicated, larger limit.
+func LimitBody(max int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/form-data") {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, max)
+		}
+		c.Next()
+	}
+}

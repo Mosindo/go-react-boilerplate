@@ -8,7 +8,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Alba, a free dating app: profiles, photos, discovery, likes, matches, realtime chat, notifications, blocks, reports and account deletion.
+- Tracked SQL migrations (`schema_migrations`), rate limiting, signed private photo URLs, image re-encoding, password reset by email.
+- Demo seed (`cmd/seed`), API smoke test and Playwright browser journey, CI with PostgreSQL, lint and formatting checks.
+
+### Changed
+- The Expo app was rebuilt (French UI, light/dark theme) on top of a single typed API client.
+- Database schema rebuilt from a clean baseline; recreate existing databases.
+
+### Removed
+- Stripe billing, organizations/tenants, posts, comments, votes, generic files module, Tamagui, PowerShell QA scripts and Maestro flows.
 
 ## [0.1.0] - 2026-03-17
 

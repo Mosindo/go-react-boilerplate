@@ -1,12 +1,40 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Alba",
+    "slug": "alba",
+    "scheme": "alba",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.alba.dating",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Alba utilise votre position approximative pour vous proposer des personnes proches de vous. Votre position exacte n'est jamais affichée.",
+        "NSPhotoLibraryUsageDescription": "Alba a besoin d'accéder à vos photos pour compléter votre profil."
+      }
+    },
+    "android": {
+      "package": "app.alba.dating",
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Alba utilise votre position approximative pour vous proposer des personnes proches de vous."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Alba a besoin d'accéder à vos photos pour compléter votre profil."
+        }
+      ]
     ]
   }
 }
