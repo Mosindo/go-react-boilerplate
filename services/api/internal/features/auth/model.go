@@ -7,15 +7,16 @@ import (
 )
 
 type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string
+	Email     string
+	BirthDate time.Time
+	CreatedAt time.Time
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,min=8,max=128"`
+	Email     string `json:"email" binding:"required,email,max=254"`
+	Password  string `json:"password" binding:"required,min=8,max=72"`
+	BirthDate string `json:"birthDate" binding:"required"`
 }
 
 type LoginRequest struct {
@@ -31,15 +32,28 @@ type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email,max=254"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email,max=254"`
+	Code        string `json:"code" binding:"required,max=32"`
+	NewPassword string `json:"newPassword" binding:"required,min=8,max=72"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=128"`
+}
+
 type MeResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	BirthDate string    `json:"birthDate"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type AuthResponse struct {
-	Token        string     `json:"token"`
 	AccessToken  string     `json:"accessToken"`
 	RefreshToken string     `json:"refreshToken"`
 	User         MeResponse `json:"user"`
@@ -51,8 +65,11 @@ type Tokens struct {
 }
 
 type AccessTokenClaims struct {
-	UserID         string `json:"uid"`
-	OrganizationID string `json:"oid"`
-	SessionID      string `json:"sid"`
+	UserID    string `json:"uid"`
+	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
+}
+
+func toMeResponse(u User) MeResponse {
+	return MeResponse{ID: u.ID, Email: u.Email, BirthDate: u.BirthDate.Format("2006-01-02"), CreatedAt: u.CreatedAt}
 }
