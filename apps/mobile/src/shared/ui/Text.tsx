@@ -80,14 +80,7 @@ const toneStyles: Record<TextTone, TextStyle> = {
   inverse: styles.inverseTone
 };
 
-export function Text({
-  children,
-  style,
-  tone = "default",
-  variant = "body",
-  weight = "regular",
-  ...props
-}: TextProps) {
+export function Text({ children, style, tone = "default", variant = "body", weight = "regular", ...props }: TextProps) {
   return (
     <RNText style={[styles.base, variantStyles[variant], weightStyles[weight], toneStyles[tone], style]} {...props}>
       {children}

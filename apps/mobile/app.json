@@ -1,12 +1,23 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Alma",
+    "slug": "alma",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "alma",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.alma.dating",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "app.alma.dating"
+    },
+    "plugins": [
+      "expo-secure-store",
+      ["expo-image-picker", { "photosPermission": "Alma a besoin d'accéder à vos photos pour que vous puissiez en ajouter à votre profil." }],
+      ["expo-location", { "locationWhenInUsePermission": "Alma utilise votre position approximative pour vous proposer des personnes proches de vous." }]
     ]
   }
 }

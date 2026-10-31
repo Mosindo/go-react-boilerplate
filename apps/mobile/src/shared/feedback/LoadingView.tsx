@@ -11,14 +11,7 @@ type LoadingViewProps = {
   tone?: "default" | "muted";
 };
 
-export function LoadingView({
-  fullScreen = false,
-  label = "Loading...",
-  message,
-  style,
-  testID,
-  tone = "muted"
-}: LoadingViewProps) {
+export function LoadingView({ fullScreen = false, label = "Loading...", message, style, testID, tone = "muted" }: LoadingViewProps) {
   const content = (
     <Card padding="lg" style={styles.card} variant="muted">
       <Loader label={label} />

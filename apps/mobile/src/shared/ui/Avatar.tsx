@@ -16,10 +16,7 @@ function getInitials(name?: string): string {
     return "?";
   }
 
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
 
   if (parts.length === 0) {
     return "?";
@@ -65,12 +62,7 @@ export function Avatar({ name, size = controls.avatar.md, style, textStyle, uri 
       {uri ? (
         <Image source={{ uri }} style={styles.image as StyleProp<ImageStyle>} />
       ) : (
-        <Text
-          style={textStyle}
-          tone="primary"
-          variant={size >= controls.avatar.lg ? "heading" : "label"}
-          weight="bold"
-        >
+        <Text style={textStyle} tone="primary" variant={size >= controls.avatar.lg ? "heading" : "label"} weight="bold">
           {initials}
         </Text>
       )}

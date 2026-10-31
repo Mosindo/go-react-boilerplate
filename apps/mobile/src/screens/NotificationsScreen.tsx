@@ -1,137 +1,116 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import {
-  listNotifications,
-  markNotificationRead,
-  type Notification
-} from "../api/platform";
-import { Header, ScreenContainer } from "../shared/layout";
+import React from "react";
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getNotifications, markAllNotificationsRead, markNotificationRead } from "../api/dating";
+import type { NotificationItem } from "../api/types";
+import { formatTime } from "../lib/format";
+import { queryKeys } from "../lib/queryKeys";
+import type { MainStackParamList } from "../navigation/types";
+import { Screen } from "../shared/layout";
 import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Button, NotificationItem, spacing } from "../shared/ui";
+import { Button, Text, colors, radii, spacing } from "../shared/ui";
 
-type NotificationsScreenProps = {
-  token: string;
-};
+export default function NotificationsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.notifications,
+    queryFn: ({ pageParam }) => getNotifications(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextBefore
+  });
 
-function formatNotificationDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
-}
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+  const read = useMutation({ mutationFn: markNotificationRead, onSuccess: refresh });
+  const readAll = useMutation({ mutationFn: markAllNotificationsRead, onSuccess: refresh });
 
-export default function NotificationsScreen({ token }: NotificationsScreenProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const items = query.data?.pages.flatMap((p) => p.notifications) ?? [];
+  const unread = query.data?.pages[0]?.unreadCount ?? 0;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextNotifications = await listNotifications(token);
-      setNotifications(nextNotifications);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load notifications");
-    } finally {
-      setLoading(false);
+  const open = (item: NotificationItem) => {
+    if (!item.isRead) read.mutate(item.id);
+    const conversationId = item.data.conversationId;
+    if (conversationId && (item.type === "match" || item.type === "message")) {
+      navigation.navigate("Chat", { conversationId });
+    } else if (item.type === "like") {
+      navigation.navigate("Tabs", { screen: "Messages" });
     }
-  }, [token]);
+  };
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function onMarkRead(item: Notification) {
-    if (item.isRead) {
-      return;
-    }
-
-    try {
-      const updated = await markNotificationRead(token, item.id);
-      setNotifications((prev) => prev.map((current) => (current.id === updated.id ? updated : current)));
-    } catch (markError) {
-      setError(markError instanceof Error ? markError.message : "could not update notification");
-    }
-  }
-
-  const unreadCount = useMemo(
-    () => notifications.filter((item) => !item.isRead).length,
-    [notifications]
-  );
-
-  if (loading && notifications.length === 0) {
+  if (query.isLoading)
     return (
-      <ScreenContainer testID="notifications-screen">
-        <LoadingView fullScreen label="Loading notifications..." />
-      </ScreenContainer>
+      <Screen>
+        <LoadingView label="Chargement…" />
+      </Screen>
     );
-  }
+  if (query.isError)
+    return (
+      <Screen>
+        <ErrorView actionLabel="Réessayer" message="Impossible de charger les notifications." onAction={() => void query.refetch()} />
+      </Screen>
+    );
 
   return (
-    <ScreenContainer contentMaxWidth={820} testID="notifications-screen">
-      <Header
-        action={
-          <View style={styles.actions}>
-            <Button
-              disabled={loading}
-              label="Reload"
-              onPress={load}
-              size="sm"
-              testID="notifications-reload-button"
-              variant="outline"
-            />
+    <Screen padded={false}>
+      <FlatList
+        ListEmptyComponent={<EmptyView message="Matchs, messages et likes apparaîtront ici." title="Rien de neuf" />}
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Text variant="heading" weight="bold">
+              Notifications
+            </Text>
+            {unread > 0 ? (
+              <Button
+                label="Tout marquer comme lu"
+                loading={readAll.isPending}
+                onPress={() => readAll.mutate()}
+                size="sm"
+                variant="ghost"
+              />
+            ) : null}
           </View>
         }
-        eyebrow="Inbox"
-        subtitle={`${unreadCount} unread`}
-        style={styles.headerShell}
-        title="Notifications"
-      />
-
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-
-      <FlatList
         contentContainerStyle={styles.list}
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={
-          <EmptyView
-            message="Notifications from messages, posts, and account activity will appear here."
-            title="No notifications yet"
-          />
+        data={items}
+        keyExtractor={(n) => n.id}
+        onEndReached={() => query.hasNextPage && !query.isFetchingNextPage && void query.fetchNextPage()}
+        refreshControl={
+          <RefreshControl onRefresh={() => void query.refetch()} refreshing={query.isRefetching} tintColor={colors.primary} />
         }
         renderItem={({ item }) => (
-          <NotificationItem
-            body={item.body}
-            createdAtLabel={formatNotificationDate(item.createdAt)}
-            isRead={item.isRead}
-            onPress={() => void onMarkRead(item)}
-            title={item.title}
-            type={item.type}
-          />
+          <Pressable accessibilityRole="button" onPress={() => open(item)} style={[styles.row, !item.isRead ? styles.unread : null]}>
+            <View style={styles.rowBody}>
+              <Text weight={item.isRead ? "regular" : "bold"}>{item.title}</Text>
+              {item.body ? (
+                <Text numberOfLines={2} tone="muted">
+                  {item.body}
+                </Text>
+              ) : null}
+            </View>
+            <Text tone="muted" variant="caption">
+              {formatTime(item.createdAt)}
+            </Text>
+          </Pressable>
         )}
       />
-    </ScreenContainer>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerShell: {
-    marginBottom: spacing.lg,
-  },
-  actions: {
+  list: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl, gap: spacing.sm },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.sm },
+  row: {
     flexDirection: "row",
-    gap: spacing.sm,
-    paddingTop: spacing.md
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border
   },
-  error: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  }
+  unread: { backgroundColor: colors.primarySoft, borderColor: colors.primaryBorder },
+  rowBody: { flex: 1, gap: 2 }
 });
