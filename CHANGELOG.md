@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased — Alma dating app
+
+### Added
+- Dating domain: profiles, preferences, interests, photos, discovery feed, likes, matches, realtime chat (WebSocket), blocks, reports, notifications.
+- Password reset by e-mail code, account deletion, 18+ validation, rate limiting, tracked migrations (`schema_migrations`).
+- Demo data command (`cmd/seed`), integration tests for the critical journey, mobile unit/component tests, ESLint and Prettier.
+
+### Changed
+- Mobile app rebuilt around the dating journey (onboarding, swipe deck, messages, chat, profile and privacy settings).
+- Router composition moved to `internal/app`; graceful shutdown; non-root Docker image.
+
+### Removed
+- Stripe billing, organizations, posts, comments, generic files, Tamagui, legacy PowerShell smoke scripts.
+
 ## [Unreleased]
 
 ### Added

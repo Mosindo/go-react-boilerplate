@@ -19,7 +19,7 @@
 
 - Modify `services/api/internal/features/auth/**`
 - Add or update auth-related migrations under `services/api/internal/platform/db/migrations`
-- Update backend wiring in `services/api/cmd/api/main.go` when required for auth
+- Update backend wiring in `services/api/internal/app/app.go` when required for auth
 - Add or update auth integration tests
 
 ## Forbidden Actions

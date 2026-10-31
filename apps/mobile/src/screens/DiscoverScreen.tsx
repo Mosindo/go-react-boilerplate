@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -24,8 +24,18 @@ export default function DiscoverScreen() {
 
   const feed = useQuery({ queryKey: queryKeys.feed, queryFn: () => getFeed(10), staleTime: 60_000 });
 
+  // Remaining cards are read through a ref so onSettled never sees a stale closure.
+  const remainingRef = useRef(0);
+  const refillFeed = feed.refetch;
+
   const mutation = useMutation({
     mutationFn: ({ card, kind }: { card: Card; kind: "like" | "pass" }) => swipe(card.id, kind),
+    // Refill only once the server has recorded the swipe, so swiped profiles cannot come back.
+    onSettled: () => {
+      if (remainingRef.current <= REFILL_AT) {
+        void refillFeed().then(() => setSeen(new Set()));
+      }
+    },
     onSuccess: (result) => {
       if (result.matched && result.match) {
         setMatch(result.match);
@@ -38,19 +48,16 @@ export default function DiscoverScreen() {
 
   // Cards already swiped locally are hidden immediately; the server also excludes them from future feeds.
   const cards = (feed.data ?? []).filter((c) => !seen.has(c.id));
+  remainingRef.current = cards.length;
 
   const handle = useCallback(
     (card: Card, kind: "like" | "pass") => {
       setSwipeError(null);
       setSeen((prev) => new Set(prev).add(card.id));
+      remainingRef.current = Math.max(0, remainingRef.current - 1);
       mutation.mutate({ card, kind });
-      const remaining = (feed.data ?? []).filter((c) => c.id !== card.id && !seen.has(c.id)).length;
-      if (remaining <= REFILL_AT) {
-        // Refetch once the server has had the chance to record the swipe.
-        setTimeout(() => void feed.refetch().then(() => setSeen(new Set())), 400);
-      }
     },
-    [feed, mutation, seen]
+    [mutation]
   );
 
   let body: React.ReactNode;

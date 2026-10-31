@@ -16,8 +16,14 @@
     },
     "plugins": [
       "expo-secure-store",
-      ["expo-image-picker", { "photosPermission": "Alma a besoin d'accéder à vos photos pour que vous puissiez en ajouter à votre profil." }],
-      ["expo-location", { "locationWhenInUsePermission": "Alma utilise votre position approximative pour vous proposer des personnes proches de vous." }]
+      [
+        "expo-image-picker",
+        { "photosPermission": "Alma a besoin d'accéder à vos photos pour que vous puissiez en ajouter à votre profil." }
+      ],
+      [
+        "expo-location",
+        { "locationWhenInUsePermission": "Alma utilise votre position approximative pour vous proposer des personnes proches de vous." }
+      ]
     ]
   }
 }
