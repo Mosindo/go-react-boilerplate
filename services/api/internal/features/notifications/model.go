@@ -3,33 +3,15 @@ package notifications
 import "time"
 
 type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
-
-type NotificationResponse struct {
 	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
+	Type      string     `json:"type"` // match | message
+	ActorID   *string    `json:"actorId"`
+	ActorName string     `json:"actorName"`
+	RefID     *string    `json:"refId"` // match id ou conversation id
+	ReadAt    *time.Time `json:"readAt"`
 	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
 }
 
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
-}
-
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+type MarkReadRequest struct {
+	IDs []string `json:"ids" binding:"max=100"` // vide = tout marquer comme lu
 }

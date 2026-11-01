@@ -1,59 +1,61 @@
 package chat
 
-import "time"
+import (
+	"errors"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+var (
+	ErrNotFound    = errors.New("conversation not found")
+	ErrBlocked     = errors.New("conversation is blocked")
+	ErrInvalidBody = errors.New("invalid message body")
+)
+
+const MaxBodyRunes = 2000
+
+type Message struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type Conversation struct {
+	ID          string    `json:"id"`
+	MatchID     string    `json:"matchId"`
+	UserID      string    `json:"userId"`
+	FirstName   string    `json:"firstName"`
+	PhotoID     *string   `json:"photoId"`
+	LastMessage *Message  `json:"lastMessage"`
+	UnreadCount int       `json:"unreadCount"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	OtherReadAt time.Time `json:"otherLastReadAt"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
+type MessagePage struct {
+	Items       []Message `json:"items"`
+	NextCursor  string    `json:"nextCursor"`
+	OtherReadAt time.Time `json:"otherLastReadAt"`
 }
 
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
+type SendRequest struct {
+	Body string `json:"body" binding:"required"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
+// CleanBody normalise et valide le corps d'un message.
+func CleanBody(raw string) (string, error) {
+	body := strings.TrimSpace(raw)
+	if body == "" || utf8.RuneCountInString(body) > MaxBodyRunes || strings.ContainsRune(body, 0) {
+		return "", ErrInvalidBody
+	}
+	return body, nil
 }
 
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
-}
-
-type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
-}
-
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
-}
-
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+// ReadEvent est pousse en temps reel quand l'autre participant lit la conversation.
+type ReadEvent struct {
+	ConversationID string    `json:"conversationId"`
+	ReadAt         time.Time `json:"readAt"`
 }
