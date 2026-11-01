@@ -8,7 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Alma, application de rencontre 100 % gratuite : comptes, profils, photos, découverte (swipe), matching, chat
+  temps réel (WebSocket), notifications, blocage, signalement, suppression de compte, récupération de mot de passe.
+- Migrations suivies (`schema_migrations`), commande de seed de démonstration, tests d'intégration API,
+  tests unitaires mobile, script `e2e:smoke`, CI (Postgres, lint, typecheck, bundle Metro, smoke Docker).
+
+### Removed
+- Modules posts, comments, files, users, billing (Stripe) et organisations multi-tenant ; thème Tamagui ;
+  scripts PowerShell et Maestro obsolètes.
 
 ## [0.1.0] - 2026-03-17
 

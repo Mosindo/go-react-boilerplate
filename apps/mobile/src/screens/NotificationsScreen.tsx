@@ -1,137 +1,81 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import {
-  listNotifications,
-  markNotificationRead,
-  type Notification
-} from "../api/platform";
-import { Header, ScreenContainer } from "../shared/layout";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Button, NotificationItem, spacing } from "../shared/ui";
+import { useEffect } from "react";
+import { FlatList, Pressable, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
+import { notificationsApi } from "../api";
+import { EmptyState, ErrorState, Loading, Text } from "../components/ui";
+import { errorMessage } from "../lib/errors";
+import { formatRelative } from "../lib/format";
+import { keys, useNotifications } from "../state/queries";
+import { spacing, useColors } from "../theme";
 
-type NotificationsScreenProps = {
-  token: string;
-};
+export function NotificationsScreen() {
+  const navigation = useNavigation();
+  const colors = useColors();
+  const queryClient = useQueryClient();
+  const query = useNotifications();
+  const unread = query.data?.unreadCount ?? 0;
 
-function formatNotificationDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-  return date.toLocaleString();
-}
-
-export default function NotificationsScreen({ token }: NotificationsScreenProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextNotifications = await listNotifications(token);
-      setNotifications(nextNotifications);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "could not load notifications");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
+  // Marque tout comme lu a l'ouverture (apres affichage de l'etat non lu).
   useEffect(() => {
-    load();
-  }, [load]);
-
-  async function onMarkRead(item: Notification) {
-    if (item.isRead) {
+    if (unread === 0) {
       return;
     }
+    const timer = setTimeout(() => {
+      notificationsApi
+        .markRead()
+        .then(() => queryClient.invalidateQueries({ queryKey: keys.notifications }))
+        .catch(() => undefined);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [unread, queryClient]);
 
-    try {
-      const updated = await markNotificationRead(token, item.id);
-      setNotifications((prev) => prev.map((current) => (current.id === updated.id ? updated : current)));
-    } catch (markError) {
-      setError(markError instanceof Error ? markError.message : "could not update notification");
-    }
+  if (query.isLoading) {
+    return <Loading />;
   }
-
-  const unreadCount = useMemo(
-    () => notifications.filter((item) => !item.isRead).length,
-    [notifications]
-  );
-
-  if (loading && notifications.length === 0) {
-    return (
-      <ScreenContainer testID="notifications-screen">
-        <LoadingView fullScreen label="Loading notifications..." />
-      </ScreenContainer>
-    );
+  if (query.isError) {
+    return <ErrorState message={errorMessage(query.error)} onRetry={() => void query.refetch()} />;
   }
 
   return (
-    <ScreenContainer contentMaxWidth={820} testID="notifications-screen">
-      <Header
-        action={
-          <View style={styles.actions}>
-            <Button
-              disabled={loading}
-              label="Reload"
-              onPress={load}
-              size="sm"
-              testID="notifications-reload-button"
-              variant="outline"
-            />
+    <FlatList
+      ListEmptyComponent={
+        <EmptyState
+          icon="notifications-off-outline"
+          message="Les nouveaux matchs et messages apparaîtront ici."
+          title="Rien pour l'instant"
+        />
+      }
+      contentContainerStyle={{ flexGrow: 1 }}
+      data={query.data?.items ?? []}
+      keyExtractor={(n) => n.id}
+      renderItem={({ item }) => (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => navigation.navigate("Tabs")}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            padding: spacing.lg,
+            backgroundColor: item.readAt ? "transparent" : colors.surfaceAlt,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <Ionicons color={colors.primary} name={item.type === "match" ? "heart" : "chatbubble"} size={22} />
+          <View style={{ flex: 1, marginLeft: spacing.md }}>
+            <Text variant="label">
+              {item.type === "match"
+                ? `Vous avez un match avec ${item.actorName || "un membre"} !`
+                : `Nouveau message de ${item.actorName || "un membre"}`}
+            </Text>
+            <Text muted variant="caption">
+              {formatRelative(item.createdAt)}
+            </Text>
           </View>
-        }
-        eyebrow="Inbox"
-        subtitle={`${unreadCount} unread`}
-        style={styles.headerShell}
-        title="Notifications"
-      />
-
-      {error ? (
-        <ErrorView actionLabel="Retry" message={error} onAction={() => void load()} style={styles.error} />
-      ) : null}
-
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={
-          <EmptyView
-            message="Notifications from messages, posts, and account activity will appear here."
-            title="No notifications yet"
-          />
-        }
-        renderItem={({ item }) => (
-          <NotificationItem
-            body={item.body}
-            createdAtLabel={formatNotificationDate(item.createdAt)}
-            isRead={item.isRead}
-            onPress={() => void onMarkRead(item)}
-            title={item.title}
-            type={item.type}
-          />
-        )}
-      />
-    </ScreenContainer>
+        </Pressable>
+      )}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  headerShell: {
-    marginBottom: spacing.lg,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    paddingTop: spacing.md
-  },
-  error: {
-    marginBottom: spacing.sm
-  },
-  list: {
-    paddingBottom: spacing.xxxl
-  }
-});

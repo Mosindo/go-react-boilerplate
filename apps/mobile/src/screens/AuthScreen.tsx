@@ -1,161 +1,107 @@
-import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet } from "react-native";
-import { useAuth, useLogin, useRegister } from "../hooks/useAuth";
-import { ErrorView } from "../shared/feedback";
-import { Button, Card, Input, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import { useState } from "react";
+import { View } from "react-native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Button, Screen, Text, TextField } from "../components/ui";
+import { useToast } from "../components/feedback";
+import { errorMessage } from "../lib/errors";
+import { validateEmail, validatePassword } from "../lib/validation";
+import type { AuthStackParamList } from "../navigation/types";
+import { useAuth } from "../state/auth";
+import { spacing, useColors } from "../theme";
 
-type Mode = "login" | "register";
+type Props = NativeStackScreenProps<AuthStackParamList, "Auth">;
 
-export default function AuthScreen() {
-  const [mode, setMode] = useState<Mode>("login");
+export function AuthScreen({ navigation, route }: Props) {
+  const { signIn, signUp } = useAuth();
+  const toast = useToast();
+  const colors = useColors();
+  const [mode, setMode] = useState<"login" | "register">(route.params?.mode ?? "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const { authError, clearAuthError } = useAuth();
-  const loginMutation = useLogin();
-  const registerMutation = useRegister();
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [busy, setBusy] = useState(false);
 
-  const title = useMemo(() => (mode === "login" ? "Welcome back" : "Create your workspace"), [mode]);
-  const subtitle = useMemo(
-    () =>
-      mode === "login"
-        ? "Sign in to continue into your shared SaaS workspace."
-        : "Open a clean account experience with persistent team access.",
-    [mode]
-  );
-  const switchLabel = mode === "login" ? "Need an account? Register" : "Already have an account? Login";
-  const submitting = loginMutation.isPending || registerMutation.isPending;
-  const surfaceError = formError ?? authError;
+  const isRegister = mode === "register";
 
-  async function onSubmit() {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
-      setFormError("email and password are required");
+  const submit = async () => {
+    const next = {
+      email: validateEmail(email) ?? undefined,
+      // En connexion on ne re-valide pas la politique de mot de passe (comptes existants).
+      password: isRegister ? (validatePassword(password) ?? undefined) : password ? undefined : "Mot de passe requis",
+    };
+    setErrors(next);
+    if (next.email || next.password) {
       return;
     }
-
-    setFormError(null);
-    clearAuthError();
-
+    setBusy(true);
     try {
-      if (mode === "login") {
-        await loginMutation.mutateAsync({ email: normalizedEmail, password });
+      if (isRegister) {
+        await signUp(email, password);
       } else {
-        await registerMutation.mutateAsync({ email: normalizedEmail, password });
+        await signIn(email, password);
       }
-    } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "authentication failed");
+    } catch (error) {
+      toast.show(errorMessage(error), "error");
+    } finally {
+      setBusy(false);
     }
-  }
+  };
 
   return (
-    <ScreenContainer centered contentMaxWidth={440}>
-      <Card padding="xl" style={styles.card} variant="accent">
-        <Header
-          centered
-          eyebrow="Go React SaaS"
-          style={styles.header}
-          subtitle={subtitle}
-          title={title}
-        />
-
-        <Text style={styles.intro} tone="secondary">
-          Minimal, secure access for a premium team workspace.
+    <Screen scroll>
+      <View style={{ flex: 1, justifyContent: "center", paddingVertical: spacing.xxl }}>
+        <Text style={{ color: colors.primary, marginBottom: spacing.xs }} variant="title">
+          Alma
+        </Text>
+        <Text muted style={{ marginBottom: spacing.xl }}>
+          {isRegister ? "Créez votre compte gratuit. Aucune carte bancaire, jamais." : "Content de vous revoir."}
         </Text>
 
-        <Input
+        <TextField
           autoCapitalize="none"
           autoComplete="email"
-          containerStyle={styles.field}
-          helperText="Use the email tied to your workspace."
+          error={errors.email}
           keyboardType="email-address"
-          label="Email"
-          onChangeText={(value) => {
-            setEmail(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Email"
-          testID="auth-email-input"
+          label="E-mail"
+          onChangeText={setEmail}
+          textContentType="emailAddress"
           value={email}
         />
-
-        <Input
+        <TextField
           autoCapitalize="none"
-          containerStyle={styles.field}
-          error={formError?.toLowerCase().includes("password") ? formError : null}
-          helperText={mode === "login" ? "Enter your secure password." : "Create a password for future sessions."}
-          label="Password"
-          onChangeText={(value) => {
-            setPassword(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Password"
-          secureTextEntry
-          testID="auth-password-input"
+          autoComplete={isRegister ? "new-password" : "current-password"}
+          error={errors.password}
+          label="Mot de passe"
+          onChangeText={setPassword}
+          onSubmitEditing={submit}
+          secure
+          textContentType={isRegister ? "newPassword" : "password"}
           value={password}
         />
-
-        {surfaceError ? (
-          <ErrorView
-            compact
-            message={surfaceError}
-            style={styles.error}
-            title="Authentication issue"
-          />
+        {isRegister ? (
+          <Text muted style={{ marginBottom: spacing.lg }} variant="caption">
+            8 caractères minimum, avec lettres et chiffres. En continuant, vous confirmez avoir 18 ans ou plus.
+          </Text>
         ) : null}
 
         <Button
-          fullWidth
-          label={mode === "login" ? "Login" : "Register"}
-          loading={submitting}
-          onPress={onSubmit}
-          testID="auth-submit-button"
+          loading={busy}
+          onPress={submit}
+          testID="auth-submit"
+          title={isRegister ? "Créer mon compte" : "Se connecter"}
         />
-
-        <Pressable
-          disabled={submitting}
+        {!isRegister ? (
+          <Button onPress={() => navigation.navigate("ForgotPassword")} title="Mot de passe oublié ?" variant="ghost" />
+        ) : null}
+        <Button
           onPress={() => {
-            setMode((prev) => (prev === "login" ? "register" : "login"));
-            setFormError(null);
-            clearAuthError();
+            setErrors({});
+            setMode(isRegister ? "login" : "register");
           }}
-          testID="auth-switch-mode-button"
-        >
-          <Text style={styles.switchText} tone="secondary" variant="label" weight="semibold">
-            {switchLabel}
-          </Text>
-        </Pressable>
-      </Card>
-    </ScreenContainer>
+          title={isRegister ? "J'ai déjà un compte" : "Je n'ai pas de compte"}
+          variant="ghost"
+        />
+      </View>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    width: "100%"
-  },
-  header: {
-    marginBottom: spacing.lg
-  },
-  intro: {
-    marginBottom: spacing.xl,
-    textAlign: "center"
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  switchText: {
-    marginTop: spacing.lg,
-    textAlign: "center"
-  },
-  error: {
-    marginBottom: spacing.sm
-  }
-});

@@ -1,106 +1,57 @@
-import React, { useEffect } from "react";
+import { useMemo } from "react";
+import { useColorScheme } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
-import AuthScreen from "./src/screens/AuthScreen";
-import { AuthProvider, useAuth } from "./src/hooks/useAuth";
-import { BottomNavigation, SafeAreaLayout } from "./src/shared/layout";
-import { clearGlobalError, ErrorView, LoadingView, useGlobalFeedback } from "./src/shared/feedback";
-import { colors, spacing } from "./src/shared/ui";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { ToastProvider } from "./src/components/feedback";
+import { RootNavigator } from "./src/navigation/RootNavigator";
+import { AuthProvider } from "./src/state/auth";
+import { useColors } from "./src/theme";
 
-function AppShell() {
-  const { accessToken, isAuthenticated, isBooting, user } = useAuth();
-  const globalFeedback = useGlobalFeedback();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, staleTime: 15_000, refetchOnWindowFocus: false },
+  },
+});
 
-  useEffect(() => {
-    if (!globalFeedback.error) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      clearGlobalError();
-    }, 5000);
-
-    return () => {
-      clearTimeout(timeoutId);
+function Themed() {
+  const scheme = useColorScheme();
+  const colors = useColors();
+  const theme = useMemo(() => {
+    const base = scheme === "dark" ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.primary,
+        background: colors.background,
+        card: colors.surface,
+        text: colors.text,
+        border: colors.border,
+        notification: colors.primary,
+      },
     };
-  }, [globalFeedback.error]);
-
-  if (isBooting) {
-    return (
-      <SafeAreaLayout style={styles.bootContainer}>
-        <StatusBar style="dark" />
-        <LoadingView fullScreen label="Restoring session..." />
-      </SafeAreaLayout>
-    );
-  }
-
-  if (!isAuthenticated || !accessToken || !user) {
-    return (
-      <>
-        <StatusBar style="dark" />
-        <AuthScreen />
-      </>
-    );
-  }
+  }, [scheme, colors]);
 
   return (
-    <>
-      <StatusBar style="dark" />
-      <BottomNavigation accessToken={accessToken} key={user.id} user={user} />
-      {globalFeedback.error ? (
-        <View pointerEvents="box-none" style={styles.bannerWrap}>
-          <ErrorView
-            actionLabel="Dismiss"
-            compact
-            message={globalFeedback.error}
-            onAction={clearGlobalError}
-            style={styles.banner}
-            title="Request issue"
-          />
-        </View>
-      ) : null}
-      {globalFeedback.loadingCount > 0 && !isBooting ? (
-        <View style={styles.overlay}>
-          <LoadingView label={globalFeedback.loadingLabel ?? "Working..."} style={styles.overlayCard} />
-        </View>
-      ) : null}
-    </>
+    <NavigationContainer theme={theme}>
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <RootNavigator />
+    </NavigationContainer>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <ToastProvider>
+            <Themed />
+          </ToastProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  bootContainer: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  bannerWrap: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.xxl
-  },
-  banner: {},
-  overlay: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xxl
-  },
-  overlayCard: {
-    width: "100%",
-    maxWidth: 320
-  }
-});

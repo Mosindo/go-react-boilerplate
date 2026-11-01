@@ -1,12 +1,37 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Alma",
+    "slug": "alma",
+    "scheme": "alma",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.alma.mobile",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
+      }
+    },
+    "android": {
+      "package": "app.alma.mobile",
+      "usesCleartextTraffic": true
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Alma utilise votre position approximative pour vous proposer des profils proches. Elle n'est jamais partagée précisément."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Alma a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil."
+        }
+      ]
     ]
   }
 }

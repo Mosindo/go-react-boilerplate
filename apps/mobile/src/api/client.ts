@@ -1,169 +1,137 @@
-import { Platform } from "react-native";
-import { getAccessToken } from "../store/tokenStore";
-import { showGlobalError } from "../shared/feedback";
+import { API_BASE_URL } from "../config";
+import { ApiError } from "../lib/errors";
+import { clearTokens, getTokens, saveTokens } from "./tokenStore";
+import type { AuthResponse } from "./types";
 
-export type ApiErrorPayload = {
-  error?: string;
+type RequestOptions = {
+  body?: unknown;
+  form?: FormData;
+  query?: Record<string, string | number | undefined>;
+  /** false pour les endpoints publics (login, register...). */
+  auth?: boolean;
 };
 
-function normalizeBaseUrl(value: string): string {
-  return value.replace(/\/+$/, "");
+let onSessionExpired: (() => void) | null = null;
+let onTokenRefreshed: ((accessToken: string) => void) | null = null;
+let refreshInFlight: Promise<string | null> | null = null;
+
+/** Declare le callback appele quand la session ne peut plus etre renouvelee. */
+export function setSessionExpiredHandler(handler: (() => void) | null): void {
+  onSessionExpired = handler;
 }
 
-function developmentFallbackBaseUrl(): string {
-  return Platform.OS === "android" ? "http://10.0.2.2:18080" : "http://localhost:18080";
+/** Declare le callback appele apres un renouvellement reussi de l'access token. */
+export function setTokenRefreshedHandler(handler: ((accessToken: string) => void) | null): void {
+  onTokenRefreshed = handler;
 }
 
-function resolveApiBaseUrl(): string {
-  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (explicitBaseUrl) {
-    return normalizeBaseUrl(explicitBaseUrl);
-  }
-
-  if (__DEV__) {
-    return developmentFallbackBaseUrl();
-  }
-
-  return "";
-}
-
-export const API_BASE_URL = resolveApiBaseUrl();
-
-export class ApiError extends Error {
-  public status: number;
-  public data: unknown;
-
-  constructor(status: number, data: unknown, message?: string) {
-    super(message ?? `API request failed (${status})`);
-    this.name = "ApiError";
-    this.status = status;
-    this.data = data;
-  }
-}
-
-async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
-
-function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, string>): Headers {
-  const headers = new Headers();
-
-  headers.set("Accept", "application/json");
-
-  if (base) {
-    new Headers(base).forEach((value, key) => {
-      headers.set(key, value);
-    });
-  }
-
-  if (injected) {
-    for (const [k, v] of Object.entries(injected)) {
-      if (!headers.has(k)) {
-        headers.set(k, v);
+function buildUrl(path: string, query?: RequestOptions["query"]): string {
+  const url = new URL(API_BASE_URL + path);
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== "") {
+        url.searchParams.set(key, String(value));
       }
     }
   }
-
-  return headers;
+  return url.toString();
 }
 
-function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
-  return body !== undefined && body !== null && !(body instanceof FormData);
-}
-
-function formatNetworkHint(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return "Network error. Check your connection and API availability, then try again.";
-  }
-
-  if (!__DEV__) {
-    return "API base URL is not configured for this build. Set EXPO_PUBLIC_API_URL and try again.";
-  }
-
-  if (Platform.OS === "android") {
-    return "Network error. Android emulators usually need 10.0.2.2, and physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  if (Platform.OS === "ios") {
-    return "Network error. iOS simulators can use localhost, but physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  return "Network error. Check your connection and try again.";
-}
-
-function requireApiBaseUrl(): string {
-  if (API_BASE_URL) {
-    return API_BASE_URL;
-  }
-
-  const message = "API base URL is not configured. Set EXPO_PUBLIC_API_URL for this build.";
-  showGlobalError(message);
-  throw new Error(message);
-}
-
-export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
-
-  const token = await getToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-  try {
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        controller.abort();
-      } else {
-        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+/** Renouvelle l'access token (une seule requete a la fois). Renvoie le nouveau token ou null. */
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const tokens = await getTokens();
+      if (!tokens) {
+        return null;
       }
-    }
-
-    const headers = mergeHeaders(options?.headers, authHeader);
-    if (!headers.has("Content-Type") && shouldSetJsonContentType(options?.body)) {
-      headers.set("Content-Type", "application/json");
-    }
-    const response = await fetch(`${requireApiBaseUrl()}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type") ?? "";
-      let data: unknown = null;
       try {
-        data = contentType.includes("application/json") ? await response.json() : await response.text();
+        const response = await fetch(buildUrl("/auth/refresh"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+        });
+        if (response.status === 401) {
+          await clearTokens();
+          onSessionExpired?.();
+          return null;
+        }
+        if (!response.ok) {
+          return null; // erreur transitoire: on garde la session
+        }
+        const data = (await response.json()) as AuthResponse;
+        await saveTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+        onTokenRefreshed?.(data.accessToken);
+        return data.accessToken;
       } catch {
-        data = null;
+        return null;
       }
-
-      const apiPayload = data as ApiErrorPayload | null;
-      let message = apiPayload?.error ?? `API request failed (${response.status})`;
-      if (response.status === 401) {
-        message = apiPayload?.error ?? "Your session is no longer valid. Please sign in again.";
-      }
-      if (response.status >= 500 || response.status === 401) {
-        showGlobalError(message);
-      }
-      throw new ApiError(response.status, data, message);
-    }
-
-    const text = await response.text();
-    if (!text) {
-      return undefined as T;
-    }
-    return JSON.parse(text) as T;
-  } catch (err) {
-    const name = (err as { name?: string }).name;
-    if (name === "AbortError") {
-      showGlobalError("The request timed out. Please try again.");
-      throw new Error("API request timeout (10s)");
-    }
-
-    if (err instanceof TypeError) {
-      showGlobalError(formatNetworkHint());
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
+    })().finally(() => {
+      refreshInFlight = null;
+    });
   }
+  return refreshInFlight;
+}
+
+async function send(method: string, path: string, options: RequestOptions, token: string | null): Promise<Response> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  let body: string | FormData | undefined;
+  if (options.form) {
+    body = options.form;
+  } else if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(options.body);
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  try {
+    return await fetch(buildUrl(path, options.query), { method, headers, body });
+  } catch {
+    throw new ApiError(0, "Connexion impossible. Vérifiez votre réseau et réessayez.");
+  }
+}
+
+export async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+  const useAuth = options.auth !== false;
+  let token: string | null = null;
+  if (useAuth) {
+    token = (await getTokens())?.accessToken ?? null;
+  }
+
+  let response = await send(method, path, options, token);
+  if (response.status === 401 && useAuth) {
+    const fresh = await refreshAccessToken();
+    if (fresh) {
+      response = await send(method, path, options, fresh);
+    }
+  }
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const data = (await response.json()) as { error?: string };
+      if (data.error) {
+        message = data.error;
+      }
+    } catch {
+      // corps non JSON
+    }
+    throw new ApiError(response.status, message);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return (await response.json()) as T;
+}
+
+/** Source d'image authentifiee pour expo-image (les photos ne sont jamais publiques). */
+export function photoSource(
+  photoId: string,
+  accessToken: string | null,
+): { uri: string; headers: Record<string, string> } {
+  return {
+    uri: `${API_BASE_URL}/photos/${photoId}`,
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  };
 }
