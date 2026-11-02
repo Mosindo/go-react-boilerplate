@@ -91,11 +91,13 @@ func newRouter(pool *pgxpool.Pool, cfg config.Config) (*gin.Engine, error) {
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.NewRateLimiter(1200, 300).ByIP()) // coarse per-IP flood guard
+	r.Use(middleware.MaxJSONBody(64 << 10))
 	r.Use(middleware.ValidateIDParams())
 
 	requireUser := middleware.RequireUser(jwtSecret, db.NewSessionChecker(pool))
 	authLimit := middleware.NewRateLimiter(30, 10).ByIP()
 	swipeLimit := middleware.NewRateLimiter(600, 120).ByUser("swipe")
+	deckLimit := middleware.NewRateLimiter(60, 20).ByUser("deck") // slows profile scraping
 	messageLimit := middleware.NewRateLimiter(90, 30).ByUser("message")
 	uploadLimit := middleware.NewRateLimiter(30, 10).ByUser("upload")
 
@@ -111,7 +113,7 @@ func newRouter(pool *pgxpool.Pool, cfg config.Config) (*gin.Engine, error) {
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, authLimit)
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosfeature.NewRepository(pool)), requireUser, uploadLimit)
-	discoveryfeature.RegisterRoutes(r, discoveryfeature.NewHandler(discoveryService), requireUser, swipeLimit)
+	discoveryfeature.RegisterRoutes(r, discoveryfeature.NewHandler(discoveryService), requireUser, swipeLimit, deckLimit)
 	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser, messageLimit)
 	safetyfeature.RegisterRoutes(r, safetyfeature.NewHandler(safetyfeature.NewService(pool, hub)), requireUser)
 	notificationsfeature.RegisterRoutes(r, notificationsfeature.NewHandler(notifications), requireUser)

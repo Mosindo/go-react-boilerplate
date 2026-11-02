@@ -36,6 +36,15 @@ type Mailer interface {
 	SendPasswordReset(ctx context.Context, toEmail, token string) error
 }
 
+// dummyHash is a valid bcrypt hash of a random value, used to equalise timing.
+var dummyHash = func() string {
+	h, err := bcrypt.GenerateFromPassword([]byte("timing-equaliser-"+time.Now().String()), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err)
+	}
+	return string(h)
+}()
+
 type Service struct {
 	repo      Repository
 	jwtSecret []byte
@@ -91,6 +100,9 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizedEmail)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
+			// Same work as a real check, so response time does not reveal
+			// whether the e-mail is registered.
+			_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(password))
 			return Tokens{}, User{}, ErrInvalidCredentials
 		}
 		return Tokens{}, User{}, err

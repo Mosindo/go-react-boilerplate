@@ -52,9 +52,9 @@ func (h *Handler) Profile(c *gin.Context) {
 	c.JSON(http.StatusOK, card)
 }
 
-func RegisterRoutes(r gin.IRouter, h *Handler, requireUser, actionLimit gin.HandlerFunc) {
-	r.GET("/discover", requireUser, h.Deck)
+func RegisterRoutes(r gin.IRouter, h *Handler, requireUser, actionLimit, deckLimit gin.HandlerFunc) {
+	r.GET("/discover", requireUser, deckLimit, h.Deck)
 	r.POST("/discover/:id/like", requireUser, actionLimit, h.swipe("like"))
 	r.POST("/discover/:id/pass", requireUser, actionLimit, h.swipe("pass"))
-	r.GET("/users/:id", requireUser, h.Profile)
+	r.GET("/users/:id", requireUser, deckLimit, h.Profile)
 }

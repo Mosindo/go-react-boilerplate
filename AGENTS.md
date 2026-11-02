@@ -1,30 +1,15 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Tandem
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
+This repository is `Tandem`, a free dating app (Go API + Expo app).
 The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
-
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+`Tandem` is a 100 % free dating app (no subscription, paywall, paid boost, artificial like limit, or mandatory ads).
+Core modules: auth, profiles, photos, discovery (likes/matches), chat, notifications, safety (block/report).
+The founder explicitly pivoted this repository from a generic SaaS boilerplate to this product; the product vocabulary is therefore allowed. Never reintroduce payments, tiers or locked features.
 
 ---
 
@@ -65,12 +50,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,35 +113,20 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+Required indexes (see migrations): `users(email)`, `messages(match_id, created_at)`, `notifications(user_id, created_at)`, `photos(user_id, position)`, `swipes` PK + liked-me partial index, `matches` pair uniqueness, `blocks(blocked_id, blocker_id)`.
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `cd services/api && gofmt -l . && go vet ./... && go test -race ./... && go build ./cmd/api ./cmd/seed`
+  (integration tests need `DATABASE_URL_TEST`; they skip silently without it, so always set it)
+- `cd apps/mobile && npm ci && npm run typecheck && npm run lint && npm run format:check && npm test`
+- Critical-path browser E2E: `scripts/e2e-web.sh` (register -> onboarding -> discover -> like -> match -> realtime chat)
 
 If tests fail: fix them before continuing.
-
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
 
 ---
 
@@ -171,15 +141,14 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
+- A frontend is only "ready" after a real smoke test (`npm run e2e:smoke` in `apps/mobile`, or `scripts/e2e-web.sh`):
+  - register + onboarding
+  - discover loads
+  - like -> match
   - chat send/read
   - notifications read flow
 

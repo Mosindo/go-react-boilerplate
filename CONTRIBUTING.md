@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Tandem.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Keep the product 100 % free: no payments, tiers or locked features.
+- Keep features independent: shared concerns go in `internal/platform`, domain code in `internal/features`.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -32,10 +32,9 @@ Recommended types:
 ## Branch Naming Conventions
 
 Use short, descriptive branch names:
-- `feat/user-profiles`
+- `feat/profile-prompts`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 

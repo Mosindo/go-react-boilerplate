@@ -142,7 +142,10 @@ try {
 
   // Alice sees Bob and likes him: no match yet.
   // Bob joined after Alice's first load: the empty deck reloads on its own, or via "Actualiser".
-  await alice.page.getByRole("button", { name: "Actualiser" }).click({ timeout: 2000 }).catch(() => {});
+  await alice.page
+    .getByRole("button", { name: "Actualiser" })
+    .click({ timeout: 2000 })
+    .catch(() => {});
   await alice.page
     .getByLabel(/Bob, \d+ ans/)
     .first()
@@ -166,7 +169,10 @@ try {
   await bySel(bob.page, "chat-send").click();
   await bob.page.getByLabel(/Vous à \d+:\d+ : Salut Alice !/).waitFor();
 
-  await alice.page.getByLabel(/^Messages/).first().click();
+  await alice.page
+    .getByLabel(/^Messages/)
+    .first()
+    .click();
   await alice.page.getByText("Salut Alice !").first().waitFor(); // arrives live, no reload
   log("realtime message in inbox: ok");
   await alice.page.getByRole("button", { name: /Conversation avec Bob/ }).click();
@@ -177,13 +183,22 @@ try {
   log("chat both ways + read receipt: ok");
 
   // Notifications.
-  await alice.page.getByLabel(/Retour|Back/i).first().click();
-  await alice.page.getByLabel(/^Alertes/).first().click();
+  await alice.page
+    .getByLabel(/Retour|Back/i)
+    .first()
+    .click();
+  await alice.page
+    .getByLabel(/^Alertes/)
+    .first()
+    .click();
   await alice.page.getByText(/Nouveau match avec Bob/).waitFor();
   log("notifications: ok");
 
   // Delete account (Bob) and make sure he can no longer sign in.
-  await bob.page.getByLabel(/Retour|Back/i).first().click();
+  await bob.page
+    .getByLabel(/Retour|Back/i)
+    .first()
+    .click();
   await bob.page.getByText("Moi", { exact: true }).click();
   await bob.page.getByRole("button", { name: "Confidentialité et compte" }).click();
   await bySel(bob.page, "delete-account").click();

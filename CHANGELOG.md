@@ -1,27 +1,15 @@
-# go-react-saas Changelog
+# Tandem Changelog
 
-All notable changes to this project will be documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
+## [1.0.0]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
-
-## [0.1.0] - 2026-03-17
-
-### Added
-- Introduced a standardized documentation set with `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `docs/ARCHITECTURE.md`.
-- Added a generic changelog for future platform releases.
-
-### Changed
-- Converted the repository from a single-product application into `go-react-saas`, a reusable fullstack boilerplate.
-- Repositioned the repository as `go-react-saas`, a reusable fullstack boilerplate for social, forum, SaaS, marketplace, and community products.
-- Updated project descriptions, examples, and documentation to use generic module language.
-- Aligned the documentation with the feature-first backend and generic frontend shell.
+- Dating domain: profiles, preferences, interests, photos (validated, resized, re-encoded), discovery deck with mutual preference filters, like/pass, race-free matching, match-based 1:1 chat with read receipts, notifications, block/report, account deletion.
+- Realtime events over WebSocket with single-use tickets.
+- Password recovery by e-mail code, session revocation checks, rate limiting, body-size limits.
+- Migration tracking (`schema_migrations`), demo seed (`cmd/seed`).
+- Expo app with onboarding, swipe deck, chat, notifications, profile management, dark mode; unit tests, ESLint/Prettier, browser E2E (`scripts/e2e-web.sh`).
 
 ### Removed
-- Removed legacy status and daily log documents tied to earlier single-product tracking.
-- Removed remaining product-specific naming from repository-level documentation.
+- Generic SaaS modules: Stripe billing, organisations/tenancy, posts, comments, files, generic chat, Tamagui.
