@@ -21,9 +21,8 @@ var validReasons = map[string]bool{
 }
 
 type BlockedUser struct {
-	UserID    string  `json:"userId"`
-	FirstName string  `json:"firstName"`
-	PhotoURL  *string `json:"photoUrl"`
+	UserID    string `json:"userId"`
+	FirstName string `json:"firstName"`
 }
 
 type ReportRequest struct {
@@ -88,8 +87,7 @@ func (s *Service) Unblock(ctx context.Context, me, target string) error {
 
 func (s *Service) List(ctx context.Context, me string) ([]BlockedUser, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT b.blocked_id, COALESCE(p.first_name, ''),
-		       (SELECT id FROM photos ph WHERE ph.user_id = b.blocked_id ORDER BY position LIMIT 1)
+		SELECT b.blocked_id, COALESCE(p.first_name, '')
 		FROM blocks b LEFT JOIN profiles p ON p.user_id = b.blocked_id
 		WHERE b.blocker_id = $1 ORDER BY b.created_at DESC LIMIT 200`, me)
 	if err != nil {
@@ -99,11 +97,9 @@ func (s *Service) List(ctx context.Context, me string) ([]BlockedUser, error) {
 	out := []BlockedUser{}
 	for rows.Next() {
 		var u BlockedUser
-		var photoID *string
-		if err := rows.Scan(&u.UserID, &u.FirstName, &photoID); err != nil {
+		if err := rows.Scan(&u.UserID, &u.FirstName); err != nil {
 			return nil, err
 		}
-		_ = photoID // the photo route refuses blocked users, so no URL is exposed
 		out = append(out, u)
 	}
 	return out, rows.Err()

@@ -26,3 +26,36 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestProductionRequiresSMTPAndBaseURL(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://x")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "production")
+	if _, err := Load(); err == nil {
+		t.Fatal("production without SMTP must fail")
+	}
+	t.Setenv("SMTP_HOST", "smtp.example.org")
+	t.Setenv("SMTP_FROM", "no-reply@example.org")
+	t.Setenv("APP_BASE_URL", "https://tandem.example.org/")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AppBaseURL != "https://tandem.example.org" {
+		t.Errorf("trailing slash must be trimmed: %q", cfg.AppBaseURL)
+	}
+}
+
+func TestRejectsUnknownEnvAndBadPort(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://x")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "staging")
+	if _, err := Load(); err == nil {
+		t.Fatal("unknown APP_ENV must fail")
+	}
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PORT", "abc")
+	if _, err := Load(); err == nil {
+		t.Fatal("non numeric PORT must fail")
+	}
+}
