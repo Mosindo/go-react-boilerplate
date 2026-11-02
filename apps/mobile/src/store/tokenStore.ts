@@ -1,64 +1,59 @@
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
-export type AuthTokens = {
-  accessToken: string;
-  refreshToken: string;
-};
+export type AuthTokens = { accessToken: string; refreshToken: string };
 
-const TOKENS_KEY = "boilerplate.auth.tokens";
+const TOKENS_KEY = "tandem.auth.tokens";
 let memoryTokens: AuthTokens | null = null;
+
+function isTokens(value: unknown): value is AuthTokens {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.accessToken === "string" && typeof v.refreshToken === "string";
+}
+
+// SecureStore is unavailable on web; there tokens stay in memory only, which
+// avoids persisting credentials in localStorage.
+const persistent = Platform.OS !== "web";
 
 export async function saveTokens(tokens: AuthTokens): Promise<void> {
   memoryTokens = tokens;
+  if (!persistent) return;
   try {
     await SecureStore.setItemAsync(TOKENS_KEY, JSON.stringify(tokens));
   } catch {
-    // Fallback keeps the session in memory when secure storage is unavailable.
+    // keep the in-memory copy
   }
 }
 
-export async function getTokens(): Promise<AuthTokens | null> {
+export async function loadTokens(): Promise<AuthTokens | null> {
+  if (memoryTokens) return memoryTokens;
+  if (!persistent) return null;
   try {
-    const serializedTokens = await SecureStore.getItemAsync(TOKENS_KEY);
-    if (serializedTokens) {
-      const parsedTokens = JSON.parse(serializedTokens) as Partial<AuthTokens>;
-      if (parsedTokens.accessToken && typeof parsedTokens.refreshToken === "string") {
-        memoryTokens = {
-          accessToken: parsedTokens.accessToken,
-          refreshToken: parsedTokens.refreshToken
-        };
-        return memoryTokens;
+    const raw = await SecureStore.getItemAsync(TOKENS_KEY);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (isTokens(parsed)) {
+        memoryTokens = parsed;
+        return parsed;
       }
     }
   } catch {
-    // Ignore and fallback to memory.
+    // fall through
   }
-  return memoryTokens;
+  return null;
 }
 
-export async function getAccessToken(): Promise<string | null> {
-  const tokens = await getTokens();
-  return tokens?.accessToken ?? null;
+export function getCachedTokens(): AuthTokens | null {
+  return memoryTokens;
 }
 
 export async function clearTokens(): Promise<void> {
   memoryTokens = null;
+  if (!persistent) return;
   try {
     await SecureStore.deleteItemAsync(TOKENS_KEY);
   } catch {
-    // Ignore cleanup errors on unsupported platforms.
+    // ignore
   }
-}
-
-// Backward-compatible helpers for older call sites that still expect token-only storage.
-export async function saveToken(token: string): Promise<void> {
-  await saveTokens({ accessToken: token, refreshToken: "" });
-}
-
-export async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
-
-export async function clearToken(): Promise<void> {
-  await clearTokens();
 }
