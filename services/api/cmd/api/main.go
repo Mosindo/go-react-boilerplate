@@ -32,6 +32,7 @@ type app struct {
 	dbPool         *pgxpool.Pool
 	jwtSecret      []byte
 	allowedOrigins []string
+	trustedProxies []string
 	uploadDir      string
 	mailer         authfeature.Mailer
 }
@@ -57,6 +58,7 @@ func main() {
 		dbPool:         pool,
 		jwtSecret:      []byte(cfg.JWTSecret),
 		allowedOrigins: cfg.AllowedOrigins,
+		trustedProxies: cfg.TrustedProxies,
 		uploadDir:      cfg.UploadDir,
 		mailer:         authfeature.LogMailer{},
 	}
@@ -96,6 +98,11 @@ func setupRouter(a *app) (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	// Never trust X-Forwarded-For unless proxies are listed explicitly,
+	// otherwise per-IP rate limiting could be bypassed by spoofing it.
+	if err := r.SetTrustedProxies(a.trustedProxies); err != nil {
+		return nil, err
+	}
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))

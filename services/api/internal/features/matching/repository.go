@@ -24,7 +24,8 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 // discoverSQL builds candidates for viewer $1. Hard filters (mutual gender and
 // age interest, distance, blocks, already-swiped, has photo) are in WHERE; the
 // ordering is a pluggable score: shared interests, people who already liked the
-// viewer, and proximity. Replace the score expression to evolve the algorithm.
+// viewer, and proximity. The distance limit only applies when both sides
+// shared a location (nobody is hidden for skipping the optional step). Replace the score expression to evolve the algorithm.
 const discoverSQL = `
 SELECT ` + profiles.CardColumns + `
 FROM profiles v
@@ -40,8 +41,7 @@ WHERE v.user_id = $1
   AND v.gender = ANY(pp.interested_in)
   AND date_part('year', age(p.birth_date)) BETWEEN mp.age_min AND mp.age_max
   AND date_part('year', age(v.birth_date)) BETWEEN pp.age_min AND pp.age_max
-  AND (LEAST(mp.max_distance_km, pp.max_distance_km) >= 500
-       OR (dist.d IS NOT NULL AND dist.d <= LEAST(mp.max_distance_km, pp.max_distance_km)))
+  AND (dist.d IS NULL OR dist.d <= LEAST(mp.max_distance_km, pp.max_distance_km))
   AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id)
   AND NOT EXISTS (SELECT 1 FROM swipes s WHERE s.actor_id = v.user_id AND s.target_id = p.user_id)
   AND NOT EXISTS (SELECT 1 FROM blocks b

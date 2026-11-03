@@ -16,6 +16,9 @@ type Config struct {
 	Env            string
 	UploadDir      string
 	AllowedOrigins []string
+	// TrustedProxies lists proxy IPs/CIDRs whose X-Forwarded-For is honoured.
+	// Empty means "trust nobody": the TCP peer address is the client IP.
+	TrustedProxies []string
 }
 
 func (c Config) IsProduction() bool { return c.Env == "production" }
@@ -28,6 +31,7 @@ func Load() (Config, error) {
 		Env:            strings.ToLower(getenv("APP_ENV", "development")),
 		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
 		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
 	}
 
 	if cfg.DatabaseURL == "" {

@@ -260,6 +260,13 @@ func TestDatingFlow(t *testing.T) {
 		t.Fatal("no location set: distance must be null")
 	}
 
+	// Distance limits are only enforced when both people shared a location.
+	e.expect(204, "PUT", "/me/preferences", alice.Token, map[string]any{"interestedIn": []string{"man"}, "ageMin": 18, "ageMax": 99, "maxDistanceKm": 1})
+	if _, ok := e.discoverIDs(alice)[bob.ID]; !ok {
+		t.Fatal("without locations the distance limit must not hide anyone")
+	}
+	e.expect(204, "PUT", "/me/preferences", alice.Token, map[string]any{"interestedIn": []string{"man"}, "ageMin": 18, "ageMax": 99, "maxDistanceKm": 50})
+
 	// Approximate distance only, never coordinates.
 	e.expect(204, "PUT", "/me/location", alice.Token, map[string]float64{"latitude": 48.85661, "longitude": 2.35222})
 	e.expect(204, "PUT", "/me/location", bob.Token, map[string]float64{"latitude": 48.9, "longitude": 2.4})
@@ -271,6 +278,15 @@ func TestDatingFlow(t *testing.T) {
 		t.Fatalf("distance should be a bucket of 5 km, got %v", d)
 	}
 	e.expect(400, "PUT", "/me/location", alice.Token, map[string]float64{"latitude": 120, "longitude": 2})
+	// Bob is ~6 km away: beyond alice's 1 km limit he disappears, within 50 km he is back.
+	e.expect(204, "PUT", "/me/preferences", alice.Token, map[string]any{"interestedIn": []string{"man"}, "ageMin": 18, "ageMax": 99, "maxDistanceKm": 1})
+	if _, ok := e.discoverIDs(alice)[bob.ID]; ok {
+		t.Fatal("distance limit must apply when both have locations")
+	}
+	e.expect(204, "PUT", "/me/preferences", alice.Token, map[string]any{"interestedIn": []string{"man"}, "ageMin": 18, "ageMax": 99, "maxDistanceKm": 50})
+	if _, ok := e.discoverIDs(alice)[bob.ID]; !ok {
+		t.Fatal("bob should be back within 50 km")
+	}
 
 	// Like -> no match yet, repeated like -> conflict, hidden from discovery.
 	res := decode[struct {

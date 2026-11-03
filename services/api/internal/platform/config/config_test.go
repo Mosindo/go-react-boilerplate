@@ -26,3 +26,23 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://app:app@localhost:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Port != "8080" || cfg.Env != "development" || cfg.IsProduction() || len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+}
+
+func TestLoadRequiresDatabaseURL(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	if _, err := Load(); err == nil {
+		t.Fatal("DATABASE_URL must be required")
+	}
+}

@@ -1,173 +1,47 @@
-# go-react-saas Architecture
+# Architecture de Braise
 
-This document explains how `go-react-saas` is organized so new developers and AI agents can quickly navigate the repository, understand responsibilities, and extend the system without breaking its boundaries.
+## Monorepo
 
-## 1. Monorepo Structure
+- `apps/mobile` — client Expo (React Native + web)
+- `services/api` — API Go
+- `infra` — Docker Compose
+- `docs` — documentation et rôles d'agents
 
-The repository is organized into a small number of top-level directories:
-
-- `apps/`: frontend applications
-- `services/`: backend services
-- `infra/`: local infrastructure and container orchestration
-- `scripts/`: smoke tests, QA helpers, and local automation
-- `docs/`: architecture and contributor-facing documentation
-
-At the moment, the main applications are:
-- `apps/mobile`: React Native mobile client
-- `services/api`: Go API
-
-This layout keeps frontend, backend, infrastructure, and documentation concerns separated while still living in one repository.
-
-## 2. Backend Architecture
-
-The backend uses a feature-first architecture in Go with Gin.
+## Backend (`services/api`)
 
 ```text
-services/api/
-├─ cmd/api/main.go
-└─ internal/
-   ├─ platform/
-   │  ├─ config/
-   │  ├─ db/
-   │  ├─ middleware/
-   │  ├─ logger/
-   │  └─ errors/
-   └─ features/
-      ├─ auth/
-      ├─ billing/
-      ├─ users/
-      ├─ files/
-      ├─ chat/
-      ├─ posts/
-      ├─ comments/
-      └─ notifications/
+cmd/api            point d'entrée, câblage (setupRouter), tests d'intégration
+cmd/seed           données de démonstration
+internal/platform  config · db (+migrations) · middleware · ratelimit · realtime · httpx · errors · logger · handlers
+internal/features  auth · profiles · photos · matching · chat · notifications · safety
 ```
 
-`cmd/api/main.go` is the composition root. It wires the application together by loading configuration, opening the database, registering feature routes, and starting the HTTP server.
+Règles : un seul serveur HTTP (Gin) ; `handler → service → repository` ; aucun SQL dans les handlers ; erreurs métier typées (`platformerrors.AppError`) traduites par `httpx.Fail` ; préoccupations partagées dans `platform`.
 
-Each feature folder groups everything needed for that domain. Instead of scattering handlers, services, and repositories across separate global folders, the code stays close to the feature it belongs to.
+`profiles` expose `CardColumns`, `ScanCard` et `VisibleToViewer` : fragments SQL réutilisés par matching, chat et photos pour que la visibilité d'un profil (blocs, découvrabilité, match, like reçu) soit définie à un seul endroit. Les listes agrègent intérêts et photos dans la requête (pas de N+1).
 
-Current notable backend modules:
-- `auth`: registration, login, refresh, logout, `/me`, JWT access tokens, refresh-token sessions
-- `billing`: checkout and webhook handling for subscription lifecycle
-- `users`: tenant-scoped directory access
-- `chat`, `posts`, `comments`: tenant-scoped shared content flows
+### Modèle de données
 
-Each backend feature follows the same structure:
-- `handler.go`: receives HTTP requests, validates input, and returns HTTP responses
-- `service.go`: contains business rules and orchestration
-- `repository.go`: contains explicit PostgreSQL queries and persistence logic
-- `model.go`: defines domain, request, and response models
-- `routes.go`: registers the feature's endpoints with Gin
+`users`, `sessions`, `password_resets` · `profiles`, `preferences`, `interests`, `user_interests`, `photos` · `swipes`, `matches`, `conversations`, `conversation_participants`, `messages` · `blocks`, `reports`, `notifications`.
 
-This pattern improves maintainability because:
-- feature code is easier to find
-- boundaries are explicit
-- business logic stays out of handlers
-- SQL stays out of handlers and services
-- new modules can follow a predictable template
+Contraintes notables : `matches.user_a < user_b` (une seule ligne par paire), `swipes` PK `(actor_id, target_id)`, `photos (user_id, position)` unique différé (réordonnancement atomique), CHECK sur genres, âges, longueurs, `lat/lng` simultanément nuls. Toutes les clés étrangères vers `users` sont `ON DELETE CASCADE`.
 
-## 3. Platform Layer
+### Flux critiques
 
-The `platform` layer contains infrastructure shared by all backend features.
+- **Swipe** : transaction → verrou consultatif de paire → profil complet ? cible visible ? insertion unique → si like réciproque : match + conversation + participants + 2 notifications → commit → événements WebSocket.
+- **Chat** : l'appartenance à la conversation est vérifiée à chaque lecture/écriture ; un non-participant reçoit 404 (pas de fuite d'existence). Les curseurs sont les identifiants de message ; `last_read_message_id` et `cleared_up_to_id` portent l'état lu et la suppression locale.
+- **Photos** : `Process` valide (taille, signature de contenu, dimensions), décode, redimensionne, ré-encode en JPEG ; `Storage` abstrait le stockage (disque local aujourd'hui).
+- **Temps réel** : `realtime.Hub` (en mémoire) ; auth par premier message ; `Publish` ne bloque jamais.
 
-- `config/`: loads runtime configuration from environment variables such as `DATABASE_URL`, `JWT_SECRET`, `PORT`, and optional Stripe billing keys
-- `db/`: initializes the PostgreSQL connection pool and runs embedded migrations
-- `middleware/`: contains reusable HTTP middleware such as auth checks, request metadata handling, and logging hooks
-- `logger/`: provides shared logging utilities so features do not each invent their own logging style
-- `errors/`: provides shared API error types and helpers for consistent error responses
-
-The purpose of this layer is to centralize technical infrastructure so feature modules stay focused on domain behavior.
-
-## 4. Database Design
-
-The API uses PostgreSQL with explicit SQL queries. There is no ORM.
-
-This is an intentional choice:
-- SQL stays visible and reviewable
-- query behavior is explicit
-- performance characteristics are easier to reason about
-- schema changes stay close to the database design
-
-The generic modules rely on core tables such as:
-- `users`: account records and identity data
-- `organizations`: tenant identity for multi-tenant SaaS isolation
-- `subscriptions`: billing state linked to organizations
-- `sessions`: refresh-token session persistence
-- `posts`: generic user-generated content
-- `comments`: responses attached to posts
-- `conversations`: chat threads
-- `messages`: individual chat messages
-- `notifications`: system or user-facing notifications
-- `files`: uploaded file metadata and ownership
-
-Related support tables such as `conversation_participants` and `votes` extend these core capabilities.
-
-Multi-tenant isolation is centered on `organizations`:
-- users belong to an `organization_id`
-- subscriptions belong to an `organization_id`
-- tenant-scoped repository queries limit shared content and chat access by organization
-
-## 5. Frontend Architecture
-
-The mobile frontend lives under `apps/mobile/src/`:
+## Client (`apps/mobile/src`)
 
 ```text
-apps/mobile/src/
-├─ api/
-├─ hooks/
-├─ components/
-├─ screens/
-├─ store/
-├─ theme/
-└─ utils/
+config.ts · theme.ts · storage.ts
+api/        client (refresh automatique, timeouts), types, endpoints typés
+auth/       session (jetons), AuthContext
+realtime/   WebSocket + reconnexion
+features/   profile (brouillon + formulaires + photos), discover (SwipeCard), match (overlay), safety (signalement)
+screens/    écrans · navigation/ RootNavigator · ui/ composants
 ```
 
-Responsibilities:
-- `api/`: HTTP client functions and endpoint wrappers
-- `hooks/`: React Query-powered auth/session hooks
-- `components/`: reusable UI building blocks
-- `screens/`: route-level UI and screen orchestration
-- `store/`: access-token and refresh-token persistence
-- `theme/`: design tokens and shared styling primitives
-- `utils/`: shared helpers used across the app
-
-Screens should orchestrate the UI, while shared logic belongs in reusable modules such as API clients, helpers, components, and storage utilities. This keeps screens smaller and makes behavior easier to reuse across future clients.
-
-Session behavior is centralized:
-- auth state lives in hooks rather than screens
-- React Query owns current-user fetching and session restoration
-- screens consume hooks and API modules instead of issuing direct network requests
-
-## 6. Adding a New Feature
-
-New backend features should follow the same feature-first pattern:
-
-```text
-internal/features/example/
-├─ handler.go
-├─ service.go
-├─ repository.go
-├─ model.go
-└─ routes.go
-```
-
-Recommended process:
-
-1. Add or update the database migration if the feature needs persistence.
-2. Create a new folder under `internal/features/<feature>`.
-3. Define models in `model.go`.
-4. Implement database access in `repository.go`.
-5. Implement business logic in `service.go`.
-6. Expose HTTP handlers in `handler.go`.
-7. Register routes in `routes.go`.
-8. Wire the feature from `cmd/api/main.go`.
-
-When adding a feature, preserve the same architectural rules:
-- thin handlers
-- explicit services
-- SQL in repositories
-- reusable platform infrastructure
-- clear, predictable module boundaries
-
-This consistency is what makes `go-react-saas` scalable as more features are added.
+Aucun accès réseau direct depuis les écrans : tout passe par `api/`. L'état serveur est géré par TanStack Query ; les événements WebSocket invalident les caches concernés.

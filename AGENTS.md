@@ -1,30 +1,18 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Braise
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Braise`, a 100% free dating app (Go API + Expo client) built from a fullstack boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Braise is a free dating app. Hard product rules:
+- no subscription, paywall, paid boost, artificial like limit, locked essential feature, or mandatory ads
+- never expose exact location, e-mail, or other users' private data
+- every business rule is enforced server-side
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Modules: auth, profiles, photos, matching (discover/swipes/matches), chat (+ realtime), notifications, safety (blocks/reports).
 
 ---
 
@@ -65,12 +53,12 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -128,14 +116,15 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+Required indexes (all present in migrations):
+- `users.email` (unique)
+- `photos (user_id, position)` unique + `(user_id, created_at)`
+- `swipes (actor_id, target_id)` primary key, `(target_id, action, created_at)`
+- `matches (user_a, user_b)` unique
+- `conversation_participants (conversation_id, user_id)` primary key
+- `messages (conversation_id, created_at, id)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `blocks (blocker_id, blocked_id)` primary key
 
 ---
 
@@ -143,20 +132,19 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `go test ./...` with `DATABASE_URL` set (integration tests skip without it)
 - `go build ./cmd/api`
 - Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`):
+- Health, auth guards, refresh rotation, password reset, account deletion
+- Profile completeness, discovery filters, swipes, concurrent match, unmatch
+- Chat permissions, read state, local deletion, WebSocket delivery
+- Photos (upload validation, ordering, access), blocks, reports
 
 ---
 
@@ -175,13 +163,8 @@ Mandatory rules to avoid recurring environment issues:
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
-  - notifications read flow
+- A frontend is only "ready" after the browser E2E in `apps/mobile/e2e/web-flow.mjs` passes:
+  register, onboarding, discover, like, match, chat send/receive.
 
 ---
 

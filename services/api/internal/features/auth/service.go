@@ -97,6 +97,9 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizedEmail)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
+			// Burn the same CPU as a real check so response time does not reveal
+			// whether the account exists.
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 			return Tokens{}, User{}, ErrInvalidCredentials
 		}
 		return Tokens{}, User{}, err
@@ -265,6 +268,8 @@ func toUser(stored StoredUser) User {
 		CreatedAt: stored.CreatedAt,
 	}
 }
+
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equalizer"), bcrypt.DefaultCost)
 
 const maxPasswordBytes = 72 // bcrypt silently truncates beyond this
 

@@ -1,12 +1,21 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Braise",
+    "slug": "braise",
+    "scheme": "braise",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "web": { "bundler": "metro" },
+    "plugins": [
+      ["expo-image-picker", { "photosPermission": "Braise a besoin d'accéder à vos photos pour les ajouter à votre profil." }],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Braise utilise votre position pour proposer des profils proches. Elle est arrondie et jamais partagée telle quelle."
+        }
+      ]
     ]
   }
 }
