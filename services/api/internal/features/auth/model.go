@@ -7,19 +7,18 @@ import (
 )
 
 type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,min=8,max=128"`
+	Email    string `json:"email" binding:"required,max=254"`
+	Password string `json:"password" binding:"required,max=128"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    string `json:"email" binding:"required,max=254"`
 	Password string `json:"password" binding:"required,max=128"`
 }
 
@@ -27,22 +26,22 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
 }
 
-type LogoutRequest struct {
-	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
+type LogoutRequest = RefreshRequest
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,max=254"`
 }
 
-type MeResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,max=254"`
+	Code        string `json:"code" binding:"required,max=16"`
+	NewPassword string `json:"newPassword" binding:"required,max=128"`
 }
 
 type AuthResponse struct {
-	Token        string     `json:"token"`
-	AccessToken  string     `json:"accessToken"`
-	RefreshToken string     `json:"refreshToken"`
-	User         MeResponse `json:"user"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	User         User   `json:"user"`
 }
 
 type Tokens struct {
@@ -51,8 +50,7 @@ type Tokens struct {
 }
 
 type AccessTokenClaims struct {
-	UserID         string `json:"uid"`
-	OrganizationID string `json:"oid"`
-	SessionID      string `json:"sid"`
+	UserID    string `json:"uid"`
+	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
 }

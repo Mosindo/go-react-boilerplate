@@ -2,10 +2,13 @@ package auth
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc) {
-	r.POST("/auth/register", handler.Register)
-	r.POST("/auth/login", handler.Login)
-	r.POST("/auth/refresh", handler.Refresh)
-	r.POST("/auth/logout", handler.Logout)
-	r.GET("/me", requireUser, handler.Me)
+// RegisterRoutes mounts auth routes. `strict` throttles credential endpoints.
+func RegisterRoutes(r gin.IRouter, h *Handler, requireUser, strict gin.HandlerFunc) {
+	r.POST("/auth/register", strict, h.Register)
+	r.POST("/auth/login", strict, h.Login)
+	r.POST("/auth/refresh", h.Refresh)
+	r.POST("/auth/logout", h.Logout)
+	r.POST("/auth/password/forgot", strict, h.ForgotPassword)
+	r.POST("/auth/password/reset", strict, h.ResetPassword)
+	r.GET("/me", requireUser, h.Me)
 }

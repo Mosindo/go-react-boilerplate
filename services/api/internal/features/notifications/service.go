@@ -2,118 +2,89 @@ package notifications
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"strings"
-	"unicode/utf8"
+	"log"
+	"net/http"
+	"time"
+
+	platformerrors "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/realtime"
 )
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
-)
+// Notifier is the interface other features use to emit notifications.
+type Notifier interface {
+	Notify(ctx context.Context, userID, kind, title, body string, data map[string]string)
+	// NotifyOnce coalesces: no new notification while one is unread for data[key].
+	NotifyOnce(ctx context.Context, userID, kind, title, body string, data map[string]string, key string)
+}
 
 type Service struct {
 	repo Repository
+	pub  realtime.Publisher
 }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, pub realtime.Publisher) *Service {
+	return &Service{repo: repo, pub: pub}
 }
 
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
+// Notify persists a notification and pushes it in real time. Failures are
+// logged and never break the business action that triggered the notification.
+func (s *Service) Notify(ctx context.Context, userID, kind, title, body string, data map[string]string) {
+	raw, _ := json.Marshal(data)
+	n, err := s.repo.Create(ctx, userID, kind, title, body, raw)
 	if err != nil {
-		return nil, err
+		log.Printf(`{"event":"notify_error","error":%q}`, err.Error())
+		return
 	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
-	}
-	return payload, nil
+	s.pub.Publish(userID, realtime.Event{Type: "notification.new", Data: n})
 }
 
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
+func (s *Service) NotifyOnce(ctx context.Context, userID, kind, title, body string, data map[string]string, key string) {
+	raw, _ := json.Marshal(data)
+	n, err := s.repo.CreateUnique(ctx, userID, kind, title, body, raw, key, data[key])
 	if err != nil {
-		return Notification{}, err
+		log.Printf(`{"event":"notify_error","error":%q}`, err.Error())
+		return
 	}
-	return mapStoredNotification(notification), nil
+	if n != nil {
+		s.pub.Publish(userID, realtime.Event{Type: "notification.new", Data: *n})
+	}
 }
 
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
-	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
+func (s *Service) List(ctx context.Context, userID, cursor string, limit int) (ListResponse, error) {
+	var before *time.Time
+	if cursor != "" {
+		t, err := time.Parse(time.RFC3339Nano, cursor)
+		if err != nil {
+			return ListResponse{}, platformerrors.New(http.StatusBadRequest, "validation", "invalid cursor")
 		}
-		return Notification{}, err
+		before = &t
 	}
-	return mapStoredNotification(notification), nil
+	items, err := s.repo.List(ctx, userID, before, limit+1)
+	if err != nil {
+		return ListResponse{}, err
+	}
+	resp := ListResponse{}
+	if len(items) > limit {
+		items = items[:limit]
+		resp.NextCursor = items[len(items)-1].CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	resp.Notifications = items
+	if resp.Unread, err = s.repo.UnreadCount(ctx, userID); err != nil {
+		return ListResponse{}, err
+	}
+	return resp, nil
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
+func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
+	err := s.repo.MarkRead(ctx, userID, id)
+	if errors.Is(err, ErrNotFound) {
+		return platformerrors.New(http.StatusNotFound, "not_found", "notification not found")
 	}
+	return err
 }
 
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
-	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
-	}
-	return limit
-}
-
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
+	return s.repo.MarkAllRead(ctx, userID)
 }
