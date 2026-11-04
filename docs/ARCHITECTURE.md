@@ -43,4 +43,4 @@ SQL explicite uniquement dans le repository. Un seul serveur HTTP (Gin dans `htt
 - **Rate limiting** : seaux à jetons en mémoire par IP (auth) ou par utilisateur (swipes, messages, uploads, signalements) ; garde‑fous anti‑abus, pas des limites produit. `TRUSTED_PROXIES` doit être défini derrière un proxy.
 
 ## Mobile
-Voir `apps/mobile/README.md`. Tout accès réseau passe par `src/api` (client typé, refresh de jeton, WebSocket) ; l'UI ne fait jamais de `fetch`.
+Tout accès réseau passe par `src/api` (client typé, refresh de jeton, WebSocket) ; l'UI ne fait jamais de `fetch`.
