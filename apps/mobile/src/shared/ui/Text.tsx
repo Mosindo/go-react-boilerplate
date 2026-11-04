@@ -1,96 +1,38 @@
 import React from "react";
-import { StyleSheet, Text as RNText, type StyleProp, type TextProps as RNTextProps, type TextStyle } from "react-native";
-import { colors, fontWeights, typography } from "./tokens";
+import { Text as RNText, type TextProps, type TextStyle } from "react-native";
+import { useColors, type Colors } from "./theme";
 
-export type TextVariant = "body" | "label" | "title" | "heading" | "caption" | "eyebrow" | "button";
-export type TextTone = "default" | "muted" | "primary" | "secondary" | "danger" | "success" | "inverse";
-export type TextWeight = "regular" | "medium" | "semibold" | "bold";
+export type TextVariant = "title" | "heading" | "body" | "label" | "caption";
+type Tone = "default" | "muted" | "primary" | "danger" | "accent" | "onPrimary";
 
-export type TextProps = RNTextProps & {
-  variant?: TextVariant;
-  tone?: TextTone;
-  weight?: TextWeight;
-  style?: StyleProp<TextStyle>;
+const variants: Record<TextVariant, TextStyle> = {
+  title: { fontSize: 30, lineHeight: 36, fontWeight: "700", letterSpacing: -0.4 },
+  heading: { fontSize: 20, lineHeight: 26, fontWeight: "700" },
+  body: { fontSize: 16, lineHeight: 22 },
+  label: { fontSize: 14, lineHeight: 20, fontWeight: "600" },
+  caption: { fontSize: 12, lineHeight: 16 },
 };
 
-const styles = StyleSheet.create({
-  base: {
-    color: colors.text,
-    ...typography.body
-  },
-  regular: {
-    fontWeight: fontWeights.regular
-  },
-  medium: {
-    fontWeight: fontWeights.medium
-  },
-  semibold: {
-    fontWeight: fontWeights.semibold
-  },
-  bold: {
-    fontWeight: fontWeights.bold
-  },
-  defaultTone: {
-    color: colors.text
-  },
-  mutedTone: {
-    color: colors.textMuted
-  },
-  primaryTone: {
-    color: colors.primary
-  },
-  secondaryTone: {
-    color: colors.secondary
-  },
-  dangerTone: {
-    color: colors.danger
-  },
-  successTone: {
-    color: colors.success
-  },
-  inverseTone: {
-    color: colors.inverse
+function toneColor(tone: Tone, c: Colors): string {
+  switch (tone) {
+    case "muted":
+      return c.textMuted;
+    case "primary":
+      return c.primary;
+    case "danger":
+      return c.danger;
+    case "accent":
+      return c.accent;
+    case "onPrimary":
+      return c.onPrimary;
+    default:
+      return c.text;
   }
-});
+}
 
-const variantStyles: Record<TextVariant, TextStyle> = {
-  body: typography.body,
-  label: typography.label,
-  title: typography.title,
-  heading: typography.heading,
-  caption: typography.caption,
-  eyebrow: typography.eyebrow,
-  button: typography.button
-};
+type Props = TextProps & { variant?: TextVariant; tone?: Tone };
 
-const weightStyles: Record<TextWeight, TextStyle> = {
-  regular: styles.regular,
-  medium: styles.medium,
-  semibold: styles.semibold,
-  bold: styles.bold
-};
-
-const toneStyles: Record<TextTone, TextStyle> = {
-  default: styles.defaultTone,
-  muted: styles.mutedTone,
-  primary: styles.primaryTone,
-  secondary: styles.secondaryTone,
-  danger: styles.dangerTone,
-  success: styles.successTone,
-  inverse: styles.inverseTone
-};
-
-export function Text({
-  children,
-  style,
-  tone = "default",
-  variant = "body",
-  weight = "regular",
-  ...props
-}: TextProps) {
-  return (
-    <RNText style={[styles.base, variantStyles[variant], weightStyles[weight], toneStyles[tone], style]} {...props}>
-      {children}
-    </RNText>
-  );
+export function Text({ variant = "body", tone = "default", style, ...rest }: Props) {
+  const colors = useColors();
+  return <RNText accessibilityRole={variant === "title" || variant === "heading" ? "header" : undefined} style={[variants[variant], { color: toneColor(tone, colors) }, style]} {...rest} />;
 }

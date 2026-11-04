@@ -1,12 +1,28 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Liane",
+    "slug": "liane",
+    "scheme": "liane",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.liane.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Liane a besoin d'accéder à vos photos pour que vous puissiez choisir celles de votre profil.",
+        "NSLocationWhenInUseUsageDescription": "Liane utilise votre position, arrondie à environ 1 km, pour vous montrer des profils proches de vous."
+      }
+    },
+    "android": {
+      "package": "app.liane.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "plugins": [
+      "expo-secure-store",
+      ["expo-image-picker", { "photosPermission": "Liane a besoin d'accéder à vos photos pour que vous puissiez choisir celles de votre profil." }],
+      ["expo-location", { "locationWhenInUsePermission": "Liane utilise votre position, arrondie à environ 1 km, pour vous montrer des profils proches de vous." }]
     ]
   }
 }
