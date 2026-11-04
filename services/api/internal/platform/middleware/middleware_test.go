@@ -116,3 +116,16 @@ func TestRateLimitMiddlewareReturns429(t *testing.T) {
 		t.Fatalf("codes: %v", codes)
 	}
 }
+
+func TestValidRequestID(t *testing.T) {
+	for _, ok := range []string{"abc-123", "req_1.2", "9f0fc27808b8295f47f5d303"} {
+		if !validRequestID(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	for _, bad := range []string{"", "a b", "x\r\nSet-Cookie: a=b", `"quoted"`, string(make([]byte, 65))} {
+		if validRequestID(bad) {
+			t.Errorf("%q should be invalid", bad)
+		}
+	}
+}

@@ -128,3 +128,13 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// Cleanup removes expired data that is no longer useful: dead sessions
+// (expired or revoked more than a week ago) and old password reset codes.
+func Cleanup(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '7 days' OR revoked_at < NOW() - INTERVAL '7 days'`); err != nil {
+		return err
+	}
+	_, err := pool.Exec(ctx, `DELETE FROM password_resets WHERE expires_at < NOW() - INTERVAL '1 day'`)
+	return err
+}

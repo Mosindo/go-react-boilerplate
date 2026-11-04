@@ -72,6 +72,18 @@ func main() {
 		trustedProxies: cfg.TrustedProxies, store: store, mailer: m,
 	}
 
+	go func() { // janitor: purge dead sessions and reset codes hourly
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for range t.C {
+			cctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if err := db.Cleanup(cctx, pool); err != nil {
+				log.Printf("cleanup: %v", err)
+			}
+			cancel()
+		}
+	}()
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           setupRouter(a),
