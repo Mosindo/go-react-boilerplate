@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Liane Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -8,7 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Dating domain: profiles, preferences, interests, photos (signed URLs, sanitised uploads), discovery, swipes, matches.
+- Real-time chat over WebSocket with unread counters and read receipts; notifications.
+- Blocking, reporting, password recovery by emailed code, account deletion, rate limiting.
+- Tracked SQL migrations, demo seed (`cmd/seed`), Go integration tests, `scripts/smoke-api.sh`.
+- New Expo client "Liane" (see apps/mobile).
+
+### Removed
+- Generic SaaS modules (posts, comments, files, users directory, Stripe billing, organizations) and the unused Tamagui setup.
 
 ## [0.1.0] - 2026-03-17
 

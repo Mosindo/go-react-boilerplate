@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Liane.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Keep the product 100% free: no paywall, premium tier or artificial limits.
+- Respect the privacy rules in AGENTS.md (no exact location, no data leaks).
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -32,10 +32,10 @@ Recommended types:
 ## Branch Naming Conventions
 
 Use short, descriptive branch names:
-- `feat/user-profiles`
+- `feat/profile-prompts`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 

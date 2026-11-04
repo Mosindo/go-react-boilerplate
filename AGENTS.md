@@ -1,30 +1,24 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Liane
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Liane**, a 100% free dating application (Go API + Expo/React Native client).
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+A modern, fully free dating app: accounts, profiles, photos, discovery, likes/matches, real-time chat,
+notifications, preferences, privacy, block/report, account deletion.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Product rules that must never be broken:
+- No subscription, paywall, paid boost, artificial like limit, locked essential feature, or mandatory ads.
+  (Rate limits exist only as anti-abuse safeguards and must stay generous.)
+- Adults only (18+), enforced server-side.
+- Never expose exact location, coordinates, email or birth date to other users.
+- Every business rule is enforced server-side; the client is never trusted.
 
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Backend features:
+- auth, account, profiles, photos, discovery (swipes + matches), chat (+ WebSocket), notifications, safety (blocks + reports)
 
 ---
 
@@ -56,21 +50,10 @@ Core reusable modules:
 Target structure:
 
 `cmd/api/main.go`  
+`cmd/seed/main.go` (demo data, refuses production)  
 `internal/`
-- `platform/`
-  - `config/`
-  - `db/`
-  - `middleware/`
-  - `logger/`
-  - `errors/`
-- `features/`
-  - `auth/`
-  - `users/`
-  - `files/`
-  - `chat/`
-  - `posts/`
-  - `comments/`
-  - `notifications/`
+- `platform/` (config, db, middleware, httpx, errors, logger, mailer, media, geo, realtime)
+- `features/` (auth, account, profiles, photos, discovery, chat, notifications, safety)
 
 Each feature should contain:
 - `handler.go`
@@ -128,35 +111,28 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+Indexes live in `internal/platform/db/migrations/` (users.email, photos(user_id, position), swipes, matches,
+conversation_participants(user_id, conversation_id), messages(conversation_id, created_at, id), notifications(user_id, created_at), …).
+New list endpoints need an index that matches their ORDER BY.
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any backend delivery (from `services/api`):
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `TEST_DATABASE_URL=postgres://app:app@localhost:5432/app_test?sslmode=disable go test -race ./...`
+  (the integration tests WIPE that database; without the variable they are skipped)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/*_test.go`): auth lifecycle and recovery, profile validation,
+location privacy, matching (incl. concurrent likes), chat permissions, block/report, photos, account deletion, notifications, WebSocket.
+`scripts/smoke-api.sh` runs the same journey over real HTTP against a running stack.
 
 ---
 
@@ -171,16 +147,14 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+  - register, onboarding (profile, preferences, photo)
+  - discover loads, like, match
+  - chat send/read (real time)
   - notifications read flow
 
 ---
@@ -207,7 +181,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Adding any paid/premium mechanic
 
 ---
 

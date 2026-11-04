@@ -26,3 +26,17 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestProductionRequiresSMTP(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://u:p@h:5432/app")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "production")
+	if _, err := Load(); err == nil {
+		t.Fatal("production without SMTP must be refused: password recovery would silently log codes")
+	}
+	t.Setenv("SMTP_ADDR", "smtp.example.net:587")
+	t.Setenv("SMTP_FROM", "no-reply@example.net")
+	if _, err := Load(); err != nil {
+		t.Fatalf("production with SMTP: %v", err)
+	}
+}
