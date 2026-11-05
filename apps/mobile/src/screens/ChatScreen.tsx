@@ -1,415 +1,342 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
+  TextInput,
   View
 } from "react-native";
-import {
-  listChatMessages,
-  listChats,
-  listUsers,
-  sendChatMessage,
-  type ChatMessage,
-  type ChatSummary,
-  type PlatformUser
-} from "../api/platform";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Header, ScreenContainer, Section } from "../shared/layout";
-import { Avatar, Button, Card, Input, ListItem, MessageItem, Notice, Text, colors, radii, spacing } from "../shared/ui";
+import { Ionicons } from "@expo/vector-icons";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ApiError } from "../api/client";
+import { chatApi, discoveryApi } from "../api/endpoints";
+import type { Conversation, Message } from "../api/types";
+import { useAuth } from "../auth/AuthContext";
+import { useSafetyDialogs } from "../features/SafetyMenu";
+import { errorMessage } from "../lib/errors";
+import { formatTimestamp } from "../lib/dates";
+import { flattenMessages, insertMessage, type MessagePages } from "../lib/messages";
+import { queryKeys } from "../lib/queryKeys";
+import type { MainStackParams } from "../navigation/types";
+import { radii, useTheme } from "../theme";
+import { Dialog, EmptyState, ErrorState, LoadingState, PhotoImage, Text, useToast } from "../ui";
 
-type ChatScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+type Props = NativeStackScreenProps<MainStackParams, "Chat">;
 
-type ChatTarget = {
-  user: PlatformUser;
-  lastMessage?: ChatSummary["lastMessage"];
-};
+export function ChatScreen({ route, navigation }: Props) {
+  const { conversationId, peerId, peerName, peerPhotoId } = route.params;
+  const t = useTheme();
+  const { user } = useAuth();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [text, setText] = useState("");
+  const [menu, setMenu] = useState(false);
+  const [confirm, setConfirm] = useState<"hide" | "unmatch" | null>(null);
+  const listRef = useRef<FlatList<Message>>(null);
 
-const CHAT_LIST_POLL_MS = 8000;
-const CHAT_MESSAGES_POLL_MS = 3000;
+  const leave = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: queryKeys.conversations });
+    qc.removeQueries({ queryKey: queryKeys.messages(conversationId) });
+    navigation.goBack();
+  }, [qc, conversationId, navigation]);
+  const safety = useSafetyDialogs({ userId: peerId, name: peerName, onDone: leave });
 
-function formatChatError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error) || !error.message) {
-    return fallback;
-  }
-  const message = error.message.toLowerCase();
-  if (message.includes("network") || message.includes("failed to fetch")) {
-    return "Network error. Check connection and retry.";
-  }
-  if (message.includes("timeout")) {
-    return "Request timed out. Please retry.";
-  }
-  return error.message;
-}
-
-function chatSummaryToTarget(chat: ChatSummary): ChatTarget {
-  return { user: chat.user, lastMessage: chat.lastMessage };
-}
-
-export default function ChatScreen({ token, currentUserId }: ChatScreenProps) {
-  const [chatList, setChatList] = useState<ChatSummary[]>([]);
-  const [directory, setDirectory] = useState<PlatformUser[]>([]);
-  const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [backgroundError, setBackgroundError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const lobbyInFlight = useRef(false);
-  const messagesInFlight = useRef(false);
-
-  const loadLobby = useCallback(async (silent = false) => {
-    if (lobbyInFlight.current) {
-      return;
+  const q = useInfiniteQuery({
+    queryKey: queryKeys.messages(conversationId),
+    queryFn: ({ pageParam }) => chatApi.messages(conversationId, pageParam),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => {
+      const oldest = last.messages[last.messages.length - 1];
+      return last.hasMore && oldest ? oldest.id : undefined;
     }
+  });
+  const messages = flattenMessages(q.data as MessagePages | undefined);
+  const newestId = messages[0]?.id;
+  const newestIsMine = messages[0]?.senderId === user?.id;
 
-    lobbyInFlight.current = true;
-    if (!silent) {
-      setLoading(true);
-      setError(null);
-    }
+  // Mark as read on open and whenever a message from the peer arrives while visible.
+  const markRead = useMutation({
+    mutationFn: () => chatApi.markRead(conversationId),
+    onSuccess: () =>
+      qc.setQueryData<Conversation[]>(queryKeys.conversations, (old) =>
+        old?.map((c) => (c.id === conversationId ? { ...c, unreadCount: 0 } : c))
+      )
+  });
+  useEffect(() => {
+    if (newestId !== undefined && !newestIsMine) markRead.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newestId, newestIsMine]);
 
-    try {
-      const [nextChats, nextUsers] = await Promise.all([listChats(token), listUsers(token)]);
-      const filteredUsers = nextUsers.filter((user) => user.id !== currentUserId);
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: () => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Voir le profil de ${peerName}`}
+          onPress={() => navigation.navigate("UserProfile", { userId: peerId })}
+          style={styles.title}
+        >
+          <PhotoImage photoId={peerPhotoId} style={styles.titleAvatar} />
+          <Text variant="heading">{peerName}</Text>
+        </Pressable>
+      ),
+      headerRight: () => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Options de la conversation"
+          onPress={() => setMenu(true)}
+          hitSlop={12}
+        >
+          <Ionicons name="ellipsis-horizontal" size={24} color={t.text} />
+        </Pressable>
+      )
+    });
+  }, [navigation, peerId, peerName, peerPhotoId, t.text]);
 
-      setChatList(nextChats);
-      setDirectory(filteredUsers);
-      setBackgroundError(null);
-      setSelectedChat((current) => {
-        if (!current) {
-          return null;
-        }
-
-        const existingChat = nextChats.find((chat) => chat.user.id === current.user.id);
-        if (existingChat) {
-          return chatSummaryToTarget(existingChat);
-        }
-
-        const existingUser = filteredUsers.find((user) => user.id === current.user.id);
-        if (existingUser) {
-          return { user: existingUser, lastMessage: current.lastMessage };
-        }
-
-        return current;
-      });
-    } catch (loadError) {
-      const formattedError = formatChatError(loadError, "could not load conversations");
-      if (silent) {
-        setBackgroundError(formattedError);
-      } else {
-        setError(formattedError);
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-      lobbyInFlight.current = false;
-    }
-  }, [token, currentUserId]);
-
-  const loadMessages = useCallback(
-    async (chat: ChatTarget, silent = false): Promise<boolean> => {
-      if (messagesInFlight.current) {
-        return true;
-      }
-
-      messagesInFlight.current = true;
-      if (!silent) {
-        setLoading(true);
-        setError(null);
-      }
-
-      try {
-        const nextMessages = await listChatMessages(token, chat.user.id);
-        setMessages(nextMessages);
-        setBackgroundError(null);
-        return true;
-      } catch (loadError) {
-        const formattedError = formatChatError(loadError, "could not load messages");
-        if (silent) {
-          setBackgroundError(formattedError);
-        } else {
-          setError(formattedError);
-        }
-        return false;
-      } finally {
-        if (!silent) {
-          setLoading(false);
-        }
-        messagesInFlight.current = false;
-      }
+  const send = useMutation({
+    mutationFn: (body: string) => chatApi.send(conversationId, body),
+    onSuccess: (msg) => {
+      qc.setQueryData<MessagePages>(queryKeys.messages(conversationId), (old) =>
+        insertMessage(old, msg)
+      );
+      qc.setQueryData<Conversation[]>(queryKeys.conversations, (old) =>
+        old
+          ? [
+              ...old
+                .filter((c) => c.id === conversationId)
+                .map((c) => ({
+                  ...c,
+                  lastMessage: {
+                    id: msg.id,
+                    senderId: msg.senderId,
+                    body: msg.body,
+                    createdAt: msg.createdAt
+                  },
+                  activityAt: msg.createdAt,
+                  unreadCount: 0
+                })),
+              ...old.filter((c) => c.id !== conversationId)
+            ]
+          : old
+      );
     },
-    [token]
-  );
-
-  useEffect(() => {
-    loadLobby();
-  }, [loadLobby]);
-
-  async function openChat(target: ChatTarget) {
-    setSelectedChat(target);
-    setError(null);
-    setBackgroundError(null);
-    const ok = await loadMessages(target);
-    if (!ok) {
-      setMessages([]);
+    onError: (err, body) => {
+      setText((cur) => cur || body);
+      toast.show(errorMessage(err), "error");
     }
+  });
+
+  const submit = () => {
+    const body = text.trim();
+    if (!body || send.isPending) return;
+    setText("");
+    send.mutate(body);
+  };
+
+  const hide = useMutation({
+    mutationFn: () => chatApi.hide(conversationId),
+    onSuccess: leave,
+    onError: (e) => toast.show(errorMessage(e), "error")
+  });
+  const unmatch = useMutation({
+    mutationFn: async () => {
+      const convo = qc
+        .getQueryData<Conversation[]>(queryKeys.conversations)
+        ?.find((c) => c.id === conversationId);
+      if (!convo) throw new Error("missing");
+      await discoveryApi.unmatch(convo.matchId);
+    },
+    onSuccess: () => {
+      toast.show("Match annulé.");
+      leave();
+    },
+    onError: (e) => toast.show(errorMessage(e), "error")
+  });
+
+  // The conversation disappears (unmatch / block by the other side): leave gracefully.
+  const gone = q.error instanceof ApiError && q.error.status === 404;
+
+  if (q.isLoading) return <LoadingState />;
+  if (gone) {
+    return (
+      <EmptyState
+        icon="heart-dislike-outline"
+        title="Conversation terminée"
+        message="Ce match n'est plus actif."
+        actionLabel="Retour"
+        onAction={leave}
+      />
+    );
   }
+  if (q.isError)
+    return <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />;
 
-  async function onSend() {
-    if (!selectedChat) {
-      return;
-    }
-
-    const content = draft.trim();
-    if (!content) {
-      return;
-    }
-
-    setSending(true);
-    setError(null);
-    setBackgroundError(null);
-    try {
-      const sent = await sendChatMessage(token, selectedChat.user.id, content);
-      setMessages((prev) => [...prev, sent]);
-      setDraft("");
-      await loadLobby(true);
-      await loadMessages(selectedChat, true);
-    } catch (sendError) {
-      setError(formatChatError(sendError, "could not send message"));
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function reloadCurrentView() {
-    setBackgroundError(null);
-    if (selectedChat) {
-      await loadMessages(selectedChat);
-      return;
-    }
-    await loadLobby();
-  }
-
-  useEffect(() => {
-    if (selectedChat) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      void loadLobby(true);
-    }, CHAT_LIST_POLL_MS);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [selectedChat, loadLobby]);
-
-  useEffect(() => {
-    if (!selectedChat) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      void loadMessages(selectedChat, true);
-      void loadLobby(true);
-    }, CHAT_MESSAGES_POLL_MS);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [selectedChat, loadMessages, loadLobby]);
-
-  const availableContacts = useMemo(
-    () => directory.filter((user) => !chatList.some((chat) => chat.user.id === user.id)),
-    [directory, chatList]
-  );
-
-  const title = useMemo(() => (selectedChat ? selectedChat.user.email : "Chat"), [selectedChat]);
-  const subtitle = selectedChat ? "Direct conversation" : "Conversations and team directory";
+  const lastMineIndex = messages.findIndex((m) => m.senderId === user?.id);
 
   return (
-    <ScreenContainer testID="chat-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || sending}
-            label="Reload"
-            onPress={reloadCurrentView}
-            size="sm"
-            testID="chat-reload-button"
-            variant="outline"
+    <SafeAreaView style={[styles.flex, { backgroundColor: t.bg }]} edges={["bottom"]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
+        <FlatList
+          ref={listRef}
+          inverted
+          data={messages}
+          keyExtractor={(m) => String(m.id)}
+          contentContainerStyle={styles.list}
+          onEndReached={() => {
+            if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage();
+          }}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={q.isFetchingNextPage ? <LoadingState label="" /> : null}
+          ListEmptyComponent={
+            <View style={styles.invertedEmpty}>
+              <Text tone="muted" style={styles.centerText}>
+                C'est un match ! Dites bonjour à {peerName} 👋
+              </Text>
+            </View>
+          }
+          renderItem={({ item, index }) => {
+            const mine = item.senderId === user?.id;
+            const showTime = index === 0 || messages[index - 1]?.senderId !== item.senderId;
+            return (
+              <View style={[styles.bubbleRow, mine ? styles.right : styles.left]}>
+                <View
+                  style={[styles.bubble, { backgroundColor: mine ? t.bubbleMine : t.bubbleTheirs }]}
+                >
+                  <Text style={{ color: mine ? "#fff" : t.text }}>{item.body}</Text>
+                </View>
+                {showTime || index === lastMineIndex ? (
+                  <Text variant="caption" tone="muted" style={styles.meta}>
+                    {formatTimestamp(item.createdAt)}
+                    {mine && index === lastMineIndex && item.read ? " · Lu" : ""}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          }}
+        />
+        <View style={[styles.composer, { borderColor: t.border, backgroundColor: t.surface }]}>
+          <TextInput
+            accessibilityLabel="Votre message"
+            value={text}
+            onChangeText={setText}
+            placeholder="Écrire un message…"
+            placeholderTextColor={t.textMuted}
+            multiline
+            maxLength={2000}
+            style={[styles.input, { color: t.text, backgroundColor: t.bg }]}
           />
-        }
-        eyebrow="Inbox"
-        leading={
-          selectedChat ? (
-            <Button
-              label="Back"
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Envoyer"
+            disabled={!text.trim() || send.isPending}
+            onPress={submit}
+            style={[styles.send, { backgroundColor: t.primary, opacity: text.trim() ? 1 : 0.4 }]}
+          >
+            <Ionicons name="arrow-up" size={22} color={t.onPrimary} />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+
+      <Dialog visible={menu} title={peerName} onCancel={() => setMenu(false)}>
+        <View>
+          {[
+            {
+              icon: "person-outline",
+              label: "Voir le profil",
+              run: () => navigation.navigate("UserProfile", { userId: peerId })
+            },
+            {
+              icon: "trash-outline",
+              label: "Supprimer la conversation",
+              run: () => setConfirm("hide")
+            },
+            {
+              icon: "heart-dislike-outline",
+              label: "Annuler le match",
+              run: () => setConfirm("unmatch")
+            },
+            { icon: "flag-outline", label: "Signaler", run: safety.openReport },
+            { icon: "ban-outline", label: "Bloquer", run: safety.openBlock }
+          ].map((item) => (
+            <Pressable
+              key={item.label}
+              accessibilityRole="button"
               onPress={() => {
-                setSelectedChat(null);
-                setMessages([]);
-                setDraft("");
-                setError(null);
-                setBackgroundError(null);
+                setMenu(false);
+                item.run();
               }}
-              size="sm"
-              testID="chat-back-button"
-              variant="ghost"
-            />
-          ) : null
-        }
-        style={styles.headerShell}
-        subtitle={subtitle}
-        title={title}
+              style={styles.menuItem}
+            >
+              <Ionicons
+                name={item.icon as React.ComponentProps<typeof Ionicons>["name"]}
+                size={20}
+                color={t.text}
+              />
+              <Text>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Dialog>
+      <Dialog
+        visible={confirm === "hide"}
+        title="Supprimer la conversation ?"
+        message="Elle disparaît de votre liste uniquement. Un nouveau message la fera réapparaître."
+        confirmLabel="Supprimer"
+        confirmVariant="danger"
+        loading={hide.isPending}
+        onConfirm={() => hide.mutate()}
+        onCancel={() => setConfirm(null)}
       />
-
-      {error ? (
-        <ErrorView actionLabel="Retry" compact message={error} onAction={() => void reloadCurrentView()} style={styles.errorWrap} />
-      ) : null}
-
-      {!error && backgroundError ? (
-        <Notice
-          description="The chat UI is still usable, but the latest background refresh did not complete."
-          style={styles.warnWrap}
-          title={backgroundError}
-          tone="warning"
-        />
-      ) : null}
-
-      {loading ? (
-        <LoadingView
-          fullScreen
-          label={selectedChat ? "Loading conversation..." : "Loading chat workspace..."}
-          style={styles.loaderWrap}
-        />
-      ) : selectedChat ? (
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.chatWrap}>
-          <FlatList
-            contentContainerStyle={styles.messageList}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            ListEmptyComponent={
-              <EmptyView
-                message="Start with a quick hello to open the conversation."
-                title="No messages yet"
-              />
-            }
-            renderItem={({ item }) => {
-              const mine = item.senderUserId === currentUserId;
-              return <MessageItem content={item.content} mine={mine} />;
-            }}
-          />
-
-          <View style={styles.composer}>
-            <Input
-              containerStyle={styles.inputWrap}
-              onChangeText={setDraft}
-              placeholder="Write a message..."
-              style={styles.input}
-              testID="chat-message-input"
-              value={draft}
-            />
-            <Button
-              disabled={loading}
-              label="Send"
-              loading={sending}
-              onPress={onSend}
-              size="sm"
-              testID="chat-send-button"
-            />
-          </View>
-        </KeyboardAvoidingView>
-      ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Section eyebrow="Inbox" title="Recent conversations">
-            {chatList.length === 0 ? (
-              <EmptyView message="New conversations will appear here as soon as you start messaging." title="No conversations yet" />
-            ) : null}
-            {chatList.map((chat) => (
-              <ListItem
-                key={chat.user.id}
-                disabled={loading || sending}
-                leading={<Avatar name={chat.user.email} size={40} />}
-                onPress={() => void openChat(chatSummaryToTarget(chat))}
-                style={loading || sending ? styles.chatCardDisabled : null}
-                subtitle={chat.lastMessage?.content ?? "Open conversation"}
-                testID={`chat-open-${chat.user.id}`}
-                title={chat.user.email}
-              />
-            ))}
-          </Section>
-
-          <Section eyebrow="Directory" title="Start a new conversation">
-            {availableContacts.length === 0 ? (
-              <EmptyView message="Invite more teammates to unlock new conversations." title="No additional members available" />
-            ) : null}
-            {availableContacts.map((user) => (
-              <ListItem
-                key={user.id}
-                disabled={loading || sending}
-                leading={<Avatar name={user.email} size={40} />}
-                onPress={() => void openChat({ user })}
-                style={loading || sending ? styles.chatCardDisabled : null}
-                subtitle="Message this member"
-                title={user.email}
-                variant="muted"
-              />
-            ))}
-          </Section>
-        </ScrollView>
-      )}
-    </ScreenContainer>
+      <Dialog
+        visible={confirm === "unmatch"}
+        title="Annuler le match ?"
+        message={`Vous ne pourrez plus échanger avec ${peerName}. Cette action est définitive.`}
+        confirmLabel="Annuler le match"
+        confirmVariant="danger"
+        loading={unmatch.isPending}
+        onConfirm={() => unmatch.mutate()}
+        onCancel={() => setConfirm(null)}
+      />
+      {safety.dialogs}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerShell: {
-    marginBottom: spacing.md,
-  },
-  scrollContent: {
-    paddingBottom: spacing.xxxl
-  },
-  chatCardDisabled: {
-    opacity: 0.7
-  },
-  errorWrap: {
-    marginBottom: spacing.sm,
-  },
-  warnWrap: {
-    marginBottom: spacing.sm,
-  },
-  loaderWrap: {
-    flex: 1
-  },
-  chatWrap: {
-    flex: 1
-  },
-  messageList: {
-    paddingBottom: spacing.md
-  },
+  flex: { flex: 1 },
+  list: { padding: 14, gap: 4 },
+  title: { flexDirection: "row", alignItems: "center", gap: 10 },
+  titleAvatar: { width: 34, height: 34, borderRadius: 17 },
+  bubbleRow: { maxWidth: "82%", gap: 2, marginVertical: 2 },
+  left: { alignSelf: "flex-start", alignItems: "flex-start" },
+  right: { alignSelf: "flex-end", alignItems: "flex-end" },
+  bubble: { borderRadius: radii.lg, paddingHorizontal: 14, paddingVertical: 9 },
+  meta: { marginHorizontal: 6 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    backgroundColor: colors.backgroundElevated,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  inputWrap: {
-    flex: 1
+    gap: 10,
+    padding: 10,
+    borderTopWidth: StyleSheet.hairlineWidth
   },
   input: {
-    minHeight: 48
-  }
+    flex: 1,
+    maxHeight: 120,
+    borderRadius: radii.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16
+  },
+  send: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  invertedEmpty: { padding: 40, transform: [{ scaleY: -1 }] },
+  centerText: { textAlign: "center" },
+  menuItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 }
 });

@@ -155,8 +155,13 @@ func TestPhotos(t *testing.T) {
 	e.expect(e.do("PUT", "/me/photos/order", u.Token, map[string]any{"ids": rev[:5]}), 400)
 	e.expect(e.do("PUT", "/me/photos/order", u.Token, map[string]any{"ids": append(rev[:5:5], rev[0])}), 400)
 
-	// Replace keeps id and position; others cannot replace/delete.
-	e.expect(e.upload("PUT", "/me/photos/"+ids[5], u.Token, pngBytes(100, 100), "photo"), 200)
+	// Replace keeps the position but issues a new id; others cannot replace/delete.
+	rep := e.expect(e.upload("PUT", "/me/photos/"+ids[5], u.Token, pngBytes(100, 100), "photo"), 200).json(t)
+	if rep["id"] == ids[5] || rep["position"].(float64) != 0 {
+		t.Fatalf("replace should keep position 0 under a new id: %v", rep)
+	}
+	e.expect(e.do("GET", "/photos/"+ids[5], u.Token, nil), 404)
+	ids[5] = rep["id"].(string)
 	e.expect(e.upload("PUT", "/me/photos/"+ids[5], other.Token, pngBytes(100, 100), "photo"), 404)
 	e.expect(e.do("DELETE", "/me/photos/"+ids[5], other.Token, nil), 404)
 	e.expect(e.do("DELETE", "/me/photos/not-a-uuid", u.Token, nil), 404)

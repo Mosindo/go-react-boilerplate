@@ -101,16 +101,31 @@ func (r *PGRepository) Add(ctx context.Context, userID string, data []byte, w, h
 	return p, tx.Commit(ctx)
 }
 
+// Replace swaps the image in place at the same position but under a NEW id, so
+// every client-side cache keyed by photo id is naturally invalidated.
 func (r *PGRepository) Replace(ctx context.Context, userID, photoID string, data []byte, w, h int) (Photo, error) {
-	var p Photo
-	err := r.db.QueryRow(ctx, `
-		UPDATE photos SET data = $3, width = $4, height = $5, created_at = NOW()
-		WHERE id = $1 AND user_id = $2 RETURNING id, position`,
-		photoID, userID, data, w, h).Scan(&p.ID, &p.Position)
+	tx, err := r.begin(ctx, userID)
+	if err != nil {
+		return Photo{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var pos int
+	err = tx.QueryRow(ctx, `DELETE FROM photos WHERE id = $1 AND user_id = $2 RETURNING position`, photoID, userID).Scan(&pos)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return Photo{}, ErrNotFound
 	}
-	return p, err
+	if err != nil {
+		return Photo{}, err
+	}
+	var p Photo
+	err = tx.QueryRow(ctx, `
+		INSERT INTO photos (user_id, position, content_type, width, height, data)
+		VALUES ($1, $2, 'image/jpeg', $3, $4, $5) RETURNING id, position`,
+		userID, pos, w, h, data).Scan(&p.ID, &p.Position)
+	if err != nil {
+		return Photo{}, err
+	}
+	return p, tx.Commit(ctx)
 }
 
 func (r *PGRepository) Delete(ctx context.Context, userID, photoID string) error {
