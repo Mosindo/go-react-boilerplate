@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,7 +10,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker verifies server-side that a session is still active, so that
+// logout and account deletion take effect before the access token expires.
+type SessionChecker interface {
+	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+func RequireUser(secret []byte, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
@@ -44,20 +51,23 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 			return
 		}
 
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
 		sessionID, ok := stringClaim(claims, "sid")
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
 
+		active, err := sessions.IsSessionActive(c.Request.Context(), sessionID, userID)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+		if !active {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+
 		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}
@@ -77,4 +87,16 @@ func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
 		return "", false
 	}
 	return value, true
+}
+
+// Chain runs handlers in order, stopping at the first one that aborts.
+func Chain(handlers ...gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		for _, h := range handlers {
+			h(c)
+			if c.IsAborted() {
+				return
+			}
+		}
+	}
 }

@@ -2,118 +2,86 @@ package notifications
 
 import (
 	"context"
-	"errors"
+	"encoding/base64"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
-)
+type Service struct{ repo Repository }
 
-type Service struct {
-	repo Repository
+func NewService(repo Repository) *Service { return &Service{repo: repo} }
+
+func (s *Service) NotifyMatch(ctx context.Context, userID, otherName, conversationID string) (Notification, error) {
+	return s.repo.Create(ctx, userID, "match", "Nouveau match", "Vous avez un match avec "+otherName+" !", &conversationID)
 }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func (s *Service) NotifyMessage(ctx context.Context, userID, senderName, conversationID, body string) (Notification, error) {
+	return s.repo.UpsertMessage(ctx, userID, conversationID, senderName, Preview(body))
 }
 
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
-	}
-	return payload, nil
+func (s *Service) MarkConversationRead(ctx context.Context, userID, conversationID string) error {
+	return s.repo.MarkConversationRead(ctx, userID, conversationID)
 }
 
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
-	if err != nil {
-		return Notification{}, err
-	}
-	return mapStoredNotification(notification), nil
-}
-
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
-	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
+func (s *Service) List(ctx context.Context, userID string, limit int, cursor string) (Page, error) {
+	var before *time.Time
+	var beforeID string
+	if cursor != "" {
+		t, id, ok := decodeCursor(cursor)
+		if !ok {
+			return Page{}, ErrBadCursor
 		}
-		return Notification{}, err
+		before, beforeID = &t, id
 	}
-	return mapStoredNotification(notification), nil
+	items, err := s.repo.List(ctx, userID, limit+1, before, beforeID)
+	if err != nil {
+		return Page{}, err
+	}
+	page := Page{Notifications: items}
+	if len(items) > limit {
+		page.Notifications = items[:limit]
+		last := page.Notifications[limit-1]
+		page.NextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	return page, nil
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
-	}
+func (s *Service) UnreadCount(ctx context.Context, userID string) (int, error) {
+	return s.repo.UnreadCount(ctx, userID)
+}
+func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
+	return s.repo.MarkRead(ctx, userID, id)
+}
+func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
+	return s.repo.MarkAllRead(ctx, userID)
 }
 
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
+// Preview shortens a message body for display in a notification.
+func Preview(body string) string {
+	body = strings.Join(strings.Fields(body), " ")
+	if utf8.RuneCountInString(body) <= 80 {
+		return body
 	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
-	}
-	return limit
+	return string([]rune(body)[:79]) + "…"
 }
 
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
+func encodeCursor(t time.Time, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(t.UTC().Format(time.RFC3339Nano) + "|" + id))
+}
+
+func decodeCursor(c string) (time.Time, string, bool) {
+	raw, err := base64.RawURLEncoding.DecodeString(c)
+	if err != nil {
+		return time.Time{}, "", false
 	}
-	return offset
+	parts := strings.SplitN(string(raw), "|", 2)
+	if len(parts) != 2 {
+		return time.Time{}, "", false
+	}
+	t, err := time.Parse(time.RFC3339Nano, parts[0])
+	if err != nil {
+		return time.Time{}, "", false
+	}
+	return t, parts[1], true
 }

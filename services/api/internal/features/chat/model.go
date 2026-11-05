@@ -2,58 +2,54 @@ package chat
 
 import "time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+const (
+	MaxBodyRunes = 2000
+)
+
+type Message struct {
+	ID             int64     `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
+	// Read is true for messages the other participant has read (own messages only).
+	Read bool `json:"read"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type Peer struct {
+	ID          string  `json:"id"`
+	FirstName   string  `json:"firstName"`
+	MainPhotoID *string `json:"mainPhotoId"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
-}
-
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
+type MessagePreview struct {
+	ID        int64     `json:"id"`
+	SenderID  string    `json:"senderId"`
+	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
+type Conversation struct {
+	ID          string          `json:"id"`
+	MatchID     string          `json:"matchId"`
+	Peer        Peer            `json:"peer"`
+	LastMessage *MessagePreview `json:"lastMessage"`
+	UnreadCount int             `json:"unreadCount"`
+	MatchedAt   time.Time       `json:"matchedAt"`
+	Activity    time.Time       `json:"activityAt"`
 }
 
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
+type ConversationPage struct {
+	Conversations []Conversation `json:"conversations"`
+	NextCursor    string         `json:"nextCursor,omitempty"`
 }
 
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type SendRequest struct {
+	Body string `json:"body" binding:"required"`
 }
 
-type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
-}
-
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
-}
-
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+// Events lets realtime / notifications react to chat activity.
+type Events interface {
+	MessageCreated(msg Message, senderName, recipientID string)
+	MessagesRead(conversationID, readerID, otherID string, upTo int64)
 }
