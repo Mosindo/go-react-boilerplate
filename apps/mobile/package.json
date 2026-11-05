@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "export:web": "expo export --platform web"
+    "export:web": "expo export --platform web",
+    "e2e:web": "node e2e/web-smoke.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -41,6 +42,7 @@
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^17.14.0",
+    "playwright": "^1.63.0",
     "prettier": "^3.9.10",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.72.1",

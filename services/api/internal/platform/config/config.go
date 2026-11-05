@@ -15,6 +15,9 @@ type Config struct {
 	JWTSecret      string
 	AppBaseURL     string
 	AllowedOrigins []string
+	// TrustedProxies lists reverse-proxy IPs/CIDRs whose X-Forwarded-For is honoured
+	// (client IP drives rate limiting). Empty = trust nothing.
+	TrustedProxies []string
 	SMTP           SMTPConfig
 }
 
@@ -35,6 +38,7 @@ func Load() (Config, error) {
 		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		AppBaseURL:     strings.TrimSpace(os.Getenv("APP_BASE_URL")),
 		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
 		SMTP: SMTPConfig{
 			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
 			Port:     getenv("SMTP_PORT", "587"),

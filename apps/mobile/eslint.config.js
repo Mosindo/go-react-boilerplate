@@ -4,7 +4,9 @@ const reactHooks = require("eslint-plugin-react-hooks");
 const globals = require("globals");
 
 module.exports = tseslint.config(
-  { ignores: ["node_modules/**", "dist/**", ".expo/**", "*.config.js", "babel.config.js"] },
+  {
+    ignores: ["node_modules/**", "dist/**", ".expo/**", "*.config.js", "babel.config.js", "e2e/**"]
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

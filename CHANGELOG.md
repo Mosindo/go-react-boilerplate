@@ -7,8 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+- **Product pivot**: the repository is now Ember, a free dating app (API + Expo client). The generic SaaS domain was replaced.
+- Single clean `001_init.sql` migration and a tracked migration runner (`schema_migrations`, advisory lock).
+- JWT middleware now verifies the session server-side; claims no longer include an organization.
+- Docker Compose consolidated at the repository root (the duplicate `infra/` stack was removed).
+- CI now runs gofmt, vet, unit + integration tests against PostgreSQL, mobile typecheck/lint/format/tests, the web bundle and a Docker boot check.
+
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Profiles, preferences, interests, private photo management, discovery feed, swipes and matches, chat with read receipts,
+  notifications, blocks and reports, WebSocket realtime, password recovery, account deletion, rate limiting, seed command.
+- Expo client for iOS/Android/web with onboarding, swipe deck, chat, settings and a light/dark theme.
+- Browser end-to-end test of the critical journey (`apps/mobile/e2e/web-smoke.js`).
+
+### Removed
+- Stripe billing/subscriptions, organizations, posts, comments, generic files, Tamagui, PowerShell smoke scripts.
 
 ## [0.1.0] - 2026-03-17
 

@@ -26,3 +26,20 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadParsesTrustedProxiesAndSMTP(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.1")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.TrustedProxies) != 2 || cfg.SMTP.Port != "587" {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+	t.Setenv("SMTP_HOST", "smtp.example.org")
+	if _, err := Load(); err == nil {
+		t.Fatal("SMTP_HOST without SMTP_FROM must be rejected")
+	}
+}

@@ -5,13 +5,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/api ./cmd/api \
+ && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/seed ./cmd/seed
 
 FROM alpine:3.21
+RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
 
 COPY --from=builder /bin/api ./api
+COPY --from=builder /bin/seed ./seed
 
+USER app
 EXPOSE 8080
 
 CMD ["./api"]

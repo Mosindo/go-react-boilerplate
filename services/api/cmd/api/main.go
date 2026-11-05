@@ -33,6 +33,7 @@ type app struct {
 	jwtSecret      []byte
 	appBaseURL     string
 	allowedOrigins []string
+	trustedProxies []string
 	mailer         mailer.Mailer
 	// Credentials endpoint limits (0 → defaults: 30/min, burst 10 per IP).
 	authPerMinute, authBurst int
@@ -65,6 +66,7 @@ func main() {
 		jwtSecret:      []byte(cfg.JWTSecret),
 		appBaseURL:     cfg.AppBaseURL,
 		allowedOrigins: cfg.AllowedOrigins,
+		trustedProxies: cfg.TrustedProxies,
 		mailer:         m,
 	}
 
@@ -94,6 +96,11 @@ func main() {
 func setupRouter(a *app) *gin.Engine {
 	r := gin.New()
 	r.MaxMultipartMemory = 8 << 20
+	// Never trust X-Forwarded-For unless explicitly configured: the client IP
+	// keys the rate limiter and must not be spoofable.
+	if err := r.SetTrustedProxies(a.trustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))

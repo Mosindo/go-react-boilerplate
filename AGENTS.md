@@ -1,30 +1,20 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Ember
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is Ember, a free dating app (Go API + Expo client), derived from the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Ember is a 100 % free dating app: profiles, photos, discovery, likes, matches, realtime chat, notifications, blocking and reporting.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- No subscription, paywall, paid boost, artificial like limit, locked essential feature or mandatory ad.
+- Never expose exact location, birth date, e-mail or coordinates of another user.
+- Business rules and authorization are enforced on the server.
 
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Backend modules: auth, profiles, photos, discovery, chat, safety, notifications, realtime.
 
 ---
 
@@ -53,24 +43,12 @@ Core reusable modules:
 
 # BACKEND ARCHITECTURE
 
-Target structure:
+Structure:
 
-`cmd/api/main.go`  
+`cmd/api/main.go` (+ `events.go` composition), `cmd/seed`
 `internal/`
-- `platform/`
-  - `config/`
-  - `db/`
-  - `middleware/`
-  - `logger/`
-  - `errors/`
-- `features/`
-  - `auth/`
-  - `users/`
-  - `files/`
-  - `chat/`
-  - `posts/`
-  - `comments/`
-  - `notifications/`
+- `platform/` — `config`, `db` (+ migrations), `middleware`, `ratelimit`, `mailer`, `httpx`, `logger`, `errors`, `handlers`
+- `features/` — `auth`, `profiles`, `photos`, `discovery`, `chat`, `safety`, `notifications`, `realtime`
 
 Each feature should contain:
 - `handler.go`
@@ -128,35 +106,29 @@ Secrets:
 - Prefer explicit pagination on list endpoints
 - Keep common API paths O(n) over page size
 
-Required indexes:
+Required indexes (see `001_init.sql`):
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
-- `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `conversation_participants (user_id, conversation_id)`
+- `messages (conversation_id, created_at, id)`
+- `notifications (user_id, created_at, id)`
+- `swipes (target_id, swiper_id) WHERE action = 'like'`
+- `blocks (blocked_id, blocker_id)`
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing), `go vet ./...`, `go build ./cmd/api ./cmd/seed`
+- `DATABASE_URL_TEST=<throwaway db> go test ./...` (integration tests DROP the public schema — never point them at real data)
+- In `apps/mobile`: `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run format:check`, `npm test`
 
-If tests fail: fix them before continuing.
+If tests fail: fix them before continuing. Never disable a test or lint rule to get green.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration suites to keep healthy (`services/api/cmd/api`): auth lifecycle, recovery, account deletion, profile validation,
+photos, discovery rules, matching (duplicates + concurrency), chat permissions, block/report, notifications, WebSocket, privacy.
+Browser journey: `apps/mobile/e2e/web-smoke.js`.
 
 ---
 
@@ -171,15 +143,13 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml` / `API_HOST_PORT` in `.env`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
+  - register → profile → preferences → photo
+  - discover loads, like, match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +177,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Adding any monetization mechanism (see PRODUCT GOAL)
 
 ---
 

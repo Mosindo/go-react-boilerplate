@@ -33,7 +33,7 @@ func (h *Handler) Interests(c *gin.Context) {
 		fail(c, "profiles.interests", err)
 		return
 	}
-	c.Header("Cache-Control", "public, max-age=3600")
+	c.Header("Cache-Control", "private, max-age=3600")
 	c.JSON(http.StatusOK, gin.H{"interests": items})
 }
 
