@@ -16,9 +16,14 @@ import type { RootStackParamList } from "../navigation/types";
 import { useRealtime } from "../realtime/RealtimeProvider";
 import { radius, spacing, useTheme } from "../theme";
 
-type Item = { kind: "message"; message: Message; showRead: boolean } | { kind: "day"; key: string; label: string };
+type Item =
+  | { kind: "message"; message: Message; showRead: boolean }
+  | { kind: "day"; key: string; label: string };
 
-export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, "Chat">) {
+export function ChatScreen({
+  route,
+  navigation
+}: NativeStackScreenProps<RootStackParamList, "Chat">) {
   const { conversationId } = route.params;
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -71,10 +76,18 @@ export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootSta
     const lastMine = messages.find((m) => m.senderId === user?.id);
     const out: Item[] = [];
     messages.forEach((message, i) => {
-      out.push({ kind: "message", message, showRead: message.id === lastMine?.id && new Date(message.createdAt).getTime() <= peerRead });
+      out.push({
+        kind: "message",
+        message,
+        showRead: message.id === lastMine?.id && new Date(message.createdAt).getTime() <= peerRead
+      });
       const older = messages[i + 1];
       if (!older || dayKey(older.createdAt) !== dayKey(message.createdAt)) {
-        out.push({ kind: "day", key: dayKey(message.createdAt), label: formatDayLabel(message.createdAt) });
+        out.push({
+          kind: "day",
+          key: dayKey(message.createdAt),
+          label: formatDayLabel(message.createdAt)
+        });
       }
     });
     return out;
@@ -111,8 +124,12 @@ export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootSta
     try {
       if (confirm === "delete") await chatApi.hide(conversationId);
       if (confirm === "unmatch") {
-        const convs = queryClient.getQueryData<InfiniteData<{ conversations: { id: string; matchId: string }[] }>>(["conversations"]);
-        const matchId = convs?.pages.flatMap((p) => p.conversations).find((c) => c.id === conversationId)?.matchId;
+        const convs = queryClient.getQueryData<
+          InfiniteData<{ conversations: { id: string; matchId: string }[] }>
+        >(["conversations"]);
+        const matchId = convs?.pages
+          .flatMap((p) => p.conversations)
+          .find((c) => c.id === conversationId)?.matchId;
         if (matchId) await discoverApi.unmatch(matchId);
       }
       setConfirm(null);
@@ -124,9 +141,26 @@ export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootSta
 
   return (
     <Screen edges={["left", "right", "bottom"]}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
-        <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: spacing.lg, paddingTop: spacing.xs }}>
-          <Pressable testID="chat-menu" accessibilityRole="button" accessibilityLabel={fr.messages.options} onPress={() => setMenu(true)} hitSlop={10}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={90}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "flex-end",
+            paddingHorizontal: spacing.lg,
+            paddingTop: spacing.xs
+          }}
+        >
+          <Pressable
+            testID="chat-menu"
+            accessibilityRole="button"
+            accessibilityLabel={fr.messages.options}
+            onPress={() => setMenu(true)}
+            hitSlop={10}
+          >
             <Text variant="label" color={colors.primary}>
               ⋯ {fr.messages.options}
             </Text>
@@ -135,7 +169,11 @@ export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootSta
         {query.isLoading ? <Loader /> : null}
         {query.isError ? <ErrorState onRetry={() => void query.refetch()} /> : null}
         {query.data && messages.length === 0 ? (
-          <EmptyState glyph="👋" title={fr.messages.sayHi} body={fr.messages.chatEmpty(peer?.firstName ?? "")} />
+          <EmptyState
+            glyph="👋"
+            title={fr.messages.sayHi}
+            body={fr.messages.chatEmpty(peer?.firstName ?? "")}
+          />
         ) : null}
         {query.data && messages.length > 0 ? (
           <FlatList
@@ -144,13 +182,19 @@ export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootSta
             data={items}
             keyExtractor={(it) => (it.kind === "message" ? it.message.id : `day-${it.key}`)}
             contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
-            onEndReached={() => query.hasNextPage && !query.isFetchingNextPage && void query.fetchNextPage()}
+            onEndReached={() =>
+              query.hasNextPage && !query.isFetchingNextPage && void query.fetchNextPage()
+            }
             onEndReachedThreshold={0.3}
             ListFooterComponent={query.isFetchingNextPage ? <Loader /> : null}
             renderItem={({ item }) => {
               if (item.kind === "day") {
                 return (
-                  <Text variant="caption" muted style={{ textAlign: "center", marginVertical: spacing.sm }}>
+                  <Text
+                    variant="caption"
+                    muted
+                    style={{ textAlign: "center", marginVertical: spacing.sm }}
+                  >
                     {item.label}
                   </Text>
                 );
@@ -185,7 +229,16 @@ export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootSta
         ) : (
           <View style={{ flex: 1 }} />
         )}
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+            gap: spacing.sm,
+            padding: spacing.md,
+            borderTopWidth: 1,
+            borderTopColor: colors.border
+          }}
+        >
           <TextInput
             testID="chat-input"
             accessibilityLabel={fr.messages.placeholder}
@@ -209,14 +262,42 @@ export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootSta
               fontSize: 16
             }}
           />
-          <Button testID="chat-send" title={fr.messages.send} disabled={!draft.trim()} loading={sending} onPress={() => void send()} />
+          <Button
+            testID="chat-send"
+            title={fr.messages.send}
+            disabled={!draft.trim()}
+            loading={sending}
+            onPress={() => void send()}
+          />
         </View>
       </KeyboardAvoidingView>
 
       <Sheet visible={menu} onClose={() => setMenu(false)} title={peer?.firstName}>
-        <Button variant="secondary" title={fr.messages.deleteConversation} onPress={() => { setMenu(false); setConfirm("delete"); }} />
-        <Button variant="secondary" title={fr.messages.unmatch} onPress={() => { setMenu(false); setConfirm("unmatch"); }} />
-        <Button testID="chat-report" variant="secondary" title={fr.safety.report} onPress={() => { setMenu(false); setReport(true); }} />
+        <Button
+          variant="secondary"
+          title={fr.messages.deleteConversation}
+          onPress={() => {
+            setMenu(false);
+            setConfirm("delete");
+          }}
+        />
+        <Button
+          variant="secondary"
+          title={fr.messages.unmatch}
+          onPress={() => {
+            setMenu(false);
+            setConfirm("unmatch");
+          }}
+        />
+        <Button
+          testID="chat-report"
+          variant="secondary"
+          title={fr.safety.report}
+          onPress={() => {
+            setMenu(false);
+            setReport(true);
+          }}
+        />
         <Button variant="ghost" title={fr.common.close} onPress={() => setMenu(false)} />
       </Sheet>
       <ConfirmSheet

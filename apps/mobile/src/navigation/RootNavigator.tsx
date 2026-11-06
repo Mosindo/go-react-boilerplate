@@ -1,6 +1,11 @@
 import React from "react";
 import { Text as RNText, View } from "react-native";
-import { DarkTheme, DefaultTheme, NavigationContainer, type LinkingOptions } from "@react-navigation/native";
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+  type LinkingOptions
+} from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useAuth } from "../auth/AuthContext";
@@ -63,7 +68,11 @@ function Tabs() {
       <Tab.Screen
         name="Discover"
         component={DiscoverScreen}
-        options={{ title: fr.tabs.discover, tabBarTestID: "tab-discover", tabBarIcon: ({ color }) => <TabIcon glyph="🔥" color={color} /> }}
+        options={{
+          title: fr.tabs.discover,
+          tabBarTestID: "tab-discover",
+          tabBarIcon: ({ color }) => <TabIcon glyph="🔥" color={color} />
+        }}
       />
       <Tab.Screen
         name="Messages"
@@ -71,7 +80,9 @@ function Tabs() {
         options={{
           title: fr.tabs.messages,
           tabBarTestID: "tab-messages",
-          tabBarAccessibilityLabel: unreadMessages ? `${fr.tabs.messages}, ${unreadMessages} non lus` : fr.tabs.messages,
+          tabBarAccessibilityLabel: unreadMessages
+            ? `${fr.tabs.messages}, ${unreadMessages} non lus`
+            : fr.tabs.messages,
           tabBarIcon: ({ color }) => <TabIcon glyph="💬" color={color} badge={unreadMessages} />
         }}
       />
@@ -81,14 +92,22 @@ function Tabs() {
         options={{
           title: fr.tabs.notifications,
           tabBarTestID: "tab-notifications",
-          tabBarAccessibilityLabel: unreadNotifications ? `${fr.tabs.notifications}, ${unreadNotifications} non lues` : fr.tabs.notifications,
-          tabBarIcon: ({ color }) => <TabIcon glyph="🔔" color={color} badge={unreadNotifications} />
+          tabBarAccessibilityLabel: unreadNotifications
+            ? `${fr.tabs.notifications}, ${unreadNotifications} non lues`
+            : fr.tabs.notifications,
+          tabBarIcon: ({ color }) => (
+            <TabIcon glyph="🔔" color={color} badge={unreadNotifications} />
+          )
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: fr.tabs.profile, tabBarTestID: "tab-profile", tabBarIcon: ({ color }) => <TabIcon glyph="👤" color={color} /> }}
+        options={{
+          title: fr.tabs.profile,
+          tabBarTestID: "tab-profile",
+          tabBarIcon: ({ color }) => <TabIcon glyph="👤" color={color} />
+        }}
       />
     </Tab.Navigator>
   );
@@ -110,11 +129,27 @@ function MainStack() {
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
       <Stack.Screen name="Chat" component={ChatScreen} options={{ title: "" }} />
       <Stack.Screen name="ProfileDetail" component={ProfileDetailScreen} options={{ title: "" }} />
-      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: fr.profile.edit }} />
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ title: fr.profile.edit }}
+      />
       <Stack.Screen name="Photos" component={PhotosScreen} options={{ title: fr.profile.photos }} />
-      <Stack.Screen name="Preferences" component={PreferencesScreen} options={{ title: fr.profile.preferences }} />
-      <Stack.Screen name="Privacy" component={PrivacyScreen} options={{ title: fr.profile.privacy }} />
-      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: fr.profile.password }} />
+      <Stack.Screen
+        name="Preferences"
+        component={PreferencesScreen}
+        options={{ title: fr.profile.preferences }}
+      />
+      <Stack.Screen
+        name="Privacy"
+        component={PrivacyScreen}
+        options={{ title: fr.profile.privacy }}
+      />
+      <Stack.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
+        options={{ title: fr.profile.password }}
+      />
     </Stack.Navigator>
   );
 }
@@ -144,7 +179,10 @@ function Authenticated() {
   );
 }
 
-const linking: LinkingOptions<RootStackParamList> = { prefixes: ["lueur://"], config: { screens: { Tabs: "" } } };
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ["lueur://"],
+  config: { screens: { Tabs: "" } }
+};
 
 export function RootNavigator() {
   const { status } = useAuth();
@@ -152,7 +190,14 @@ export function RootNavigator() {
   const base = isDark ? DarkTheme : DefaultTheme;
   const theme = {
     ...base,
-    colors: { ...base.colors, background: colors.background, card: colors.surface, text: colors.text, border: colors.border, primary: colors.primary }
+    colors: {
+      ...base.colors,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      primary: colors.primary
+    }
   };
 
   if (status === "booting") {
@@ -168,7 +213,12 @@ export function RootNavigator() {
       {status === "authenticated" ? (
         <Authenticated />
       ) : (
-        <AuthStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+        <AuthStack.Navigator
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background }
+          }}
+        >
           <AuthStack.Screen name="Login" component={LoginScreen} />
           <AuthStack.Screen name="Forgot" component={ForgotScreen} />
         </AuthStack.Navigator>

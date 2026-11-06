@@ -108,13 +108,28 @@ export function DiscoverScreen() {
         </Text>
       </View>
       {status === "loading" ? <Loader /> : null}
-      {status === "error" ? <ErrorState title={fr.discover.errorTitle} onRetry={() => { setStatus("loading"); void load(); }} /> : null}
+      {status === "error" ? (
+        <ErrorState
+          title={fr.discover.errorTitle}
+          onRetry={() => {
+            setStatus("loading");
+            void load();
+          }}
+        />
+      ) : null}
       {status === "ready" && !top ? (
         <EmptyState
           glyph="🌙"
           title={fr.discover.emptyTitle}
           body={fr.discover.emptyBody}
-          action={<Button testID="discover-restore" variant="secondary" title={fr.discover.restore} onPress={() => void restore()} />}
+          action={
+            <Button
+              testID="discover-restore"
+              variant="secondary"
+              title={fr.discover.restore}
+              onPress={() => void restore()}
+            />
+          }
         />
       ) : null}
       {top ? (
@@ -126,32 +141,72 @@ export function DiscoverScreen() {
             onOpen={(p) => navigation.navigate("ProfileDetail", { userId: p.id, canSwipe: true })}
           />
           <DeckActions>
-            <IconButton testID="swipe-pass" label={fr.discover.pass} glyph="✕" onPress={() => deck.current?.swipe("pass")} />
+            <IconButton
+              testID="swipe-pass"
+              label={fr.discover.pass}
+              glyph="✕"
+              onPress={() => deck.current?.swipe("pass")}
+            />
             <IconButton
               testID="swipe-info"
               label={fr.discover.details}
               glyph="i"
               size={44}
-              onPress={() => navigation.navigate("ProfileDetail", { userId: top.id, canSwipe: true })}
+              onPress={() =>
+                navigation.navigate("ProfileDetail", { userId: top.id, canSwipe: true })
+              }
             />
-            <IconButton testID="swipe-like" label={fr.discover.like} glyph="♥" tone="primary" onPress={() => deck.current?.swipe("like")} />
+            <IconButton
+              testID="swipe-like"
+              label={fr.discover.like}
+              glyph="♥"
+              tone="primary"
+              onPress={() => deck.current?.swipe("like")}
+            />
           </DeckActions>
         </View>
       ) : null}
 
-      <Modal visible={!!match} transparent animationType="fade" onRequestClose={() => setMatch(null)}>
-        <View style={{ flex: 1, backgroundColor: colors.overlay, alignItems: "center", justifyContent: "center", padding: spacing.xl }}>
+      <Modal
+        visible={!!match}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMatch(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.overlay,
+            alignItems: "center",
+            justifyContent: "center",
+            padding: spacing.xl
+          }}
+        >
           {match ? (
             <View
               testID="match-modal"
               accessibilityViewIsModal
-              style={{ backgroundColor: colors.surface, borderRadius: 22, padding: spacing.xl, alignItems: "center", gap: spacing.md, width: "100%", maxWidth: 380 }}
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: 22,
+                padding: spacing.xl,
+                alignItems: "center",
+                gap: spacing.md,
+                width: "100%",
+                maxWidth: 380
+              }}
             >
               <Text variant="display" color={colors.primary} style={{ textAlign: "center" }}>
                 {fr.discover.matchTitle}
               </Text>
-              <Avatar name={match.profile.firstName} photoId={match.profile.photos[0]?.id} size={112} />
-              <Text style={{ textAlign: "center" }}>{fr.discover.matchBody(match.profile.firstName)}</Text>
+              <Avatar
+                name={match.profile.firstName}
+                photoId={match.profile.photos[0]?.id}
+                size={112}
+              />
+              <Text style={{ textAlign: "center" }}>
+                {fr.discover.matchBody(match.profile.firstName)}
+              </Text>
               <Button
                 testID="match-message"
                 title={fr.discover.sendMessage}
@@ -160,11 +215,19 @@ export function DiscoverScreen() {
                   const target = match;
                   setMatch(null);
                   if (target.result.conversationId) {
-                    navigation.navigate("Chat", { conversationId: target.result.conversationId, name: target.profile.firstName });
+                    navigation.navigate("Chat", {
+                      conversationId: target.result.conversationId,
+                      name: target.profile.firstName
+                    });
                   }
                 }}
               />
-              <Button testID="match-continue" variant="ghost" title={fr.discover.keepSwiping} onPress={() => setMatch(null)} />
+              <Button
+                testID="match-continue"
+                variant="ghost"
+                title={fr.discover.keepSwiping}
+                onPress={() => setMatch(null)}
+              />
             </View>
           ) : null}
         </View>

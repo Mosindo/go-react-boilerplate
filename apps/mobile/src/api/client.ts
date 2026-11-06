@@ -80,7 +80,9 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
   const url = `${API_BASE_URL}${path}`;
   if (!query) return url;
   const params = Object.entries(query)
-    .filter((entry): entry is [string, string | number] => entry[1] !== undefined && entry[1] !== "")
+    .filter(
+      (entry): entry is [string, string | number] => entry[1] !== undefined && entry[1] !== ""
+    )
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
     .join("&");
   return params ? `${url}?${params}` : url;

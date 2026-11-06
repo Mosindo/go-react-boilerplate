@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -82,9 +83,13 @@ func NewRouter(d Deps) (*gin.Engine, error) {
 	ticketLimit := middleware.NewRateLimiter(60*scale, time.Minute)
 
 	r := gin.New()
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
+	}
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
+	r.Use(middleware.BodyLimit(1 << 20))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
@@ -92,7 +97,9 @@ func NewRouter(d Deps) (*gin.Engine, error) {
 
 	r.GET("/health", platformhandlers.NewHealthHandler(d.Pool))
 
-	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, authfeature.Limiters{
+	// Per-account throttle on top of the per-IP one: slows credential stuffing and guessing.
+	loginAttempts := middleware.NewRateLimiter(10*scale, 15*time.Minute)
+	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService, loginAttempts), requireUser, authfeature.Limiters{
 		Auth: authLimit.ByIP(), Recover: recoverLimit.ByIP(), Account: accountLimit.ByUser(),
 	})
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesfeature.NewService(profilesRepo)), requireUser)

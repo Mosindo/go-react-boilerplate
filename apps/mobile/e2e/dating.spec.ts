@@ -10,7 +10,9 @@ type Who = { page: Page; context: BrowserContext; email: string; name: string };
 async function open(browser: Browser, name: string, geolocation = false): Promise<Who> {
   const context = await browser.newContext({
     viewport: { width: 420, height: 860 },
-    ...(geolocation ? { geolocation: { latitude: 48.8566, longitude: 2.3522 }, permissions: ["geolocation"] } : {})
+    ...(geolocation
+      ? { geolocation: { latitude: 48.8566, longitude: 2.3522 }, permissions: ["geolocation"] }
+      : {})
   });
   const page = await context.newPage();
   page.on("pageerror", (e) => console.log(`[${name}] pageerror:`, e.message));
@@ -20,7 +22,11 @@ async function open(browser: Browser, name: string, geolocation = false): Promis
 
 async function signUpAndOnboard(
   who: Who,
-  opts: { gender: "woman" | "man" | "nonbinary"; seeking: "woman" | "man" | "nonbinary"; useGps?: boolean }
+  opts: {
+    gender: "woman" | "man" | "nonbinary";
+    seeking: "woman" | "man" | "nonbinary";
+    useGps?: boolean;
+  }
 ) {
   const { page } = who;
   await page.getByTestId("auth-toggle").click();
@@ -73,7 +79,9 @@ async function signUpAndOnboard(
 
 test.describe.configure({ mode: "serial" });
 
-test("signup → profile → discovery → like → match → realtime chat → block → delete account", async ({ browser }) => {
+test("signup → profile → discovery → like → match → realtime chat → block → delete account", async ({
+  browser
+}) => {
   const alice = await open(browser, "Alice", true);
   const bob = await open(browser, "Bob");
 
@@ -90,7 +98,9 @@ test("signup → profile → discovery → like → match → realtime chat → 
     await alice.page.getByTestId("swipe-info").click();
     await expect(alice.page.getByTestId("detail-name")).toContainText("Bob");
     await expect(alice.page.getByText("Bonjour, moi c'est Bob !")).toBeVisible();
-    await expect(alice.page.getByTestId("profile-detail").getByText("À moins de 5 km")).toBeVisible();
+    await expect(
+      alice.page.getByTestId("profile-detail").getByText("À moins de 5 km")
+    ).toBeVisible();
     await alice.page.getByTestId("detail-like").click(); // like from the detail view
     await expect(alice.page.getByTestId("tab-discover")).toBeVisible();
     await expect(alice.page.getByText("Vous avez tout vu pour le moment")).toBeVisible();

@@ -16,6 +16,10 @@ type Config struct {
 	JWTSecret      string
 	AllowedOrigins []string
 	UploadDir      string
+	// TrustedProxies lists reverse-proxy CIDRs/IPs whose X-Forwarded-For header is
+	// believed when resolving the client IP (rate limiting, logs). Empty means
+	// the socket address is always used, so the header cannot be spoofed.
+	TrustedProxies []string
 	SMTP           SMTP
 	// ExposeResetCodeInLogs prints password-reset codes to the server log when
 	// no SMTP server is configured. Only meant for local development.
@@ -44,6 +48,7 @@ func Load() (Config, error) {
 		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
 		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
 		SMTP: SMTP{
 			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
 			Port:     smtpPort,

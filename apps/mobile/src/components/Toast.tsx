@@ -26,7 +26,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       setToast({ id: Date.now(), message, kind });
       Animated.timing(opacity, { toValue: 1, duration: 160, useNativeDriver: true }).start();
       timer.current = setTimeout(() => {
-        Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => setToast(null));
+        Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start(() =>
+          setToast(null)
+        );
       }, 3200);
     },
     [opacity]
@@ -39,12 +41,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const bg = toast?.kind === "error" ? colors.danger : toast?.kind === "success" ? colors.success : colors.text;
+  const bg =
+    toast?.kind === "error"
+      ? colors.danger
+      : toast?.kind === "success"
+        ? colors.success
+        : colors.text;
   return (
     <ToastContext.Provider value={{ show }}>
       {children}
       {toast ? (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { paddingTop: insets.top + spacing.sm }]}>
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { paddingTop: insets.top + spacing.sm }]}
+        >
           <Animated.View
             accessibilityRole="alert"
             accessibilityLiveRegion="polite"

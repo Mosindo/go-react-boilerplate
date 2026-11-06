@@ -5,7 +5,13 @@ import { errorMessage } from "../api/errors";
 import { photoApi, profileApi } from "../api/services";
 import type { Gender, Photo } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { BasicsFields, basicsErrors, InterestPicker, LocationBlock, type BasicsDraft } from "../components/ProfileForm";
+import {
+  BasicsFields,
+  basicsErrors,
+  InterestPicker,
+  LocationBlock,
+  type BasicsDraft
+} from "../components/ProfileForm";
 import { PhotoManager } from "../components/PhotoGrid";
 import { Chip, Button, Input, Loader, Screen, Text } from "../components/ui";
 import { fr } from "../i18n/fr";
@@ -25,7 +31,9 @@ export function OnboardingScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [basics, setBasics] = useState<BasicsDraft>({ firstName: "", birthDate: "", gender: null });
-  const [place, setPlace] = useState<{ latitude: number; longitude: number; city: string } | null>(null);
+  const [place, setPlace] = useState<{ latitude: number; longitude: number; city: string } | null>(
+    null
+  );
   const [locating, setLocating] = useState(false);
   const [denied, setDenied] = useState(false);
   const [bio, setBio] = useState("");
@@ -35,7 +43,11 @@ export function OnboardingScreen() {
   const [distance, setDistance] = useState(50);
   const [photos, setPhotos] = useState<Photo[]>([]);
 
-  const interestsQuery = useQuery({ queryKey: ["interests"], queryFn: profileApi.interests, staleTime: Infinity });
+  const interestsQuery = useQuery({
+    queryKey: ["interests"],
+    queryFn: profileApi.interests,
+    staleTime: Infinity
+  });
 
   const saveAll = useMutation({
     mutationFn: async () => {
@@ -98,12 +110,20 @@ export function OnboardingScreen() {
   };
 
   const toggleGender = (g: Gender) =>
-    setInterestedIn((cur) => (cur.includes(g) ? (cur.length > 1 ? cur.filter((x) => x !== g) : cur) : [...cur, g]));
+    setInterestedIn((cur) =>
+      cur.includes(g) ? (cur.length > 1 ? cur.filter((x) => x !== g) : cur) : [...cur, g]
+    );
 
   return (
     <Screen>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={{ maxWidth: 520, width: "100%", alignSelf: "center", gap: spacing.lg }}>
             <Text variant="caption" muted testID="onboarding-step">
               {fr.onboarding.stepOf(step, TOTAL)}
@@ -112,7 +132,12 @@ export function OnboardingScreen() {
               {Array.from({ length: TOTAL }, (_, i) => (
                 <View
                   key={i}
-                  style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < step ? colors.primary : colors.border }}
+                  style={{
+                    flex: 1,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: i < step ? colors.primary : colors.border
+                  }}
                 />
               ))}
             </View>
@@ -158,7 +183,11 @@ export function OnboardingScreen() {
                 {interestsQuery.isLoading ? (
                   <Loader />
                 ) : (
-                  <InterestPicker all={interestsQuery.data ?? []} selected={interests} onChange={setInterests} />
+                  <InterestPicker
+                    all={interestsQuery.data ?? []}
+                    selected={interests}
+                    onChange={setInterests}
+                  />
                 )}
               </>
             ) : null}
@@ -220,14 +249,31 @@ export function OnboardingScreen() {
             ) : null}
 
             {step < TOTAL ? (
-              <Button testID="onboarding-next" title={fr.common.continue} loading={saveAll.isPending} onPress={() => void next()} />
+              <Button
+                testID="onboarding-next"
+                title={fr.common.continue}
+                loading={saveAll.isPending}
+                onPress={() => void next()}
+              />
             ) : (
-              <Button testID="onboarding-finish" title={fr.onboarding.finish} onPress={() => void finish()} />
+              <Button
+                testID="onboarding-finish"
+                title={fr.onboarding.finish}
+                onPress={() => void finish()}
+              />
             )}
             {step > 1 && step < TOTAL ? (
-              <Button variant="ghost" title={fr.common.back} onPress={() => setStep((s) => s - 1)} />
+              <Button
+                variant="ghost"
+                title={fr.common.back}
+                onPress={() => setStep((s) => s - 1)}
+              />
             ) : (
-              <Button variant="ghost" title={fr.profile.logout} onPress={() => void auth.logout()} />
+              <Button
+                variant="ghost"
+                title={fr.profile.logout}
+                onPress={() => void auth.logout()}
+              />
             )}
           </View>
         </ScrollView>
@@ -252,13 +298,30 @@ export function Stepper({
   testID?: string;
 }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: spacing.md
+      }}
+    >
       <Text variant="label" testID={testID ? `${testID}-label` : undefined} style={{ flex: 1 }}>
         {label}
       </Text>
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        <Chip testID={testID ? `${testID}-minus` : undefined} label="−" accessibilityLabel={minusLabel} onPress={onMinus} />
-        <Chip testID={testID ? `${testID}-plus` : undefined} label="+" accessibilityLabel={plusLabel} onPress={onPlus} />
+        <Chip
+          testID={testID ? `${testID}-minus` : undefined}
+          label="−"
+          accessibilityLabel={minusLabel}
+          onPress={onMinus}
+        />
+        <Chip
+          testID={testID ? `${testID}-plus` : undefined}
+          label="+"
+          accessibilityLabel={plusLabel}
+          onPress={onPlus}
+        />
       </View>
     </View>
   );

@@ -1,173 +1,119 @@
-# go-react-saas Architecture
+# Lueur — Architecture
 
-This document explains how `go-react-saas` is organized so new developers and AI agents can quickly navigate the repository, understand responsibilities, and extend the system without breaking its boundaries.
+Lueur is a monorepo with a Go API (`services/api`) and an Expo / React Native client (`apps/mobile`)
+that runs on iOS, Android and the web.
 
-## 1. Monorepo Structure
+## 1. Backend
 
-The repository is organized into a small number of top-level directories:
-
-- `apps/`: frontend applications
-- `services/`: backend services
-- `infra/`: local infrastructure and container orchestration
-- `scripts/`: smoke tests, QA helpers, and local automation
-- `docs/`: architecture and contributor-facing documentation
-
-At the moment, the main applications are:
-- `apps/mobile`: React Native mobile client
-- `services/api`: Go API
-
-This layout keeps frontend, backend, infrastructure, and documentation concerns separated while still living in one repository.
-
-## 2. Backend Architecture
-
-The backend uses a feature-first architecture in Go with Gin.
+Feature-first Go with Gin. Dependencies point inward: `handler → service → repository`.
 
 ```text
 services/api/
-├─ cmd/api/main.go
+├─ cmd/api/        main.go (server, graceful shutdown) · router.go (wiring) · integration_test.go
+├─ cmd/seed/       demo data (refuses APP_ENV=production, uses @demo.invalid)
 └─ internal/
    ├─ platform/
-   │  ├─ config/
-   │  ├─ db/
-   │  ├─ middleware/
-   │  ├─ logger/
-   │  └─ errors/
+   │  ├─ config/       env parsing and validation (JWT secret strength, SMTP consistency)
+   │  ├─ db/           pgxpool connection + embedded migrations runner (schema_migrations)
+   │  ├─ middleware/   security headers, CORS, request id/logging, auth (JWT + live session check), rate limiter
+   │  ├─ httpx/        error envelope, pagination helpers, user id accessor
+   │  ├─ logger/       structured, redacted logging
+   │  ├─ realtime/     WebSocket hub: single-use tickets, per-user fan-out
+   │  ├─ storage/      Storage interface + local-disk implementation
+   │  └─ mailer/       SMTP / log / discard mailers (account recovery)
    └─ features/
-      ├─ auth/
-      ├─ billing/
-      ├─ users/
-      ├─ files/
-      ├─ chat/
-      ├─ posts/
-      ├─ comments/
-      └─ notifications/
+      ├─ auth/          register, login, refresh rotation, logout, recovery, change password, delete account
+      ├─ profiles/      profile, preferences, interests, privacy, public profile view
+      ├─ photos/        upload/replace/delete/reorder, authenticated serving, image sanitising
+      ├─ matching/      Recommender (discovery), swipes, match creation, unmatch
+      ├─ chat/          conversations, messages, read state, local hide
+      ├─ moderation/    blocks, reports (with evidence snapshot)
+      └─ notifications/ stored notifications, realtime push
 ```
 
-`cmd/api/main.go` is the composition root. It wires the application together by loading configuration, opening the database, registering feature routes, and starting the HTTP server.
+Cross-feature calls go through small interfaces declared by the consumer (`Notifier`, `CardLoader`,
+`realtime.Publisher`, `middleware.SessionChecker`, `auth.PhotoEraser`), wired in `cmd/api/router.go`.
 
-Each feature folder groups everything needed for that domain. Instead of scattering handlers, services, and repositories across separate global folders, the code stays close to the feature it belongs to.
+### Error envelope
 
-Current notable backend modules:
-- `auth`: registration, login, refresh, logout, `/me`, JWT access tokens, refresh-token sessions
-- `billing`: checkout and webhook handling for subscription lifecycle
-- `users`: tenant-scoped directory access
-- `chat`, `posts`, `comments`: tenant-scoped shared content flows
+Every error is `{"error": "<message>", "code": "<machine_code>"}`. The client maps codes to French
+messages (`apps/mobile/src/api/errors.ts`). Internal errors are logged and never leaked.
 
-Each backend feature follows the same structure:
-- `handler.go`: receives HTTP requests, validates input, and returns HTTP responses
-- `service.go`: contains business rules and orchestration
-- `repository.go`: contains explicit PostgreSQL queries and persistence logic
-- `model.go`: defines domain, request, and response models
-- `routes.go`: registers the feature's endpoints with Gin
+### Endpoints
 
-This pattern improves maintainability because:
-- feature code is easier to find
-- boundaries are explicit
-- business logic stays out of handlers
-- SQL stays out of handlers and services
-- new modules can follow a predictable template
+| Area          | Endpoints                                                                                                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health        | `GET /health`                                                                                                                                                     |
+| Auth          | `POST /auth/register` `/auth/login` `/auth/refresh` `/auth/logout` `/auth/password/forgot` `/auth/password/reset` · `GET /me` · `PUT /me/password` · `DELETE /me` |
+| Profile       | `GET /me/profile` · `PUT /me/profile` `/me/preferences` `/me/privacy` · `GET /interests` · `GET /profiles/:userId`                                                |
+| Photos        | `GET /me/photos` · `POST /me/photos` (multipart `file`) · `PUT /me/photos/:id` (replace) · `PUT /me/photos/order` · `DELETE /me/photos/:id` · `GET /photos/:id`   |
+| Matching      | `GET /discover?limit=` · `POST /swipes {targetId, action}` · `DELETE /discover/passes` · `DELETE /matches/:id`                                                    |
+| Chat          | `GET /conversations?before=&limit=` · `GET/POST /conversations/:id/messages` · `POST /conversations/:id/read` · `DELETE /conversations/:id`                       |
+| Safety        | `GET/POST /blocks` · `DELETE /blocks/:userId` · `POST /reports`                                                                                                   |
+| Notifications | `GET /notifications?before=&limit=` · `POST /notifications/:id/read` · `POST /notifications/read-all`                                                             |
+| Realtime      | `POST /ws/ticket` → `GET /ws?ticket=` — events: `message.new`, `message.read`, `match.new`, `match.removed`, `notification.new`                                   |
 
-## 3. Platform Layer
+Lists are paginated: cursor (`before` = timestamp of the last item) for conversations, messages and
+notifications; discovery returns the next batch (max 20) because processed profiles leave the feed.
 
-The `platform` layer contains infrastructure shared by all backend features.
+### Data model
 
-- `config/`: loads runtime configuration from environment variables such as `DATABASE_URL`, `JWT_SECRET`, `PORT`, and optional Stripe billing keys
-- `db/`: initializes the PostgreSQL connection pool and runs embedded migrations
-- `middleware/`: contains reusable HTTP middleware such as auth checks, request metadata handling, and logging hooks
-- `logger/`: provides shared logging utilities so features do not each invent their own logging style
-- `errors/`: provides shared API error types and helpers for consistent error responses
+```text
+users ─┬─ sessions, password_resets
+       ├─ profiles (1:1) ── preferences (1:1) ── user_interests ── interests
+       ├─ photos (≤ 6, position 0 = main)
+       ├─ swipes (actor, target, like|pass)          PK (actor, target)
+       ├─ matches (user_a < user_b)                  UNIQUE (user_a, user_b)
+       │     └─ conversations (1:1) ── conversation_participants (last_read_at, hidden_at) ── messages
+       ├─ blocks (blocker, blocked)
+       └─ notifications
+reports (reporter_id, reported_id nullable → survive account deletion, evidence JSONB)
+```
 
-The purpose of this layer is to centralize technical infrastructure so feature modules stay focused on domain behavior.
+All user-owned tables cascade on user deletion, so `DELETE FROM users` is a complete erasure (photo files
+are removed by the service). `reports` keep only the reason and evidence with user ids set to NULL.
 
-## 4. Database Design
+### Discovery query
 
-The API uses PostgreSQL with explicit SQL queries. There is no ORM.
+One SQL statement: mutual preference filter (gender, age, distance on both sides), latitude bounding box
+before the haversine distance, exclusion of processed/blocked profiles, ranking by shared interests,
+proximity, recent activity and "already liked me". Photos and interests for the page are then loaded with
+two batched queries (no N+1). Swap `matching.Recommender` to change the algorithm.
 
-This is an intentional choice:
-- SQL stays visible and reviewable
-- query behavior is explicit
-- performance characteristics are easier to reason about
-- schema changes stay close to the database design
+### Security model
 
-The generic modules rely on core tables such as:
-- `users`: account records and identity data
-- `organizations`: tenant identity for multi-tenant SaaS isolation
-- `subscriptions`: billing state linked to organizations
-- `sessions`: refresh-token session persistence
-- `posts`: generic user-generated content
-- `comments`: responses attached to posts
-- `conversations`: chat threads
-- `messages`: individual chat messages
-- `notifications`: system or user-facing notifications
-- `files`: uploaded file metadata and ownership
+- Passwords: bcrypt (72-byte cap), constant-time-ish login for unknown emails.
+- JWT: HS256 only (`WithValidMethods`), mandatory `exp`, strict claims, 15-minute lifetime; the middleware also
+  verifies the session row is active, so logout / password change / account deletion take effect immediately.
+- Refresh tokens: random, stored hashed, single use (compare-and-swap rotation).
+- Authorisation is always server-side; unknown or foreign resources answer 404.
+- Rate limits: per IP (auth, recovery), per user (swipes, messages, uploads, reports, tickets), per email (login).
+- Uploads: 8 MB cap, content sniffing, pixel cap, re-encode, random file names, private serving.
+- Headers: nosniff, frame deny, no-referrer, HSTS behind TLS; CORS allow-list; WebSocket origin check.
 
-Related support tables such as `conversation_participants` and `votes` extend these core capabilities.
-
-Multi-tenant isolation is centered on `organizations`:
-- users belong to an `organization_id`
-- subscriptions belong to an `organization_id`
-- tenant-scoped repository queries limit shared content and chat access by organization
-
-## 5. Frontend Architecture
-
-The mobile frontend lives under `apps/mobile/src/`:
+## 2. Client
 
 ```text
 apps/mobile/src/
-├─ api/
-├─ hooks/
-├─ components/
-├─ screens/
-├─ store/
-├─ theme/
-└─ utils/
+├─ api/         client.ts (fetch wrapper, single-flight refresh) · services.ts · types.ts · tokenStore.ts · errors.ts
+├─ auth/        AuthContext (booting → anonymous / authenticated)
+├─ realtime/    RealtimeProvider (WebSocket → TanStack Query cache)
+├─ navigation/  RootNavigator: auth stack | onboarding gate | tabs + stack
+├─ screens/     Auth, Onboarding, Discover, Messages, Chat, Notifications, ProfileDetail, Profile*
+├─ components/  ui kit, AuthImage, Avatar, SwipeDeck, PhotoGrid, ProfileForm, Sheet, SafetySheets, Toast
+├─ theme/       light/dark palettes, spacing, radius
+├─ i18n/        fr.ts (all copy)
+└─ lib/         format, validation, cities, device (location/photo picker), deckBus
 ```
 
-Responsibilities:
-- `api/`: HTTP client functions and endpoint wrappers
-- `hooks/`: React Query-powered auth/session hooks
-- `components/`: reusable UI building blocks
-- `screens/`: route-level UI and screen orchestration
-- `store/`: access-token and refresh-token persistence
-- `theme/`: design tokens and shared styling primitives
-- `utils/`: shared helpers used across the app
+- No screen calls `fetch`: all network access goes through `src/api`.
+- Server state lives in TanStack Query (`["me","profile"]`, `["conversations"]`, `["messages", id]`, …); realtime
+  events patch or invalidate those caches.
+- Private photos: native `Image` with a Bearer header (refresh + retry on 401); on the web a blob URL cache.
+- Swipe deck: `PanResponder` + `Animated` (no gesture library); optimistic removal with rollback on failure.
+- Tokens: SecureStore on native, `localStorage` on the web.
 
-Screens should orchestrate the UI, while shared logic belongs in reusable modules such as API clients, helpers, components, and storage utilities. This keeps screens smaller and makes behavior easier to reuse across future clients.
+## 3. Quality gates
 
-Session behavior is centralized:
-- auth state lives in hooks rather than screens
-- React Query owns current-user fetching and session restoration
-- screens consume hooks and API modules instead of issuing direct network requests
-
-## 6. Adding a New Feature
-
-New backend features should follow the same feature-first pattern:
-
-```text
-internal/features/example/
-├─ handler.go
-├─ service.go
-├─ repository.go
-├─ model.go
-└─ routes.go
-```
-
-Recommended process:
-
-1. Add or update the database migration if the feature needs persistence.
-2. Create a new folder under `internal/features/<feature>`.
-3. Define models in `model.go`.
-4. Implement database access in `repository.go`.
-5. Implement business logic in `service.go`.
-6. Expose HTTP handlers in `handler.go`.
-7. Register routes in `routes.go`.
-8. Wire the feature from `cmd/api/main.go`.
-
-When adding a feature, preserve the same architectural rules:
-- thin handlers
-- explicit services
-- SQL in repositories
-- reusable platform infrastructure
-- clear, predictable module boundaries
-
-This consistency is what makes `go-react-saas` scalable as more features are added.
+See README ("Tests et qualité") and `.github/workflows/ci.yml`: gofmt, vet, Go tests with PostgreSQL,
+build, TypeScript, ESLint, Prettier, Vitest, web build, Playwright E2E, Docker smoke test.

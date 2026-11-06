@@ -58,7 +58,11 @@ export async function pickPhotoForm(): Promise<FormData | "denied" | null> {
     const blob = await (await fetch(asset.uri)).blob();
     form.append("file", blob, asset.fileName ?? "photo.jpg");
   } else {
-    form.append("file", { uri: asset.uri, name: asset.fileName ?? "photo.jpg", type: mime } as unknown as Blob);
+    form.append("file", {
+      uri: asset.uri,
+      name: asset.fileName ?? "photo.jpg",
+      type: mime
+    } as unknown as Blob);
   }
   return form;
 }

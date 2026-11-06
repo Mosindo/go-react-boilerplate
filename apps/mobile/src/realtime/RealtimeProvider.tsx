@@ -42,14 +42,21 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       switch (event.type) {
         case "message.new": {
           const message = event.data;
-          queryClient.setQueryData<InfiniteData<MessagesPage>>(["messages", message.conversationId], (old) => {
-            if (!old || old.pages.length === 0) return old;
-            const [first, ...rest] = old.pages;
-            if (!first || first.messages.some((m) => m.id === message.id)) return old;
-            return { ...old, pages: [{ ...first, messages: [message, ...first.messages] }, ...rest] };
-          });
+          queryClient.setQueryData<InfiniteData<MessagesPage>>(
+            ["messages", message.conversationId],
+            (old) => {
+              if (!old || old.pages.length === 0) return old;
+              const [first, ...rest] = old.pages;
+              if (!first || first.messages.some((m) => m.id === message.id)) return old;
+              return {
+                ...old,
+                pages: [{ ...first, messages: [message, ...first.messages] }, ...rest]
+              };
+            }
+          );
           void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-          if (active.current === message.conversationId) listeners.current.forEach((l) => l(message.conversationId));
+          if (active.current === message.conversationId)
+            listeners.current.forEach((l) => l(message.conversationId));
           break;
         }
         case "message.read":

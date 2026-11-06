@@ -4,7 +4,9 @@ const reactHooks = require("eslint-plugin-react-hooks");
 const globals = require("globals");
 
 module.exports = tseslint.config(
-  { ignores: ["node_modules/**", "dist/**", ".expo/**", "test-results/**", "playwright-report/**"] },
+  {
+    ignores: ["node_modules/**", "dist/**", ".expo/**", "test-results/**", "playwright-report/**"]
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -15,8 +17,15 @@ module.exports = tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/consistent-type-imports": "error",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }]
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }
+      ]
     }
   },
-  { files: ["*.js"], languageOptions: { globals: globals.node }, rules: { "@typescript-eslint/no-require-imports": "off" } }
+  {
+    files: ["**/*.js"],
+    languageOptions: { globals: globals.node },
+    rules: { "@typescript-eslint/no-require-imports": "off" }
+  }
 );

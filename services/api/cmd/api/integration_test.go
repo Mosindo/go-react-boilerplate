@@ -761,3 +761,13 @@ func TestRealtimeMessageDelivery(t *testing.T) {
 		t.Fatal("message.new not delivered")
 	}
 }
+
+func TestOversizedJSONBodyIsRejected(t *testing.T) {
+	e := newEnv(t)
+	u := e.register("big")
+	huge := strings.Repeat("a", 2<<20)
+	r := e.do("PUT", "/me/profile", u.Token, map[string]any{"firstName": "Léa", "bio": huge})
+	if r.Status != 400 && r.Status != 413 {
+		t.Fatalf("expected the oversized body to be refused, got %d", r.Status)
+	}
+}

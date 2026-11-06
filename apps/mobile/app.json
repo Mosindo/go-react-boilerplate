@@ -33,7 +33,9 @@
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "Lueur a besoin d'accéder à vos photos pour les ajouter à votre profil." }
+        {
+          "photosPermission": "Lueur a besoin d'accéder à vos photos pour les ajouter à votre profil."
+        }
       ]
     ]
   }

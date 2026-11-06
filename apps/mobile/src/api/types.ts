@@ -56,7 +56,12 @@ export type PublicProfile = {
 };
 
 export type SwipeAction = "like" | "pass";
-export type SwipeResult = { matched: boolean; duplicate: boolean; matchId?: string; conversationId?: string };
+export type SwipeResult = {
+  matched: boolean;
+  duplicate: boolean;
+  matchId?: string;
+  conversationId?: string;
+};
 
 export type Peer = { id: string; firstName: string; mainPhotoId: string | null };
 export type LastMessage = { body: string; senderId: string; createdAt: string };
@@ -74,7 +79,13 @@ export type ConversationsPage = {
   nextBefore?: string;
 };
 
-export type Message = { id: string; conversationId: string; senderId: string; body: string; createdAt: string };
+export type Message = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+};
 export type MessagesPage = {
   messages: Message[]; // newest first
   peerLastReadAt: string;
@@ -91,7 +102,11 @@ export type AppNotification = {
   isRead: boolean;
   createdAt: string;
 };
-export type NotificationsPage = { notifications: AppNotification[]; unreadCount: number; nextBefore?: string };
+export type NotificationsPage = {
+  notifications: AppNotification[];
+  unreadCount: number;
+  nextBefore?: string;
+};
 
 export type BlockedUser = { userId: string; firstName: string; blockedAt: string };
 export type ReportReason = "spam" | "fake" | "harassment" | "inappropriate" | "underage" | "other";
@@ -99,6 +114,9 @@ export type ReportReason = "spam" | "fake" | "harassment" | "inappropriate" | "u
 export type RealtimeEvent =
   | { type: "message.new"; data: Message }
   | { type: "message.read"; data: { conversationId: string; readAt: string } }
-  | { type: "match.new"; data: { matchId: string; conversationId: string; userId: string; firstName: string } }
+  | {
+      type: "match.new";
+      data: { matchId: string; conversationId: string; userId: string; firstName: string };
+    }
   | { type: "match.removed"; data: Record<string, string> }
   | { type: "notification.new"; data: AppNotification };

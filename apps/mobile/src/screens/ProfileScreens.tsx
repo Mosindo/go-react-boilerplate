@@ -9,10 +9,27 @@ import type { Gender, MyProfile } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { Avatar } from "../components/Avatar";
 import { PhotoManager } from "../components/PhotoGrid";
-import { BasicsFields, basicsErrors, GenderPicker, InterestPicker, LocationBlock, type BasicsDraft } from "../components/ProfileForm";
+import {
+  BasicsFields,
+  basicsErrors,
+  GenderPicker,
+  InterestPicker,
+  LocationBlock,
+  type BasicsDraft
+} from "../components/ProfileForm";
 import { ConfirmSheet } from "../components/SafetySheets";
 import { useToast } from "../components/Toast";
-import { Button, Card, Chip, Divider, ErrorState, Input, Loader, Screen, Text } from "../components/ui";
+import {
+  Button,
+  Card,
+  Chip,
+  Divider,
+  ErrorState,
+  Input,
+  Loader,
+  Screen,
+  Text
+} from "../components/ui";
 import { fr } from "../i18n/fr";
 import { locateDevice } from "../lib/device";
 import { displayBirthDate, parseBirthDate } from "../lib/format";
@@ -30,14 +47,29 @@ export function useMyProfile() {
 function Page({ children }: { children: React.ReactNode }) {
   return (
     <Screen edges={["bottom", "left", "right"]}>
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
-        <View style={{ maxWidth: 520, width: "100%", alignSelf: "center", gap: spacing.lg }}>{children}</View>
+      <ScrollView
+        contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={{ maxWidth: 520, width: "100%", alignSelf: "center", gap: spacing.lg }}>
+          {children}
+        </View>
       </ScrollView>
     </Screen>
   );
 }
 
-function MenuRow({ label, onPress, testID, danger }: { label: string; onPress: () => void; testID?: string; danger?: boolean }) {
+function MenuRow({
+  label,
+  onPress,
+  testID,
+  danger
+}: {
+  label: string;
+  onPress: () => void;
+  testID?: string;
+  danger?: boolean;
+}) {
   const { colors } = useTheme();
   return (
     <Pressable
@@ -81,8 +113,18 @@ export function ProfileScreen() {
     }
   };
 
-  if (query.isLoading) return <Screen><Loader /></Screen>;
-  if (query.isError || !query.data?.profile) return <Screen><ErrorState onRetry={() => void query.refetch()} /></Screen>;
+  if (query.isLoading)
+    return (
+      <Screen>
+        <Loader />
+      </Screen>
+    );
+  if (query.isError || !query.data?.profile)
+    return (
+      <Screen>
+        <ErrorState onRetry={() => void query.refetch()} />
+      </Screen>
+    );
   const { profile, photos, interests } = query.data;
 
   return (
@@ -95,7 +137,9 @@ export function ProfileScreen() {
               {profile.firstName}, {profile.age}
             </Text>
             <Text muted>{profile.city}</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+            <View
+              style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" }}
+            >
               {interests.map((i) => (
                 <Chip key={i.slug} label={i.label} />
               ))}
@@ -107,19 +151,49 @@ export function ProfileScreen() {
             ) : null}
           </View>
           <Card style={{ marginHorizontal: spacing.lg, padding: 0, overflow: "hidden" }}>
-            <MenuRow testID="menu-edit" label={fr.profile.edit} onPress={() => navigation.navigate("EditProfile")} />
+            <MenuRow
+              testID="menu-edit"
+              label={fr.profile.edit}
+              onPress={() => navigation.navigate("EditProfile")}
+            />
             <Divider />
-            <MenuRow testID="menu-photos" label={fr.profile.photos} onPress={() => navigation.navigate("Photos")} />
+            <MenuRow
+              testID="menu-photos"
+              label={fr.profile.photos}
+              onPress={() => navigation.navigate("Photos")}
+            />
             <Divider />
-            <MenuRow testID="menu-prefs" label={fr.profile.preferences} onPress={() => navigation.navigate("Preferences")} />
+            <MenuRow
+              testID="menu-prefs"
+              label={fr.profile.preferences}
+              onPress={() => navigation.navigate("Preferences")}
+            />
             <Divider />
-            <MenuRow testID="menu-privacy" label={fr.profile.privacy} onPress={() => navigation.navigate("Privacy")} />
+            <MenuRow
+              testID="menu-privacy"
+              label={fr.profile.privacy}
+              onPress={() => navigation.navigate("Privacy")}
+            />
             <Divider />
-            <MenuRow testID="menu-password" label={fr.profile.password} onPress={() => navigation.navigate("ChangePassword")} />
+            <MenuRow
+              testID="menu-password"
+              label={fr.profile.password}
+              onPress={() => navigation.navigate("ChangePassword")}
+            />
           </Card>
           <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-            <Button testID="logout" variant="secondary" title={fr.profile.logout} onPress={() => void auth.logout()} />
-            <Button testID="delete-account" variant="ghost" title={fr.profile.deleteAccount} onPress={() => setConfirmDelete(true)} />
+            <Button
+              testID="logout"
+              variant="secondary"
+              title={fr.profile.logout}
+              onPress={() => void auth.logout()}
+            />
+            <Button
+              testID="delete-account"
+              variant="ghost"
+              title={fr.profile.deleteAccount}
+              onPress={() => setConfirmDelete(true)}
+            />
           </View>
         </View>
       </ScrollView>
@@ -137,7 +211,15 @@ export function ProfileScreen() {
           setDeleteError(null);
         }}
       >
-        <Input testID="delete-password" label={fr.auth.password} value={deletePassword} onChangeText={setDeletePassword} secureTextEntry autoCapitalize="none" error={deleteError} />
+        <Input
+          testID="delete-password"
+          label={fr.auth.password}
+          value={deletePassword}
+          onChangeText={setDeletePassword}
+          secureTextEntry
+          autoCapitalize="none"
+          error={deleteError}
+        />
       </ConfirmSheet>
     </Screen>
   );
@@ -148,11 +230,17 @@ export function EditProfileScreen() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const query = useMyProfile();
-  const interestsQuery = useQuery({ queryKey: ["interests"], queryFn: profileApi.interests, staleTime: Infinity });
+  const interestsQuery = useQuery({
+    queryKey: ["interests"],
+    queryFn: profileApi.interests,
+    staleTime: Infinity
+  });
   const [basics, setBasics] = useState<BasicsDraft>({ firstName: "", birthDate: "", gender: null });
   const [bio, setBio] = useState("");
   const [interests, setInterests] = useState<string[]>([]);
-  const [place, setPlace] = useState<{ latitude: number; longitude: number; city: string } | null>(null);
+  const [place, setPlace] = useState<{ latitude: number; longitude: number; city: string } | null>(
+    null
+  );
   const [city, setCity] = useState("");
   const [locating, setLocating] = useState(false);
   const [denied, setDenied] = useState(false);
@@ -162,7 +250,11 @@ export function EditProfileScreen() {
   const data = query.data;
   useEffect(() => {
     if (!data?.profile || loaded) return;
-    setBasics({ firstName: data.profile.firstName, birthDate: displayBirthDate(data.profile.birthDate), gender: data.profile.gender });
+    setBasics({
+      firstName: data.profile.firstName,
+      birthDate: displayBirthDate(data.profile.birthDate),
+      gender: data.profile.gender
+    });
     setBio(data.profile.bio);
     setCity(data.profile.city);
     setInterests(data.interests.map((i) => i.slug));
@@ -193,7 +285,12 @@ export function EditProfileScreen() {
     onError: (error) => toast.show(errorMessage(error), "error")
   });
 
-  if (!loaded) return <Screen edges={[]}><Loader /></Screen>;
+  if (!loaded)
+    return (
+      <Screen edges={[]}>
+        <Loader />
+      </Screen>
+    );
 
   const submit = () => {
     setShow(true);
@@ -205,11 +302,27 @@ export function EditProfileScreen() {
   return (
     <Page>
       <BasicsFields draft={basics} onChange={setBasics} showErrors={show} />
-      <Input testID="edit-bio" label={fr.onboarding.bio} hint={fr.onboarding.bioHint} value={bio} onChangeText={setBio} multiline maxLength={500} />
+      <Input
+        testID="edit-bio"
+        label={fr.onboarding.bio}
+        hint={fr.onboarding.bioHint}
+        value={bio}
+        onChangeText={setBio}
+        multiline
+        maxLength={500}
+      />
       <Text variant="label">{fr.onboarding.interests}</Text>
-      <InterestPicker all={interestsQuery.data ?? []} selected={interests} onChange={setInterests} />
+      <InterestPicker
+        all={interestsQuery.data ?? []}
+        selected={interests}
+        onChange={setInterests}
+      />
       <Text variant="label">{fr.onboarding.locationTitle}</Text>
-      <Text muted>{city ? `Ville actuelle : ${city}. Mettez à jour votre position pour enregistrer les modifications.` : ""}</Text>
+      <Text muted>
+        {city
+          ? `Ville actuelle : ${city}. Mettez à jour votre position pour enregistrer les modifications.`
+          : ""}
+      </Text>
       <LocationBlock
         city={place?.city ?? ""}
         hasLocation={!!place}
@@ -226,7 +339,12 @@ export function EditProfileScreen() {
         }}
         onPickCity={(c) => setPlace({ latitude: c.latitude, longitude: c.longitude, city: c.name })}
       />
-      <Button testID="edit-save" title={save.isPending ? fr.common.saving : fr.common.save} loading={save.isPending} onPress={submit} />
+      <Button
+        testID="edit-save"
+        title={save.isPending ? fr.common.saving : fr.common.save}
+        loading={save.isPending}
+        onPress={submit}
+      />
     </Page>
   );
 }
@@ -234,7 +352,12 @@ export function EditProfileScreen() {
 export function PhotosScreen() {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["me", "photos"], queryFn: photoApi.list });
-  if (query.isLoading) return <Screen edges={[]}><Loader /></Screen>;
+  if (query.isLoading)
+    return (
+      <Screen edges={[]}>
+        <Loader />
+      </Screen>
+    );
   return (
     <Page>
       <Text muted>{fr.onboarding.photosIntro}</Text>
@@ -272,7 +395,13 @@ export function PreferencesScreen() {
   }, [query.data, loaded]);
 
   const save = useMutation({
-    mutationFn: () => profileApi.savePreferences({ interestedIn, minAge: range[0], maxAge: range[1], maxDistanceKm: distance }),
+    mutationFn: () =>
+      profileApi.savePreferences({
+        interestedIn,
+        minAge: range[0],
+        maxAge: range[1],
+        maxDistanceKm: distance
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["me"] });
       toast.show(fr.profile.saved, "success");
@@ -281,7 +410,12 @@ export function PreferencesScreen() {
     onError: (error) => toast.show(errorMessage(error), "error")
   });
 
-  if (!loaded) return <Screen edges={[]}><Loader /></Screen>;
+  if (!loaded)
+    return (
+      <Screen edges={[]}>
+        <Loader />
+      </Screen>
+    );
   return (
     <Page>
       <Text variant="label">{fr.onboarding.interestedIn}</Text>
@@ -292,7 +426,11 @@ export function PreferencesScreen() {
             testID={`seek-${g}`}
             label={fr.onboarding.interestedOptions[g] ?? g}
             selected={interestedIn.includes(g)}
-            onPress={() => setInterestedIn((cur) => (cur.includes(g) ? (cur.length > 1 ? cur.filter((x) => x !== g) : cur) : [...cur, g]))}
+            onPress={() =>
+              setInterestedIn((cur) =>
+                cur.includes(g) ? (cur.length > 1 ? cur.filter((x) => x !== g) : cur) : [...cur, g]
+              )
+            }
           />
         ))}
       </View>
@@ -317,7 +455,12 @@ export function PreferencesScreen() {
         onMinus={() => setDistance((d) => Math.max(1, d <= 10 ? d - 1 : d - 5))}
         onPlus={() => setDistance((d) => Math.min(500, d < 10 ? d + 1 : d + 5))}
       />
-      <Button testID="prefs-save" title={fr.common.save} loading={save.isPending} onPress={() => save.mutate()} />
+      <Button
+        testID="prefs-save"
+        title={fr.common.save}
+        loading={save.isPending}
+        onPress={() => save.mutate()}
+      />
     </Page>
   );
 }
@@ -330,7 +473,8 @@ export function PrivacyScreen() {
   const blocks = useQuery({ queryKey: ["blocks"], queryFn: safetyApi.blocks });
 
   const privacy = useMutation({
-    mutationFn: (v: { discoverable: boolean; showDistance: boolean }) => profileApi.setPrivacy(v.discoverable, v.showDistance),
+    mutationFn: (v: { discoverable: boolean; showDistance: boolean }) =>
+      profileApi.setPrivacy(v.discoverable, v.showDistance),
     onSuccess: (data) => queryClient.setQueryData<MyProfile>(["me", "profile"], data),
     onError: (error) => toast.show(errorMessage(error), "error")
   });
@@ -341,7 +485,12 @@ export function PrivacyScreen() {
   });
 
   const p = profile.data?.profile;
-  if (!p) return <Screen edges={[]}><Loader /></Screen>;
+  if (!p)
+    return (
+      <Screen edges={[]}>
+        <Loader />
+      </Screen>
+    );
   return (
     <Page>
       <Card style={{ gap: spacing.lg }}>
@@ -363,9 +512,16 @@ export function PrivacyScreen() {
       {blocks.isLoading ? <Loader /> : null}
       {blocks.data && blocks.data.length === 0 ? <Text muted>{fr.profile.noBlocked}</Text> : null}
       {blocks.data?.map((b) => (
-        <View key={b.userId} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View
+          key={b.userId}
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+        >
           <Text>{b.firstName || "—"}</Text>
-          <Button variant="secondary" title={fr.profile.unblock} onPress={() => unblock.mutate(b.userId)} />
+          <Button
+            variant="secondary"
+            title={fr.profile.unblock}
+            onPress={() => unblock.mutate(b.userId)}
+          />
         </View>
       ))}
       <Text variant="caption" color={colors.textMuted}>
@@ -375,7 +531,19 @@ export function PrivacyScreen() {
   );
 }
 
-function ToggleRow({ label, hint, value, onChange, testID }: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; testID?: string }) {
+function ToggleRow({
+  label,
+  hint,
+  value,
+  onChange,
+  testID
+}: {
+  label: string;
+  hint?: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  testID?: string;
+}) {
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
@@ -423,9 +591,30 @@ export function ChangePasswordScreen() {
 
   return (
     <Page>
-      <Input testID="pw-current" label={fr.profile.currentPassword} value={current} onChangeText={setCurrent} secureTextEntry autoCapitalize="none" />
-      <Input testID="pw-new" label={fr.auth.newPassword} value={next} onChangeText={setNext} secureTextEntry autoCapitalize="none" hint={fr.auth.passwordHint} error={error} />
-      <Button testID="pw-submit" title={fr.common.save} loading={busy} onPress={() => void submit()} />
+      <Input
+        testID="pw-current"
+        label={fr.profile.currentPassword}
+        value={current}
+        onChangeText={setCurrent}
+        secureTextEntry
+        autoCapitalize="none"
+      />
+      <Input
+        testID="pw-new"
+        label={fr.auth.newPassword}
+        value={next}
+        onChangeText={setNext}
+        secureTextEntry
+        autoCapitalize="none"
+        hint={fr.auth.passwordHint}
+        error={error}
+      />
+      <Button
+        testID="pw-submit"
+        title={fr.common.save}
+        loading={busy}
+        onPress={() => void submit()}
+      />
     </Page>
   );
 }

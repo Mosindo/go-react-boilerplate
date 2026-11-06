@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to `Lueur`.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Lueur is free for its users: never add paywalls, subscriptions, paid boosts or like limits.
+- Keep shared concerns in `platform` and domain concerns in `features`.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -14,12 +14,14 @@ Thanks for contributing to `go-react-saas`.
 Use Conventional Commits.
 
 Examples:
+
 - `feat(auth): add refresh token validation`
 - `fix(chat): handle empty conversation state`
 - `docs(readme): clarify local docker workflow`
 - `chore(ci): cache Go build artifacts`
 
 Recommended types:
+
 - `feat`
 - `fix`
 - `docs`
@@ -32,12 +34,13 @@ Recommended types:
 ## Branch Naming Conventions
 
 Use short, descriptive branch names:
+
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
 - `chore/qa-lite-cleanup`
 
-For automated agent work, use the `codex/` prefix.
+For automated agent work, use the `claude/` or `codex/` prefix.
 
 ## Pull Request Workflow
 

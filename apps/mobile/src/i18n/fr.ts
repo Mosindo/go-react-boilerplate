@@ -58,7 +58,10 @@ export const fr = {
     firstName: "Prénom",
     birthDate: "Date de naissance (JJ/MM/AAAA)",
     gender: "Je suis",
-    genders: { woman: "Une femme", man: "Un homme", nonbinary: "Non-binaire" } as Record<string, string>,
+    genders: { woman: "Une femme", man: "Un homme", nonbinary: "Non-binaire" } as Record<
+      string,
+      string
+    >,
     adultOnly: "Lueur est réservé aux personnes majeures.",
     invalidName: "Indiquez votre prénom (lettres uniquement).",
     invalidBirth: "Saisissez une date valide au format JJ/MM/AAAA.",
@@ -76,7 +79,11 @@ export const fr = {
     interests: "Centres d'intérêt (jusqu'à 10)",
     prefsTitle: "Qui souhaitez-vous rencontrer ?",
     interestedIn: "Je veux rencontrer",
-    interestedOptions: { woman: "Des femmes", man: "Des hommes", nonbinary: "Des personnes non-binaires" } as Record<string, string>,
+    interestedOptions: {
+      woman: "Des femmes",
+      man: "Des hommes",
+      nonbinary: "Des personnes non-binaires"
+    } as Record<string, string>,
     ageRange: "Tranche d'âge",
     maxDistance: "Distance maximale",
     photosTitle: "Ajoutez vos photos",
@@ -84,7 +91,12 @@ export const fr = {
     finish: "Terminer",
     needPhoto: "Ajoutez au moins une photo pour continuer."
   },
-  tabs: { discover: "Découvrir", messages: "Messages", notifications: "Alertes", profile: "Profil" },
+  tabs: {
+    discover: "Découvrir",
+    messages: "Messages",
+    notifications: "Alertes",
+    profile: "Profil"
+  },
   discover: {
     title: "Découvrir",
     pass: "Passer",
@@ -93,7 +105,8 @@ export const fr = {
     emptyTitle: "Vous avez tout vu pour le moment",
     emptyBody: "Revenez plus tard, élargissez vos préférences ou ré-affichez les profils passés.",
     restore: "Ré-afficher les profils passés",
-    restored: (n: number) => (n > 0 ? `${n} profil(s) de nouveau disponible(s).` : "Aucun profil passé à restaurer."),
+    restored: (n: number) =>
+      n > 0 ? `${n} profil(s) de nouveau disponible(s).` : "Aucun profil passé à restaurer.",
     errorTitle: "Impossible de charger les profils",
     needProfile: "Complétez votre profil pour découvrir des personnes.",
     kmAway: (km: number) => (km <= 5 ? "À moins de 5 km" : `À ${km} km`),
@@ -144,7 +157,8 @@ export const fr = {
     deleteWarning:
       "Cette action est définitive : profil, photos, matchs et messages seront effacés. Saisissez votre mot de passe pour confirmer.",
     discoverable: "Apparaître dans la découverte",
-    discoverableHint: "Désactivez pour mettre votre profil en pause : personne ne pourra vous découvrir.",
+    discoverableHint:
+      "Désactivez pour mettre votre profil en pause : personne ne pourra vous découvrir.",
     showDistance: "Afficher ma distance approximative",
     blocked: "Personnes bloquées",
     noBlocked: "Vous n'avez bloqué personne.",
@@ -165,7 +179,8 @@ export const fr = {
   safety: {
     report: "Signaler",
     block: "Bloquer",
-    blockConfirm: (name: string) => `Bloquer ${name} ? Vous ne vous verrez plus et la conversation sera supprimée.`,
+    blockConfirm: (name: string) =>
+      `Bloquer ${name} ? Vous ne vous verrez plus et la conversation sera supprimée.`,
     blocked: "Personne bloquée.",
     reportTitle: "Pourquoi signalez-vous ce profil ?",
     reasons: {
@@ -181,5 +196,9 @@ export const fr = {
     sendReport: "Envoyer le signalement",
     reported: "Merci, votre signalement a été transmis."
   },
-  profileView: { about: "À propos", interests: "Centres d'intérêt", gone: "Ce profil n'est plus disponible." }
+  profileView: {
+    about: "À propos",
+    interests: "Centres d'intérêt",
+    gone: "Ce profil n'est plus disponible."
+  }
 };

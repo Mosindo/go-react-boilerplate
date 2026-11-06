@@ -2,7 +2,8 @@ import { defineConfig } from "@playwright/test";
 
 // End-to-end tests drive the exported web build against a real API + PostgreSQL.
 //   E2E_DATABASE_URL=postgres://user:pass@localhost:5432/e2e npm run build:web && npm run test:e2e
-const dbUrl = process.env.E2E_DATABASE_URL ?? "postgres://postgres@localhost:5433/e2e?sslmode=disable";
+const dbUrl =
+  process.env.E2E_DATABASE_URL ?? "postgres://postgres@localhost:5433/e2e?sslmode=disable";
 const apiPort = process.env.E2E_API_PORT ?? "18080";
 const webPort = process.env.WEB_PORT ?? "8081";
 
@@ -16,7 +17,9 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${webPort}`,
     trace: "off",
-    launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {}
+    launchOptions: process.env.PW_CHROMIUM_PATH
+      ? { executablePath: process.env.PW_CHROMIUM_PATH }
+      : {}
   },
   webServer: [
     {

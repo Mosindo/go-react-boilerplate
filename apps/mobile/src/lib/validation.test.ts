@@ -4,7 +4,8 @@ import { isValidEmail, isValidFirstName, isValidPassword } from "./validation";
 describe("validation", () => {
   it("validates emails", () => {
     expect(isValidEmail(" a@b.fr ")).toBe(true);
-    for (const bad of ["", "a@b", "a b@c.fr", "@c.fr", "a@@c.fr"]) expect(isValidEmail(bad)).toBe(false);
+    for (const bad of ["", "a@b", "a b@c.fr", "@c.fr", "a@@c.fr"])
+      expect(isValidEmail(bad)).toBe(false);
   });
   it("validates passwords", () => {
     expect(isValidPassword("12345678")).toBe(true);

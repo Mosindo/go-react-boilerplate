@@ -8,7 +8,11 @@ export function parseBirthDate(input: string): string | null {
   const month = Number(match[2]);
   const year = Number(match[3]);
   const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
     return null;
   }
   return `${year}-${pad(month)}-${pad(day)}`;
@@ -37,7 +41,9 @@ export function initials(name: string): string {
 export function formatListTime(iso: string, now: Date = new Date()): string {
   const date = new Date(iso);
   const sameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
   if (sameDay(date, now)) return formatClock(iso);
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);

@@ -13,7 +13,8 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 15_000,
       // Client errors (4xx) will not fix themselves: only retry network/server failures.
-      retry: (count, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 2
+      retry: (count, error) =>
+        !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 2
     }
   }
 });

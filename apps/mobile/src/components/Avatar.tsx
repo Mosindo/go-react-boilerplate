@@ -5,18 +5,35 @@ import { useTheme } from "../theme";
 import { AuthImage } from "./AuthImage";
 import { Text } from "./ui";
 
-export function Avatar({ name, photoId, size = 52 }: { name: string; photoId?: string | null; size?: number }) {
+export function Avatar({
+  name,
+  photoId,
+  size = 52
+}: {
+  name: string;
+  photoId?: string | null;
+  size?: number;
+}) {
   const { colors } = useTheme();
   const box = { width: size, height: size, borderRadius: size / 2 };
   if (photoId) {
     return (
       <View style={[box, { overflow: "hidden", backgroundColor: colors.surfaceAlt }]}>
-        <AuthImage photoId={photoId} style={StyleSheet.absoluteFill as object} accessibilityLabel={`Photo de ${name}`} />
+        <AuthImage
+          photoId={photoId}
+          style={StyleSheet.absoluteFill as object}
+          accessibilityLabel={`Photo de ${name}`}
+        />
       </View>
     );
   }
   return (
-    <View style={[box, { backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" }]}>
+    <View
+      style={[
+        box,
+        { backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" }
+      ]}
+    >
       <Text variant="heading" color={colors.primary}>
         {initials(name)}
       </Text>

@@ -32,7 +32,8 @@ export function MessagesScreen() {
   const fresh = conversations.filter((c) => !c.lastMessage);
   const talking = conversations.filter((c) => c.lastMessage);
 
-  const open = (c: Conversation) => navigation.navigate("Chat", { conversationId: c.id, name: c.peer.firstName });
+  const open = (c: Conversation) =>
+    navigation.navigate("Chat", { conversationId: c.id, name: c.peer.firstName });
 
   const header = (
     <View>
@@ -63,7 +64,15 @@ export function MessagesScreen() {
         </View>
       ) : null}
       {talking.length > 0 ? (
-        <Text variant="label" muted style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm }}>
+        <Text
+          variant="label"
+          muted
+          style={{
+            paddingHorizontal: spacing.lg,
+            paddingTop: spacing.lg,
+            paddingBottom: spacing.sm
+          }}
+        >
           {fr.messages.conversations}
         </Text>
       ) : null}
@@ -125,7 +134,9 @@ export function MessagesScreen() {
                       muted={item.unreadCount === 0}
                       style={{ flex: 1, fontWeight: item.unreadCount > 0 ? "700" : "400" }}
                     >
-                      {last ? `${mine ? fr.messages.youPrefix : ""}${last.body}` : fr.messages.sayHi}
+                      {last
+                        ? `${mine ? fr.messages.youPrefix : ""}${last.body}`
+                        : fr.messages.sayHi}
                     </Text>
                     <Badge count={item.unreadCount} />
                   </View>

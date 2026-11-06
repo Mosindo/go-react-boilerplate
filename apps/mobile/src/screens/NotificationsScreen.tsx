@@ -41,7 +41,15 @@ export function NotificationsScreen() {
 
   return (
     <Screen>
-      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <View
+        style={{
+          paddingHorizontal: spacing.lg,
+          paddingTop: spacing.sm,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between"
+        }}
+      >
         <Text variant="title">{fr.notifications.title}</Text>
         {unread > 0 ? (
           <Button
@@ -55,7 +63,11 @@ export function NotificationsScreen() {
       {query.isLoading ? <Loader /> : null}
       {query.isError ? <ErrorState onRetry={() => void query.refetch()} /> : null}
       {query.data && items.length === 0 ? (
-        <EmptyState glyph="🔔" title={fr.notifications.emptyTitle} body={fr.notifications.emptyBody} />
+        <EmptyState
+          glyph="🔔"
+          title={fr.notifications.emptyTitle}
+          body={fr.notifications.emptyBody}
+        />
       ) : null}
       {items.length > 0 ? (
         <FlatList
@@ -77,10 +89,22 @@ export function NotificationsScreen() {
                 flexDirection: "row",
                 gap: spacing.md,
                 padding: spacing.lg,
-                backgroundColor: pressed ? colors.surfaceAlt : item.isRead ? "transparent" : colors.primarySoft
+                backgroundColor: pressed
+                  ? colors.surfaceAlt
+                  : item.isRead
+                    ? "transparent"
+                    : colors.primarySoft
               })}
             >
-              <View style={{ width: 10, height: 10, borderRadius: 5, marginTop: 7, backgroundColor: item.isRead ? "transparent" : colors.primary }} />
+              <View
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 5,
+                  marginTop: 7,
+                  backgroundColor: item.isRead ? "transparent" : colors.primary
+                }}
+              />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text variant="heading">{item.title}</Text>
                 <Text muted>{item.body}</Text>

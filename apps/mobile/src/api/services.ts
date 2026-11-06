@@ -26,9 +26,14 @@ export const authApi = {
   logout: (refreshToken: string) =>
     api<void>("/auth/logout", { method: "POST", auth: false, body: { refreshToken } }),
   me: () => api<AuthUser>("/me"),
-  forgot: (email: string) => api<void>("/auth/password/forgot", { method: "POST", auth: false, body: { email } }),
+  forgot: (email: string) =>
+    api<void>("/auth/password/forgot", { method: "POST", auth: false, body: { email } }),
   reset: (email: string, code: string, newPassword: string) =>
-    api<void>("/auth/password/reset", { method: "POST", auth: false, body: { email, code, newPassword } }),
+    api<void>("/auth/password/reset", {
+      method: "POST",
+      auth: false,
+      body: { email, code, newPassword }
+    }),
   changePassword: (currentPassword: string, newPassword: string) =>
     api<void>("/me/password", { method: "PUT", body: { currentPassword, newPassword } }),
   deleteAccount: (password: string) => api<void>("/me", { method: "DELETE", body: { password } })
@@ -37,7 +42,8 @@ export const authApi = {
 export const profileApi = {
   mine: () => api<MyProfile>("/me/profile"),
   save: (input: ProfileInput) => api<MyProfile>("/me/profile", { method: "PUT", body: input }),
-  savePreferences: (prefs: Preferences) => api<Preferences>("/me/preferences", { method: "PUT", body: prefs }),
+  savePreferences: (prefs: Preferences) =>
+    api<Preferences>("/me/preferences", { method: "PUT", body: prefs }),
   setPrivacy: (discoverable: boolean, showDistance: boolean) =>
     api<MyProfile>("/me/privacy", { method: "PUT", body: { discoverable, showDistance } }),
   interests: () => api<{ interests: Interest[] }>("/interests").then((r) => r.interests),
@@ -50,7 +56,9 @@ export const photoApi = {
   replace: (id: string, form: FormData) => api<Photo>(`/me/photos/${id}`, { method: "PUT", form }),
   remove: (id: string) => api<void>(`/me/photos/${id}`, { method: "DELETE" }),
   reorder: (ids: string[]) =>
-    api<{ photos: Photo[] }>("/me/photos/order", { method: "PUT", body: { ids } }).then((r) => r.photos)
+    api<{ photos: Photo[] }>("/me/photos/order", { method: "PUT", body: { ids } }).then(
+      (r) => r.photos
+    )
 };
 
 export const discoverApi = {
@@ -63,13 +71,18 @@ export const discoverApi = {
 };
 
 export const chatApi = {
-  conversations: (before?: string) => api<ConversationsPage>("/conversations", { query: { before, limit: 30 } }),
+  conversations: (before?: string) =>
+    api<ConversationsPage>("/conversations", { query: { before, limit: 30 } }),
   messages: (conversationId: string, before?: string) =>
-    api<MessagesPage>(`/conversations/${conversationId}/messages`, { query: { before, limit: 30 } }),
+    api<MessagesPage>(`/conversations/${conversationId}/messages`, {
+      query: { before, limit: 30 }
+    }),
   send: (conversationId: string, body: string) =>
     api<Message>(`/conversations/${conversationId}/messages`, { method: "POST", body: { body } }),
-  markRead: (conversationId: string) => api<void>(`/conversations/${conversationId}/read`, { method: "POST" }),
-  hide: (conversationId: string) => api<void>(`/conversations/${conversationId}`, { method: "DELETE" })
+  markRead: (conversationId: string) =>
+    api<void>(`/conversations/${conversationId}/read`, { method: "POST" }),
+  hide: (conversationId: string) =>
+    api<void>(`/conversations/${conversationId}`, { method: "DELETE" })
 };
 
 export const safetyApi = {
@@ -81,7 +94,8 @@ export const safetyApi = {
 };
 
 export const notificationsApi = {
-  list: (before?: string) => api<NotificationsPage>("/notifications", { query: { before, limit: 20 } }),
+  list: (before?: string) =>
+    api<NotificationsPage>("/notifications", { query: { before, limit: 20 } }),
   markRead: (id: string) => api<void>(`/notifications/${id}/read`, { method: "POST" }),
   markAllRead: () => api<void>("/notifications/read-all", { method: "POST" })
 };

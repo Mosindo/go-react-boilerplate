@@ -22,7 +22,13 @@ export function GenderPicker({
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
       {GENDERS.map((g) => (
-        <Chip key={g} testID={`gender-${g}`} label={options[g] ?? g} selected={value === g} onPress={() => onChange(g)} />
+        <Chip
+          key={g}
+          testID={`gender-${g}`}
+          label={options[g] ?? g}
+          selected={value === g}
+          onPress={() => onChange(g)}
+        />
       ))}
     </View>
   );
@@ -60,7 +66,11 @@ export function InterestPicker({
   );
 }
 
-export function CityPicker({ onPick }: { onPick: (c: { name: string; latitude: number; longitude: number }) => void }) {
+export function CityPicker({
+  onPick
+}: {
+  onPick: (c: { name: string; latitude: number; longitude: number }) => void;
+}) {
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
       {CITIES.map((c) => (
@@ -72,7 +82,11 @@ export function CityPicker({ onPick }: { onPick: (c: { name: string; latitude: n
 
 export type BasicsDraft = { firstName: string; birthDate: string; gender: Gender | null };
 
-export function basicsErrors(draft: BasicsDraft): { firstName?: string; birthDate?: string; gender?: string } {
+export function basicsErrors(draft: BasicsDraft): {
+  firstName?: string;
+  birthDate?: string;
+  gender?: string;
+} {
   const errors: { firstName?: string; birthDate?: string; gender?: string } = {};
   if (!isValidFirstName(draft.firstName)) errors.firstName = fr.onboarding.invalidName;
   const iso = parseBirthDate(draft.birthDate);

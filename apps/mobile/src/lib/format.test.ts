@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ageFromISO, dayKey, displayBirthDate, formatClock, formatListTime, initials, parseBirthDate } from "./format";
+import {
+  ageFromISO,
+  dayKey,
+  displayBirthDate,
+  formatClock,
+  formatListTime,
+  initials,
+  parseBirthDate
+} from "./format";
 
 describe("parseBirthDate", () => {
   it("accepts valid dates", () => {
@@ -8,7 +16,15 @@ describe("parseBirthDate", () => {
     expect(parseBirthDate("29/02/2000")).toBe("2000-02-29");
   });
   it("rejects impossible or malformed dates", () => {
-    for (const bad of ["31/02/1990", "29/02/2001", "1990-05-12", "12/13/1990", "", "abc", "12/05/90"]) {
+    for (const bad of [
+      "31/02/1990",
+      "29/02/2001",
+      "1990-05-12",
+      "12/13/1990",
+      "",
+      "abc",
+      "12/05/90"
+    ]) {
       expect(parseBirthDate(bad)).toBeNull();
     }
   });

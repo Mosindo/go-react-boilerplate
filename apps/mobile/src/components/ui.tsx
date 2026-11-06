@@ -82,7 +82,11 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: palette.bg, borderColor: palette.border, opacity: inactive ? 0.55 : pressed ? 0.85 : 1 },
+        {
+          backgroundColor: palette.bg,
+          borderColor: palette.border,
+          opacity: inactive ? 0.55 : pressed ? 0.85 : 1
+        },
         style
       ]}
     >
@@ -130,7 +134,9 @@ export function IconButton({
         }
       ]}
     >
-      <RNText style={{ fontSize: size * 0.42, color: primary ? colors.primaryText : colors.text }}>{glyph}</RNText>
+      <RNText style={{ fontSize: size * 0.42, color: primary ? colors.primaryText : colors.text }}>
+        {glyph}
+      </RNText>
     </Pressable>
   );
 }
@@ -142,7 +148,15 @@ type InputProps = Omit<TextInputProps, "style"> & {
   testID?: string;
 };
 
-export function Input({ label, error, hint, secureTextEntry, testID, multiline, ...props }: InputProps) {
+export function Input({
+  label,
+  error,
+  hint,
+  secureTextEntry,
+  testID,
+  multiline,
+  ...props
+}: InputProps) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(!!secureTextEntry);
@@ -229,7 +243,9 @@ export function Chip({
         }
       ]}
     >
-      <RNText style={[sizes.label, { color: selected ? colors.primary : colors.text }]}>{label}</RNText>
+      <RNText style={[sizes.label, { color: selected ? colors.primary : colors.text }]}>
+        {label}
+      </RNText>
     </View>
   );
   if (!onPress) return body;
@@ -256,10 +272,18 @@ export function Row({
   return <View style={[{ flexDirection: "row", alignItems: "center" }, style]}>{children}</View>;
 }
 
-export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Card({
+  children,
+  style
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }, style]}>
+    <View
+      style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }, style]}
+    >
       {children}
     </View>
   );
@@ -313,7 +337,9 @@ export function EmptyState({
           {body}
         </Text>
       ) : null}
-      {action ? <View style={{ marginTop: spacing.lg, alignSelf: "stretch" }}>{action}</View> : null}
+      {action ? (
+        <View style={{ marginTop: spacing.lg, alignSelf: "stretch" }}>{action}</View>
+      ) : null}
     </View>
   );
 }
@@ -323,7 +349,11 @@ export function ErrorState({ title, onRetry }: { title?: string; onRetry?: () =>
     <EmptyState
       glyph="⚠️"
       title={title ?? fr.common.genericError}
-      action={onRetry ? <Button title={fr.common.retry} variant="secondary" onPress={onRetry} /> : undefined}
+      action={
+        onRetry ? (
+          <Button title={fr.common.retry} variant="secondary" onPress={onRetry} />
+        ) : undefined
+      }
     />
   );
 }
@@ -332,8 +362,13 @@ export function Badge({ count }: { count: number }) {
   const { colors } = useTheme();
   if (count <= 0) return null;
   return (
-    <View style={[styles.badge, { backgroundColor: colors.primary }]} accessibilityLabel={`${count} non lus`}>
-      <RNText style={{ color: colors.primaryText, fontSize: 11, fontWeight: "800" }}>{count > 99 ? "99+" : count}</RNText>
+    <View
+      style={[styles.badge, { backgroundColor: colors.primary }]}
+      accessibilityLabel={`${count} non lus`}
+    >
+      <RNText style={{ color: colors.primaryText, fontSize: 11, fontWeight: "800" }}>
+        {count > 99 ? "99+" : count}
+      </RNText>
     </View>
   );
 }

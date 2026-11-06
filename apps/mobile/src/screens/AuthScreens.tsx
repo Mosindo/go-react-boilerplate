@@ -13,12 +13,22 @@ import { spacing, useTheme } from "../theme";
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <Screen>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <ScrollView
-          contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg, flexGrow: 1, justifyContent: "center" }}
+          contentContainerStyle={{
+            padding: spacing.xl,
+            gap: spacing.lg,
+            flexGrow: 1,
+            justifyContent: "center"
+          }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ maxWidth: 440, width: "100%", alignSelf: "center", gap: spacing.lg }}>{children}</View>
+          <View style={{ maxWidth: 440, width: "100%", alignSelf: "center", gap: spacing.lg }}>
+            {children}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -55,7 +65,11 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
   const submit = async () => {
     setSubmitted(true);
     setFormError(null);
-    if (!isValidEmail(email) || (mode === "register" ? !isValidPassword(password) : password.length === 0)) return;
+    if (
+      !isValidEmail(email) ||
+      (mode === "register" ? !isValidPassword(password) : password.length === 0)
+    )
+      return;
     setBusy(true);
     try {
       if (mode === "login") await auth.login(email, password);
@@ -131,7 +145,10 @@ export function LoginScreen({ navigation }: NativeStackScreenProps<AuthStackPara
   );
 }
 
-export function ForgotScreen({ navigation, route }: NativeStackScreenProps<AuthStackParamList, "Forgot">) {
+export function ForgotScreen({
+  navigation,
+  route
+}: NativeStackScreenProps<AuthStackParamList, "Forgot">) {
   const [email, setEmail] = useState(route.params?.email ?? "");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -183,13 +200,25 @@ export function ForgotScreen({ navigation, route }: NativeStackScreenProps<AuthS
             keyboardType="email-address"
           />
           {error ? <Text color="#B3261E">{error}</Text> : null}
-          <Button testID="forgot-send" title={fr.auth.sendCode} loading={busy} onPress={() => void requestCode()} />
+          <Button
+            testID="forgot-send"
+            title={fr.auth.sendCode}
+            loading={busy}
+            onPress={() => void requestCode()}
+          />
         </>
       ) : null}
       {step === "reset" ? (
         <>
           <Text muted>{fr.auth.codeSent}</Text>
-          <Input testID="forgot-code" label={fr.auth.code} value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} />
+          <Input
+            testID="forgot-code"
+            label={fr.auth.code}
+            value={code}
+            onChangeText={setCode}
+            keyboardType="number-pad"
+            maxLength={6}
+          />
           <Input
             testID="forgot-password"
             label={fr.auth.newPassword}
@@ -200,7 +229,12 @@ export function ForgotScreen({ navigation, route }: NativeStackScreenProps<AuthS
             hint={fr.auth.passwordHint}
           />
           {error ? <Text color="#B3261E">{error}</Text> : null}
-          <Button testID="forgot-reset" title={fr.auth.resetPassword} loading={busy} onPress={() => void resetPassword()} />
+          <Button
+            testID="forgot-reset"
+            title={fr.auth.resetPassword}
+            loading={busy}
+            onPress={() => void resetPassword()}
+          />
         </>
       ) : null}
       {step === "done" ? (
@@ -209,7 +243,9 @@ export function ForgotScreen({ navigation, route }: NativeStackScreenProps<AuthS
           <Button title={fr.auth.login} onPress={() => navigation.navigate("Login")} />
         </>
       ) : null}
-      {step !== "done" ? <Button variant="ghost" title={fr.common.back} onPress={() => navigation.goBack()} /> : null}
+      {step !== "done" ? (
+        <Button variant="ghost" title={fr.common.back} onPress={() => navigation.goBack()} />
+      ) : null}
     </Shell>
   );
 }

@@ -3,17 +3,26 @@ package auth
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
 	"github.com/gin-gonic/gin"
 )
 
-type Handler struct {
-	service *Service
+// AttemptLimiter throttles repeated attempts for one key (here: one email address).
+type AttemptLimiter interface {
+	Allow(key string) (bool, time.Duration)
 }
 
-func NewHandler(service *Service) *Handler { return &Handler{service: service} }
+type Handler struct {
+	service  *Service
+	attempts AttemptLimiter
+}
+
+func NewHandler(service *Service, attempts AttemptLimiter) *Handler {
+	return &Handler{service: service, attempts: attempts}
+}
 
 func toMe(u User) MeResponse { return MeResponse{ID: u.ID, Email: u.Email, CreatedAt: u.CreatedAt} }
 
@@ -51,6 +60,12 @@ func (h *Handler) Login(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.BadRequest(c, "email and password are required")
 		return
+	}
+	if h.attempts != nil {
+		if ok, _ := h.attempts.Allow("login:" + normalizeEmail(req.Email)); !ok {
+			httpx.Error(c, http.StatusTooManyRequests, "rate_limited", "too many attempts, try again later")
+			return
+		}
 	}
 	tokens, user, err := h.service.Login(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
 	switch {

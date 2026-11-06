@@ -10,7 +10,14 @@ import { Sheet } from "./Sheet";
 import { useToast } from "./Toast";
 import { Button, Chip, Input, Text } from "./ui";
 
-const REASONS: ReportReason[] = ["spam", "fake", "harassment", "inappropriate", "underage", "other"];
+const REASONS: ReportReason[] = [
+  "spam",
+  "fake",
+  "harassment",
+  "inappropriate",
+  "underage",
+  "other"
+];
 
 export function ReportSheet({
   visible,
@@ -53,12 +60,35 @@ export function ReportSheet({
     <Sheet visible={visible} onClose={onClose} title={fr.safety.reportTitle}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
         {REASONS.map((r) => (
-          <Chip key={r} testID={`reason-${r}`} label={fr.safety.reasons[r] ?? r} selected={reason === r} onPress={() => setReason(r)} />
+          <Chip
+            key={r}
+            testID={`reason-${r}`}
+            label={fr.safety.reasons[r] ?? r}
+            selected={reason === r}
+            onPress={() => setReason(r)}
+          />
         ))}
       </View>
-      <Input label={fr.safety.details} value={details} onChangeText={setDetails} multiline maxLength={1000} />
-      <Chip label={fr.safety.alsoBlock} selected={alsoBlock} onPress={() => setAlsoBlock((b) => !b)} testID="report-also-block" />
-      <Button testID="report-submit" title={fr.safety.sendReport} disabled={!reason} loading={busy} onPress={() => void submit()} />
+      <Input
+        label={fr.safety.details}
+        value={details}
+        onChangeText={setDetails}
+        multiline
+        maxLength={1000}
+      />
+      <Chip
+        label={fr.safety.alsoBlock}
+        selected={alsoBlock}
+        onPress={() => setAlsoBlock((b) => !b)}
+        testID="report-also-block"
+      />
+      <Button
+        testID="report-submit"
+        title={fr.safety.sendReport}
+        disabled={!reason}
+        loading={busy}
+        onPress={() => void submit()}
+      />
       <Button variant="ghost" title={fr.common.cancel} onPress={onClose} />
     </Sheet>
   );
@@ -89,7 +119,13 @@ export function ConfirmSheet({
     <Sheet visible={visible} onClose={onClose} title={title}>
       {message ? <Text muted>{message}</Text> : null}
       {children}
-      <Button testID="confirm-yes" title={confirmLabel} variant={danger ? "danger" : "primary"} loading={busy} onPress={onConfirm} />
+      <Button
+        testID="confirm-yes"
+        title={confirmLabel}
+        variant={danger ? "danger" : "primary"}
+        loading={busy}
+        onPress={onConfirm}
+      />
       <Button testID="confirm-no" variant="ghost" title={fr.common.cancel} onPress={onClose} />
     </Sheet>
   );
