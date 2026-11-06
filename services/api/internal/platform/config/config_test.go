@@ -2,27 +2,42 @@ package config
 
 import "testing"
 
-func TestLoadRejectsWeakJWTSecret(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
-	t.Setenv("JWT_SECRET", "change-me-in-dev")
-	if _, err := Load(); err == nil {
-		t.Fatal("expected weak JWT secret to be rejected")
+func setBase(t *testing.T) {
+	t.Helper()
+	t.Setenv("DATABASE_URL", "postgres://u:p@localhost/db")
+	t.Setenv("JWT_SECRET", "k3j9d8s7f6g5h4j3k2l1m0n9b8v7c6x5z4")
+}
+
+func TestLoadDefaults(t *testing.T) {
+	setBase(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Port != "8080" || cfg.UploadDir == "" || cfg.SMTP.Enabled() {
+		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 }
 
-func TestLoadParsesAllowedOrigins(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
-	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("ALLOWED_ORIGINS", "https://app.example.com, https://admin.example.com ")
+func TestLoadRejectsWeakSecrets(t *testing.T) {
+	setBase(t)
+	for _, secret := range []string{"", "short", "replace-with-a-random-secret-at-least-32-characters-long"} {
+		t.Setenv("JWT_SECRET", secret)
+		if _, err := Load(); err == nil {
+			t.Fatalf("expected error for secret %q", secret)
+		}
+	}
+}
 
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("load config: %v", err)
+func TestLoadRequiresDatabaseAndMailFrom(t *testing.T) {
+	setBase(t)
+	t.Setenv("DATABASE_URL", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error without DATABASE_URL")
 	}
-	if len(cfg.AllowedOrigins) != 2 {
-		t.Fatalf("expected 2 allowed origins, got %d", len(cfg.AllowedOrigins))
-	}
-	if cfg.AllowedOrigins[0] != "https://app.example.com" || cfg.AllowedOrigins[1] != "https://admin.example.com" {
-		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
+	setBase(t)
+	t.Setenv("SMTP_HOST", "smtp.local")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error without MAIL_FROM")
 	}
 }

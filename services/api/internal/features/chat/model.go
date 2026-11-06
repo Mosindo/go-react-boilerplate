@@ -2,58 +2,65 @@ package chat
 
 import "time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+const (
+	MaxBodyRunes = 2000
+	MaxPage      = 50
+	DefaultPage  = 30
+)
+
+type Message struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
-}
-
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
-}
-
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
+type LastMessage struct {
+	Body      string    `json:"body"`
+	SenderID  string    `json:"senderId"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
+type Peer struct {
+	ID          string  `json:"id"`
+	FirstName   string  `json:"firstName"`
+	MainPhotoID *string `json:"mainPhotoId"`
 }
 
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
+type Conversation struct {
+	ID          string       `json:"id"`
+	MatchID     string       `json:"matchId"`
+	Peer        Peer         `json:"peer"`
+	LastMessage *LastMessage `json:"lastMessage"`
+	UnreadCount int          `json:"unreadCount"`
+	// ActivityAt is the last message time, or the match time for new matches.
+	ActivityAt time.Time `json:"activityAt"`
 }
 
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type ConversationsResponse struct {
+	Conversations []Conversation `json:"conversations"`
+	UnreadTotal   int            `json:"unreadTotal"`
+	NextBefore    *time.Time     `json:"nextBefore,omitempty"`
 }
 
-type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+type MessagesResponse struct {
+	Messages []Message `json:"messages"`
+	// PeerLastReadAt lets the client show "read" under the messages the other
+	// person has seen (message.CreatedAt <= peerLastReadAt).
+	PeerLastReadAt time.Time  `json:"peerLastReadAt"`
+	Peer           Peer       `json:"peer"`
+	NextBefore     *time.Time `json:"nextBefore,omitempty"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+type SendRequest struct {
+	Body string `json:"body" binding:"required,max=8000"`
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+// SendResult is the storage-level outcome of sending a message.
+type SendResult struct {
+	Message         Message
+	RecipientID     string
+	SenderName      string
+	RecipientUnread int // unread messages from the sender before this one
 }
