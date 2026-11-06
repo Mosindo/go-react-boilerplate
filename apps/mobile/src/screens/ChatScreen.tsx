@@ -1,415 +1,244 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View
-} from "react-native";
-import {
-  listChatMessages,
-  listChats,
-  listUsers,
-  sendChatMessage,
-  type ChatMessage,
-  type ChatSummary,
-  type PlatformUser
-} from "../api/platform";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Header, ScreenContainer, Section } from "../shared/layout";
-import { Avatar, Button, Card, Input, ListItem, MessageItem, Notice, Text, colors, radii, spacing } from "../shared/ui";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from "react-native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { errorMessage } from "../api/errors";
+import { chatApi, discoverApi } from "../api/services";
+import type { Message, MessagesPage } from "../api/types";
+import { useAuth } from "../auth/AuthContext";
+import { ConfirmSheet, ReportSheet } from "../components/SafetySheets";
+import { Sheet } from "../components/Sheet";
+import { useToast } from "../components/Toast";
+import { Button, EmptyState, ErrorState, Loader, Screen, Text } from "../components/ui";
+import { fr } from "../i18n/fr";
+import { dayKey, formatClock, formatDayLabel } from "../lib/format";
+import type { RootStackParamList } from "../navigation/types";
+import { useRealtime } from "../realtime/RealtimeProvider";
+import { radius, spacing, useTheme } from "../theme";
 
-type ChatScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+type Item = { kind: "message"; message: Message; showRead: boolean } | { kind: "day"; key: string; label: string };
 
-type ChatTarget = {
-  user: PlatformUser;
-  lastMessage?: ChatSummary["lastMessage"];
-};
-
-const CHAT_LIST_POLL_MS = 8000;
-const CHAT_MESSAGES_POLL_MS = 3000;
-
-function formatChatError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error) || !error.message) {
-    return fallback;
-  }
-  const message = error.message.toLowerCase();
-  if (message.includes("network") || message.includes("failed to fetch")) {
-    return "Network error. Check connection and retry.";
-  }
-  if (message.includes("timeout")) {
-    return "Request timed out. Please retry.";
-  }
-  return error.message;
-}
-
-function chatSummaryToTarget(chat: ChatSummary): ChatTarget {
-  return { user: chat.user, lastMessage: chat.lastMessage };
-}
-
-export default function ChatScreen({ token, currentUserId }: ChatScreenProps) {
-  const [chatList, setChatList] = useState<ChatSummary[]>([]);
-  const [directory, setDirectory] = useState<PlatformUser[]>([]);
-  const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export function ChatScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, "Chat">) {
+  const { conversationId } = route.params;
+  const { colors } = useTheme();
+  const { user } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const realtime = useRealtime();
   const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [backgroundError, setBackgroundError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const lobbyInFlight = useRef(false);
-  const messagesInFlight = useRef(false);
+  const [menu, setMenu] = useState(false);
+  const [confirm, setConfirm] = useState<"delete" | "unmatch" | null>(null);
+  const [report, setReport] = useState(false);
 
-  const loadLobby = useCallback(async (silent = false) => {
-    if (lobbyInFlight.current) {
-      return;
-    }
+  const key = useMemo(() => ["messages", conversationId] as const, [conversationId]);
+  const query = useInfiniteQuery({
+    queryKey: key,
+    queryFn: ({ pageParam }) => chatApi.messages(conversationId, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextBefore
+  });
 
-    lobbyInFlight.current = true;
-    if (!silent) {
-      setLoading(true);
-      setError(null);
-    }
+  const first = query.data?.pages[0];
+  const peer = first?.peer;
+  const messages = useMemo(() => query.data?.pages.flatMap((p) => p.messages) ?? [], [query.data]);
 
-    try {
-      const [nextChats, nextUsers] = await Promise.all([listChats(token), listUsers(token)]);
-      const filteredUsers = nextUsers.filter((user) => user.id !== currentUserId);
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: peer?.firstName ?? route.params.name ?? "" });
+  }, [navigation, peer?.firstName, route.params.name]);
 
-      setChatList(nextChats);
-      setDirectory(filteredUsers);
-      setBackgroundError(null);
-      setSelectedChat((current) => {
-        if (!current) {
-          return null;
-        }
+  const markRead = useCallback(() => {
+    chatApi
+      .markRead(conversationId)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["conversations"] }))
+      .catch(() => undefined);
+  }, [conversationId, queryClient]);
 
-        const existingChat = nextChats.find((chat) => chat.user.id === current.user.id);
-        if (existingChat) {
-          return chatSummaryToTarget(existingChat);
-        }
-
-        const existingUser = filteredUsers.find((user) => user.id === current.user.id);
-        if (existingUser) {
-          return { user: existingUser, lastMessage: current.lastMessage };
-        }
-
-        return current;
-      });
-    } catch (loadError) {
-      const formattedError = formatChatError(loadError, "could not load conversations");
-      if (silent) {
-        setBackgroundError(formattedError);
-      } else {
-        setError(formattedError);
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-      lobbyInFlight.current = false;
-    }
-  }, [token, currentUserId]);
-
-  const loadMessages = useCallback(
-    async (chat: ChatTarget, silent = false): Promise<boolean> => {
-      if (messagesInFlight.current) {
-        return true;
-      }
-
-      messagesInFlight.current = true;
-      if (!silent) {
-        setLoading(true);
-        setError(null);
-      }
-
-      try {
-        const nextMessages = await listChatMessages(token, chat.user.id);
-        setMessages(nextMessages);
-        setBackgroundError(null);
-        return true;
-      } catch (loadError) {
-        const formattedError = formatChatError(loadError, "could not load messages");
-        if (silent) {
-          setBackgroundError(formattedError);
-        } else {
-          setError(formattedError);
-        }
-        return false;
-      } finally {
-        if (!silent) {
-          setLoading(false);
-        }
-        messagesInFlight.current = false;
-      }
-    },
-    [token]
-  );
-
+  // Mark as read on open, and whenever a message arrives while this screen is on top.
   useEffect(() => {
-    loadLobby();
-  }, [loadLobby]);
+    realtime.setActiveConversation(conversationId);
+    const off = realtime.onMessageInActive(markRead);
+    markRead();
+    return () => {
+      off();
+      realtime.setActiveConversation(null);
+    };
+  }, [conversationId, markRead, realtime]);
 
-  async function openChat(target: ChatTarget) {
-    setSelectedChat(target);
-    setError(null);
-    setBackgroundError(null);
-    const ok = await loadMessages(target);
-    if (!ok) {
-      setMessages([]);
-    }
-  }
+  const items = useMemo<Item[]>(() => {
+    // `messages` is newest-first, which is what an inverted list expects.
+    const peerRead = first ? new Date(first.peerLastReadAt).getTime() : 0;
+    const lastMine = messages.find((m) => m.senderId === user?.id);
+    const out: Item[] = [];
+    messages.forEach((message, i) => {
+      out.push({ kind: "message", message, showRead: message.id === lastMine?.id && new Date(message.createdAt).getTime() <= peerRead });
+      const older = messages[i + 1];
+      if (!older || dayKey(older.createdAt) !== dayKey(message.createdAt)) {
+        out.push({ kind: "day", key: dayKey(message.createdAt), label: formatDayLabel(message.createdAt) });
+      }
+    });
+    return out;
+  }, [messages, first, user?.id]);
 
-  async function onSend() {
-    if (!selectedChat) {
-      return;
-    }
-
-    const content = draft.trim();
-    if (!content) {
-      return;
-    }
-
+  const send = async () => {
+    const body = draft.trim();
+    if (!body || sending) return;
     setSending(true);
-    setError(null);
-    setBackgroundError(null);
     try {
-      const sent = await sendChatMessage(token, selectedChat.user.id, content);
-      setMessages((prev) => [...prev, sent]);
+      const message = await chatApi.send(conversationId, body);
       setDraft("");
-      await loadLobby(true);
-      await loadMessages(selectedChat, true);
-    } catch (sendError) {
-      setError(formatChatError(sendError, "could not send message"));
+      queryClient.setQueryData<InfiniteData<MessagesPage>>(key, (old) => {
+        if (!old?.pages[0]) return old;
+        const [head, ...rest] = old.pages;
+        if (!head || head.messages.some((m) => m.id === message.id)) return old;
+        return { ...old, pages: [{ ...head, messages: [message, ...head.messages] }, ...rest] };
+      });
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    } catch (error) {
+      toast.show(errorMessage(error, fr.messages.sendFailed), "error");
     } finally {
       setSending(false);
     }
-  }
+  };
 
-  async function reloadCurrentView() {
-    setBackgroundError(null);
-    if (selectedChat) {
-      await loadMessages(selectedChat);
-      return;
+  const leave = () => {
+    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    queryClient.removeQueries({ queryKey: key });
+    navigation.goBack();
+  };
+
+  const runConfirm = async () => {
+    try {
+      if (confirm === "delete") await chatApi.hide(conversationId);
+      if (confirm === "unmatch") {
+        const convs = queryClient.getQueryData<InfiniteData<{ conversations: { id: string; matchId: string }[] }>>(["conversations"]);
+        const matchId = convs?.pages.flatMap((p) => p.conversations).find((c) => c.id === conversationId)?.matchId;
+        if (matchId) await discoverApi.unmatch(matchId);
+      }
+      setConfirm(null);
+      leave();
+    } catch (error) {
+      toast.show(errorMessage(error), "error");
     }
-    await loadLobby();
-  }
-
-  useEffect(() => {
-    if (selectedChat) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      void loadLobby(true);
-    }, CHAT_LIST_POLL_MS);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [selectedChat, loadLobby]);
-
-  useEffect(() => {
-    if (!selectedChat) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      void loadMessages(selectedChat, true);
-      void loadLobby(true);
-    }, CHAT_MESSAGES_POLL_MS);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [selectedChat, loadMessages, loadLobby]);
-
-  const availableContacts = useMemo(
-    () => directory.filter((user) => !chatList.some((chat) => chat.user.id === user.id)),
-    [directory, chatList]
-  );
-
-  const title = useMemo(() => (selectedChat ? selectedChat.user.email : "Chat"), [selectedChat]);
-  const subtitle = selectedChat ? "Direct conversation" : "Conversations and team directory";
+  };
 
   return (
-    <ScreenContainer testID="chat-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || sending}
-            label="Reload"
-            onPress={reloadCurrentView}
-            size="sm"
-            testID="chat-reload-button"
-            variant="outline"
-          />
-        }
-        eyebrow="Inbox"
-        leading={
-          selectedChat ? (
-            <Button
-              label="Back"
-              onPress={() => {
-                setSelectedChat(null);
-                setMessages([]);
-                setDraft("");
-                setError(null);
-                setBackgroundError(null);
-              }}
-              size="sm"
-              testID="chat-back-button"
-              variant="ghost"
-            />
-          ) : null
-        }
-        style={styles.headerShell}
-        subtitle={subtitle}
-        title={title}
-      />
-
-      {error ? (
-        <ErrorView actionLabel="Retry" compact message={error} onAction={() => void reloadCurrentView()} style={styles.errorWrap} />
-      ) : null}
-
-      {!error && backgroundError ? (
-        <Notice
-          description="The chat UI is still usable, but the latest background refresh did not complete."
-          style={styles.warnWrap}
-          title={backgroundError}
-          tone="warning"
-        />
-      ) : null}
-
-      {loading ? (
-        <LoadingView
-          fullScreen
-          label={selectedChat ? "Loading conversation..." : "Loading chat workspace..."}
-          style={styles.loaderWrap}
-        />
-      ) : selectedChat ? (
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.chatWrap}>
+    <Screen edges={["left", "right", "bottom"]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: spacing.lg, paddingTop: spacing.xs }}>
+          <Pressable testID="chat-menu" accessibilityRole="button" accessibilityLabel={fr.messages.options} onPress={() => setMenu(true)} hitSlop={10}>
+            <Text variant="label" color={colors.primary}>
+              ⋯ {fr.messages.options}
+            </Text>
+          </Pressable>
+        </View>
+        {query.isLoading ? <Loader /> : null}
+        {query.isError ? <ErrorState onRetry={() => void query.refetch()} /> : null}
+        {query.data && messages.length === 0 ? (
+          <EmptyState glyph="👋" title={fr.messages.sayHi} body={fr.messages.chatEmpty(peer?.firstName ?? "")} />
+        ) : null}
+        {query.data && messages.length > 0 ? (
           <FlatList
-            contentContainerStyle={styles.messageList}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            ListEmptyComponent={
-              <EmptyView
-                message="Start with a quick hello to open the conversation."
-                title="No messages yet"
-              />
-            }
+            testID="message-list"
+            inverted
+            data={items}
+            keyExtractor={(it) => (it.kind === "message" ? it.message.id : `day-${it.key}`)}
+            contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
+            onEndReached={() => query.hasNextPage && !query.isFetchingNextPage && void query.fetchNextPage()}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={query.isFetchingNextPage ? <Loader /> : null}
             renderItem={({ item }) => {
-              const mine = item.senderUserId === currentUserId;
-              return <MessageItem content={item.content} mine={mine} />;
+              if (item.kind === "day") {
+                return (
+                  <Text variant="caption" muted style={{ textAlign: "center", marginVertical: spacing.sm }}>
+                    {item.label}
+                  </Text>
+                );
+              }
+              const mine = item.message.senderId === user?.id;
+              return (
+                <View style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
+                  <View
+                    testID={mine ? "bubble-mine" : "bubble-theirs"}
+                    style={{
+                      maxWidth: "80%",
+                      paddingHorizontal: spacing.md,
+                      paddingVertical: spacing.sm + 2,
+                      borderRadius: radius.lg,
+                      borderBottomRightRadius: mine ? 6 : radius.lg,
+                      borderBottomLeftRadius: mine ? radius.lg : 6,
+                      backgroundColor: mine ? colors.primary : colors.surface,
+                      borderWidth: mine ? 0 : 1,
+                      borderColor: colors.border
+                    }}
+                  >
+                    <Text color={mine ? colors.primaryText : colors.text}>{item.message.body}</Text>
+                  </View>
+                  <Text variant="caption" muted style={{ marginTop: 2 }}>
+                    {formatClock(item.message.createdAt)}
+                    {item.showRead ? ` · ${fr.messages.read}` : ""}
+                  </Text>
+                </View>
+              );
             }}
           />
+        ) : (
+          <View style={{ flex: 1 }} />
+        )}
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <TextInput
+            testID="chat-input"
+            accessibilityLabel={fr.messages.placeholder}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={fr.messages.placeholder}
+            placeholderTextColor={colors.textMuted}
+            multiline
+            maxLength={2000}
+            style={{
+              flex: 1,
+              maxHeight: 120,
+              minHeight: 44,
+              color: colors.text,
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: radius.lg,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.sm + 2,
+              fontSize: 16
+            }}
+          />
+          <Button testID="chat-send" title={fr.messages.send} disabled={!draft.trim()} loading={sending} onPress={() => void send()} />
+        </View>
+      </KeyboardAvoidingView>
 
-          <View style={styles.composer}>
-            <Input
-              containerStyle={styles.inputWrap}
-              onChangeText={setDraft}
-              placeholder="Write a message..."
-              style={styles.input}
-              testID="chat-message-input"
-              value={draft}
-            />
-            <Button
-              disabled={loading}
-              label="Send"
-              loading={sending}
-              onPress={onSend}
-              size="sm"
-              testID="chat-send-button"
-            />
-          </View>
-        </KeyboardAvoidingView>
-      ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Section eyebrow="Inbox" title="Recent conversations">
-            {chatList.length === 0 ? (
-              <EmptyView message="New conversations will appear here as soon as you start messaging." title="No conversations yet" />
-            ) : null}
-            {chatList.map((chat) => (
-              <ListItem
-                key={chat.user.id}
-                disabled={loading || sending}
-                leading={<Avatar name={chat.user.email} size={40} />}
-                onPress={() => void openChat(chatSummaryToTarget(chat))}
-                style={loading || sending ? styles.chatCardDisabled : null}
-                subtitle={chat.lastMessage?.content ?? "Open conversation"}
-                testID={`chat-open-${chat.user.id}`}
-                title={chat.user.email}
-              />
-            ))}
-          </Section>
-
-          <Section eyebrow="Directory" title="Start a new conversation">
-            {availableContacts.length === 0 ? (
-              <EmptyView message="Invite more teammates to unlock new conversations." title="No additional members available" />
-            ) : null}
-            {availableContacts.map((user) => (
-              <ListItem
-                key={user.id}
-                disabled={loading || sending}
-                leading={<Avatar name={user.email} size={40} />}
-                onPress={() => void openChat({ user })}
-                style={loading || sending ? styles.chatCardDisabled : null}
-                subtitle="Message this member"
-                title={user.email}
-                variant="muted"
-              />
-            ))}
-          </Section>
-        </ScrollView>
-      )}
-    </ScreenContainer>
+      <Sheet visible={menu} onClose={() => setMenu(false)} title={peer?.firstName}>
+        <Button variant="secondary" title={fr.messages.deleteConversation} onPress={() => { setMenu(false); setConfirm("delete"); }} />
+        <Button variant="secondary" title={fr.messages.unmatch} onPress={() => { setMenu(false); setConfirm("unmatch"); }} />
+        <Button testID="chat-report" variant="secondary" title={fr.safety.report} onPress={() => { setMenu(false); setReport(true); }} />
+        <Button variant="ghost" title={fr.common.close} onPress={() => setMenu(false)} />
+      </Sheet>
+      <ConfirmSheet
+        visible={confirm !== null}
+        title={confirm === "delete" ? fr.messages.deleteConversation : fr.messages.unmatch}
+        message={confirm === "delete" ? fr.messages.deleteConfirm : fr.messages.unmatchConfirm}
+        confirmLabel={fr.common.confirm}
+        danger
+        onConfirm={() => void runConfirm()}
+        onClose={() => setConfirm(null)}
+      />
+      {peer ? (
+        <ReportSheet
+          visible={report}
+          userId={peer.id}
+          onClose={() => setReport(false)}
+          onDone={(blocked) => {
+            setReport(false);
+            if (blocked) leave();
+          }}
+        />
+      ) : null}
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  headerShell: {
-    marginBottom: spacing.md,
-  },
-  scrollContent: {
-    paddingBottom: spacing.xxxl
-  },
-  chatCardDisabled: {
-    opacity: 0.7
-  },
-  errorWrap: {
-    marginBottom: spacing.sm,
-  },
-  warnWrap: {
-    marginBottom: spacing.sm,
-  },
-  loaderWrap: {
-    flex: 1
-  },
-  chatWrap: {
-    flex: 1
-  },
-  messageList: {
-    paddingBottom: spacing.md
-  },
-  composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    backgroundColor: colors.backgroundElevated,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  inputWrap: {
-    flex: 1
-  },
-  input: {
-    minHeight: 48
-  }
-});
