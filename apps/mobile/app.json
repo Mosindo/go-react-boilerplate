@@ -1,12 +1,23 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Aube",
+    "slug": "aube",
+    "scheme": "aube",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.aube.dating",
+      "infoPlist": { "NSCameraUsageDescription": "Aube utilise l'appareil photo pour ajouter des photos à votre profil." }
+    },
+    "android": { "package": "app.aube.dating" },
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": [
+      "expo-secure-store",
+      ["expo-image-picker", { "photosPermission": "Aube a besoin de vos photos pour compléter votre profil." }],
+      ["expo-location", { "locationWhenInUsePermission": "Aube utilise votre position approximative pour vous proposer des profils proches. Elle n'est jamais affichée précisément." }]
     ]
   }
 }
