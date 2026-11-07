@@ -165,9 +165,11 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 	if err := s.repo.CreatePasswordReset(ctx, stored.User.ID, hashToken(token), time.Now().Add(resetTokenTTL)); err != nil {
 		return err
 	}
-	link := s.deps.AppBaseURL + "/reset-password?token=" + url.QueryEscape(token)
-	body := "Bonjour,\n\nPour choisir un nouveau mot de passe, utilisez ce lien (valable 1 heure) :\n" + link +
-		"\n\nCode de réinitialisation : " + token + "\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message."
+	body := "Bonjour,\n\nPour choisir un nouveau mot de passe dans l'application, saisissez ce code (valable 1 heure) :\n\n" + token + "\n"
+	if s.deps.AppBaseURL != "" {
+		body += "\nOu ouvrez : " + s.deps.AppBaseURL + "/reset-password?token=" + url.QueryEscape(token) + "\n"
+	}
+	body += "\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message."
 	if err := s.deps.Mailer.Send(ctx, stored.User.Email, "Réinitialisation de votre mot de passe", body); err != nil {
 		log.Printf(`{"event":"mail_error","error":%q}`, err.Error())
 	}

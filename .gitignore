@@ -1,55 +1,29 @@
-services/api/*.exe
-.cache/
-.expo/
-.expo-audit/
-node_modules/
-
-# Go binaries/build
+# Go
 /bin/
-/build/
 *.exe
-*.dll
-*.so
-*.dylib
 *.test
 *.out
-bin/
+services/api/data/
+data/
 
-# Node/Expo build artifacts
+# Node / Expo
+node_modules/
+.expo/
 dist/
-build/
-.expo-shared/
+apps/mobile/e2e/artifacts/
 
 # Environment files
 .env
-.env.local
 .env.*
 !.env.example
-!**/.env.example
 
-# IDE/editor files
+# Editors / OS
 .vscode/
 .idea/
-*.iml
-
-# OS files
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs / misc
 *.log
-logs/
-.smoke/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Docker artifacts
 *.pid
-*.pid.lock
 docker-data/
-
-# Mobile e2e runtime artifacts
-apps/mobile/.e2e/
-

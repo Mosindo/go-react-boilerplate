@@ -14,6 +14,9 @@ type Config struct {
 	DatabaseURL    string
 	JWTSecret      string
 	AllowedOrigins []string
+	// TrustedProxies lists reverse-proxy IPs/CIDRs whose X-Forwarded-For header is honoured for client IPs
+	// (rate limiting, logs). Empty = trust nobody and use the socket address.
+	TrustedProxies []string
 	// UploadDir is where processed photos are stored (must be a persistent volume in production).
 	UploadDir string
 	// AppBaseURL is the public base URL of the app, used in password reset links.
@@ -32,6 +35,7 @@ func Load() (Config, error) {
 		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
 		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
 		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
 		AppBaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("APP_BASE_URL")), "/"),
 		SMTPHost:       strings.TrimSpace(os.Getenv("SMTP_HOST")),

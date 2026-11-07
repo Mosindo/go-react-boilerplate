@@ -31,6 +31,7 @@ type app struct {
 	dbPool         *pgxpool.Pool
 	jwtSecret      []byte
 	allowedOrigins []string
+	trustedProxies []string
 	appBaseURL     string
 	files          *storage.Disk
 	mailer         mailer.Mailer
@@ -62,6 +63,7 @@ func main() {
 		dbPool:         pool,
 		jwtSecret:      []byte(cfg.JWTSecret),
 		allowedOrigins: cfg.AllowedOrigins,
+		trustedProxies: cfg.TrustedProxies,
 		appBaseURL:     cfg.AppBaseURL,
 		files:          files,
 		mailer:         mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom),
@@ -92,6 +94,10 @@ func main() {
 
 func setupRouter(a *app) *gin.Engine {
 	r := gin.New()
+	// Never trust X-Forwarded-For unless a proxy is explicitly configured (it would defeat IP rate limiting).
+	if err := r.SetTrustedProxies(a.trustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))

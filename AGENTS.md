@@ -1,30 +1,24 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Aube
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
+This repository is Aube, a free dating app built from a Go + Expo boilerplate.
 The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Aube is a free dating app (see `README.md`). It must stay 100% free: no subscription, paywall, paid boost,
+artificially limited likes, locked essential feature or mandatory ads.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
-- chat
+- profiles (profile, preferences, photos, interests)
+- discovery (feed, likes/passes, matches)
+- chat (REST + WebSocket)
 - notifications
-- files
+- safety (blocks, reports)
+
+Keep `internal/platform` free of dating-specific naming.
 
 ---
 
@@ -65,12 +59,11 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `discovery/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +123,11 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `likes (to_user_id, created_at)` for likes received
+- `conversation_participants (user_id, conversation_id)`
+- `messages (conversation_id, created_at, id)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` (unique)
 
 ---
 
@@ -146,17 +138,17 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, typecheck and lint healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api`, need `DATABASE_URL_TEST`):
+- Health, Auth lifecycle, Password reset
+- Profiles and photos, discovery filters
+- Match / chat / safety flow, simultaneous likes, account deletion
+- WebSocket auth, rate limiting
+
+Mobile (`apps/mobile`): `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, `npm run build:web`, and the browser journey `npm run e2e`.
 
 ---
 
@@ -171,17 +163,15 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
-  - mobile API fallback
-  - startup scripts
+  - `docker-compose.yml`
+  - mobile API fallback (`src/api/config.ts`)
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+  - register, onboarding (profile + photo)
+  - discovery loads, like, match
+  - chat send/read in real time
   - notifications read flow
+  (`npm run e2e` in `apps/mobile` automates this in a browser)
 
 ---
 
@@ -207,7 +197,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing paid features, tracking of exact user positions, or product-specific naming into `internal/platform`
 
 ---
 
