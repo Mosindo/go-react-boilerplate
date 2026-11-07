@@ -10,41 +10,45 @@ import (
 const minJWTSecretLength = 32
 
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripePriceID       string
-	AppBaseURL          string
-	AllowedOrigins      []string
+	Port           string
+	DatabaseURL    string
+	JWTSecret      string
+	AllowedOrigins []string
+	// UploadDir is where processed photos are stored (must be a persistent volume in production).
+	UploadDir string
+	// AppBaseURL is the public base URL of the app, used in password reset links.
+	AppBaseURL string
+	// SMTP is optional. Without SMTP_HOST, emails are written to the server log (development only).
+	SMTPHost string
+	SMTPPort string
+	SMTPUser string
+	SMTPPass string
+	SMTPFrom string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                getenv("PORT", "8080"),
-		DatabaseURL:         strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		StripeSecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		StripePriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		AppBaseURL:          strings.TrimSpace(os.Getenv("APP_BASE_URL")),
-		AllowedOrigins:      splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		Port:           getenv("PORT", "8080"),
+		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
+		AppBaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("APP_BASE_URL")), "/"),
+		SMTPHost:       strings.TrimSpace(os.Getenv("SMTP_HOST")),
+		SMTPPort:       getenv("SMTP_PORT", "587"),
+		SMTPUser:       strings.TrimSpace(os.Getenv("SMTP_USER")),
+		SMTPPass:       os.Getenv("SMTP_PASS"),
+		SMTPFrom:       strings.TrimSpace(os.Getenv("SMTP_FROM")),
 	}
 
 	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("DATABASE_URL is required (for Docker/CI use postgres://postgres:postgres@postgres:5432/app?sslmode=disable)")
+		return Config{}, errors.New("DATABASE_URL is required")
 	}
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return Config{}, err
 	}
-	if cfg.StripeSecretKey != "" {
-		if cfg.StripePriceID == "" {
-			return Config{}, errors.New("STRIPE_PRICE_ID is required when STRIPE_SECRET_KEY is set")
-		}
-		if cfg.AppBaseURL == "" {
-			return Config{}, errors.New("APP_BASE_URL is required when STRIPE_SECRET_KEY is set")
-		}
+	if cfg.SMTPHost != "" && cfg.SMTPFrom == "" {
+		return Config{}, errors.New("SMTP_FROM is required when SMTP_HOST is set")
 	}
 
 	return cfg, nil

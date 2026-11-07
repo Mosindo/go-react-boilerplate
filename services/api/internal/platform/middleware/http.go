@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,4 +138,14 @@ func generateRequestID() string {
 		return time.Now().UTC().Format("20060102150405.000000000")
 	}
 	return hex.EncodeToString(buf)
+}
+
+// BodyLimit caps request bodies (JSON endpoints). Upload routes set their own larger limit.
+func BodyLimit(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body != nil && c.Request.Header.Get("Content-Type") != "" && !strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/") {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		}
+		c.Next()
+	}
 }
