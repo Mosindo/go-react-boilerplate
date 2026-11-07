@@ -15,7 +15,7 @@ import (
 const (
 	authTimeout = 5 * time.Second
 	pongWait    = 60 * time.Second
-	pingEvery   = 25 * time.Second
+	pingEvery   = 20 * time.Second
 	writeWait   = 10 * time.Second
 )
 
@@ -106,6 +106,15 @@ func (h *WSHandler) Serve(c *gin.Context) {
 				return
 			}
 		case <-ticker.C:
+			// Revocation (logout, password change, deletion) and token expiry must end the stream.
+			if _, _, err := middleware.ParseAccessToken(h.secret, hello.Token); err != nil {
+				return
+			}
+			if h.check != nil {
+				if active, err := h.check(context.Background(), sessionID, userID); err != nil || !active {
+					return
+				}
+			}
 			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return

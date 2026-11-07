@@ -86,7 +86,7 @@ func TestCoordinatesAreCoarsened(t *testing.T) {
 }
 
 func TestApproxDistanceAndHaversine(t *testing.T) {
-	cases := map[float64]int{0: 1, 0.4: 1, 1.2: 2, 9.1: 10, 12: 10, 13: 15, 47: 45}
+	cases := map[float64]int{0: 5, 0.4: 5, 5: 5, 5.1: 10, 9.1: 10, 12: 15, 47: 50}
 	for km, want := range cases {
 		if got := ApproxDistance(km); got != want {
 			t.Errorf("ApproxDistance(%v) = %d, want %d", km, got, want)

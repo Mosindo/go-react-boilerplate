@@ -12,11 +12,14 @@ import (
 
 const (
 	MaxUploadBytes = 5 << 20
-	maxSourcePixel = 8000 // reject decompression bombs before decoding pixels
+	maxSourcePixel = 4096 // per edge; reject decompression bombs before decoding pixels
+	maxTotalPixels = 16_000_000
 	minSourceEdge  = 200
 	maxOutputEdge  = 1280
 	jpegQuality    = 82
 )
+
+var decodeSlots = make(chan struct{}, 4)
 
 var (
 	ErrUnsupportedImage = errors.New("unsupported image: use JPEG or PNG")
@@ -32,11 +35,16 @@ type ProcessedImage struct {
 // ProcessImage validates untrusted bytes and re-encodes them as a clean, downscaled JPEG.
 // Re-encoding strips EXIF/GPS metadata and any polyglot payload.
 func ProcessImage(raw []byte) (ProcessedImage, error) {
+	decodeSlots <- struct{}{} // bound concurrent decodes (memory)
+	defer func() { <-decodeSlots }()
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(raw))
 	if err != nil || (format != "jpeg" && format != "png") {
 		return ProcessedImage{}, ErrUnsupportedImage
 	}
 	if cfg.Width > maxSourcePixel || cfg.Height > maxSourcePixel {
+		return ProcessedImage{}, ErrImageTooLarge
+	}
+	if cfg.Width*cfg.Height > maxTotalPixels {
 		return ProcessedImage{}, ErrImageTooLarge
 	}
 	if cfg.Width < minSourceEdge || cfg.Height < minSourceEdge {

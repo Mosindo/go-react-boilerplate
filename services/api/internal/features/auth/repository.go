@@ -40,7 +40,7 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (StoredUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
-	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
+	RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
 	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
 	TouchUser(ctx context.Context, userID string) error
@@ -124,15 +124,15 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 	return s, err
 }
 
-func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
+func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
 	var s StoredSession
 	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
 		SET token_hash = $2, user_agent = COALESCE($3, user_agent), ip_address = COALESCE($4, ip_address),
-		    expires_at = $5, last_used_at = $6
-		WHERE id = $1 AND revoked_at IS NULL
+		    expires_at = LEAST($5, created_at + INTERVAL '90 days'), last_used_at = $6
+		WHERE id = $1 AND token_hash = $7 AND revoked_at IS NULL AND created_at + INTERVAL '90 days' > NOW()
 		RETURNING id, user_id
-	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt).Scan(&s.ID, &s.UserID)
+	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt, currentTokenHash).Scan(&s.ID, &s.UserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return StoredSession{}, ErrRepositorySessionGone
 	}
@@ -192,6 +192,9 @@ func (r *PGRepository) ConsumePasswordReset(ctx context.Context, tokenHash, newP
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, newPasswordHash); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {

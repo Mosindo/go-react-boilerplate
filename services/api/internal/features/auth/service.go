@@ -109,7 +109,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
-	rotated, err := s.repo.RotateSessionToken(ctx, session.ID, hashToken(next), userAgent, ipAddress, time.Now().Add(refreshTokenTTL), time.Now())
+	rotated, err := s.repo.RotateSessionToken(ctx, session.ID, hashToken(strings.TrimSpace(refreshToken)), hashToken(next), userAgent, ipAddress, time.Now().Add(refreshTokenTTL), time.Now())
 	if err != nil {
 		if errors.Is(err, ErrRepositorySessionGone) {
 			return Tokens{}, User{}, ErrInvalidRefreshToken
@@ -170,9 +170,12 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 		body += "\nOu ouvrez : " + s.deps.AppBaseURL + "/reset-password?token=" + url.QueryEscape(token) + "\n"
 	}
 	body += "\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message."
-	if err := s.deps.Mailer.Send(ctx, stored.User.Email, "Réinitialisation de votre mot de passe", body); err != nil {
-		log.Printf(`{"event":"mail_error","error":%q}`, err.Error())
-	}
+	// Sent asynchronously so response time does not reveal whether the account exists.
+	go func(to string) {
+		if err := s.deps.Mailer.Send(context.Background(), to, "Réinitialisation de votre mot de passe", body); err != nil {
+			log.Printf(`{"event":"mail_error","error":%q}`, err.Error())
+		}
+	}(stored.User.Email)
 	return nil
 }
 

@@ -63,6 +63,10 @@ func (r *Repository) Block(ctx context.Context, blocker, blocked string) (string
 		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// Same pair lock as discovery.Swipe so a block and a simultaneous mutual like cannot interleave.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(LEAST($1::text, $2::text) || GREATEST($1::text, $2::text), 0))`, blocker, blocked); err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, blocker, blocked); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {

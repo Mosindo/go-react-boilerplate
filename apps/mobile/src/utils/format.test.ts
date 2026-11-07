@@ -28,7 +28,7 @@ describe("validation", () => {
 describe("format", () => {
   it("formats approximate distance", () => {
     expect(formatDistance(null)).toBeNull();
-    expect(formatDistance(1)).toBe("à moins de 1 km");
+    expect(formatDistance(5)).toBe("à moins de 5 km");
     expect(formatDistance(15)).toBe("à 15 km");
   });
   it("formats times relative to now", () => {

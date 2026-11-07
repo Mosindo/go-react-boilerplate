@@ -17,16 +17,13 @@ func DistanceKm(lat1, lon1, lat2, lon2 float64) float64 {
 	return 12742 * math.Asin(math.Min(1, math.Sqrt(a)))
 }
 
-// ApproxDistance coarsens a distance for display: 1 km floor, whole km under 10 km, then steps of 5 km.
+// ApproxDistance coarsens a distance for display: 5 km floor, then steps of 5 km (rounded up), so
+// repeated queries from spoofed positions cannot pinpoint someone.
 func ApproxDistance(km float64) int {
-	switch {
-	case km <= 1:
-		return 1
-	case km < 10:
-		return int(math.Ceil(km))
-	default:
-		return int(math.Round(km/5) * 5)
+	if km <= 5 {
+		return 5
 	}
+	return int(math.Ceil(km/5) * 5)
 }
 
 // AgeOn returns completed years between birth and now.

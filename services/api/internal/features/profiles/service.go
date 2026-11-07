@@ -89,6 +89,17 @@ func (s *Service) Upsert(ctx context.Context, userID string, req UpsertProfileRe
 	if err != nil {
 		return MyProfile{}, err
 	}
+	// Omitted privacy flags keep their stored value (never silently re-list or re-expose a user).
+	if req.ShowDistance == nil || req.Discoverable == nil {
+		if cur, err := s.repo.GetProfile(ctx, userID); err == nil {
+			if req.ShowDistance == nil {
+				in.ShowDistance = cur.ShowDistance
+			}
+			if req.Discoverable == nil {
+				in.Discoverable = cur.Discoverable
+			}
+		}
+	}
 	if err := s.repo.UpsertProfile(ctx, userID, in); err != nil {
 		if errors.Is(err, ErrUnknownInterest) {
 			return MyProfile{}, invalid("unknown interest")

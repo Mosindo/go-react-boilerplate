@@ -1,6 +1,6 @@
 export function formatDistance(km: number | null | undefined): string | null {
   if (km === null || km === undefined) return null;
-  return km <= 1 ? "à moins de 1 km" : `à ${km} km`;
+  return km <= 5 ? "à moins de 5 km" : `à ${km} km`;
 }
 
 export function formatTime(iso: string, now: Date = new Date()): string {

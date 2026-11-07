@@ -143,7 +143,8 @@ func generateRequestID() string {
 // BodyLimit caps request bodies (JSON endpoints). Upload routes set their own larger limit.
 func BodyLimit(maxBytes int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.Body != nil && c.Request.Header.Get("Content-Type") != "" && !strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/") {
+		// The upload route sets its own, larger limit; everything else is capped regardless of Content-Type.
+		if c.Request.Body != nil && !strings.HasPrefix(c.Request.URL.Path, "/profile/photos") {
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 		}
 		c.Next()

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -66,7 +67,7 @@ func (l *Limiter) Allow(key string) bool {
 
 // RateLimitByIP limits unauthenticated endpoints per client IP.
 func RateLimitByIP(l *Limiter) gin.HandlerFunc {
-	return func(c *gin.Context) { limit(c, l, "ip:"+c.ClientIP()) }
+	return func(c *gin.Context) { limit(c, l, "ip:"+ipKey(c.ClientIP())) }
 }
 
 // RateLimitByUser limits authenticated endpoints per user (must run after RequireUser).
@@ -81,4 +82,13 @@ func limit(c *gin.Context, l *Limiter, key string) {
 		return
 	}
 	c.Next()
+}
+
+// ipKey groups IPv6 addresses by /64 (one customer), since a single host can rotate through 2^64 addresses.
+func ipKey(raw string) string {
+	ip := net.ParseIP(raw)
+	if ip == nil || ip.To4() != nil {
+		return raw
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }

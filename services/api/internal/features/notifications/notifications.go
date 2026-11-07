@@ -40,6 +40,8 @@ func (r *Repository) List(ctx context.Context, userID string, limit, offset int)
 		       n.ref_id, n.read_at, n.created_at
 		FROM notifications n LEFT JOIN profiles pf ON pf.user_id = n.actor_id
 		WHERE n.user_id = $1
+		  AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = n.actor_id)
+		                                           OR (b.blocker_id = n.actor_id AND b.blocked_id = $1))
 		ORDER BY n.created_at DESC, n.id LIMIT $2 OFFSET $3`, userID, limit, offset)
 	if err != nil {
 		return nil, err

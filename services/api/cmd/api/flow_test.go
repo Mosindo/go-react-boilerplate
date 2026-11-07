@@ -206,7 +206,7 @@ func TestMatchChatSafetyFlow(t *testing.T) {
 	}
 	for _, p := range feed.Profiles {
 		if p.UserID == b.ID {
-			if p.DistanceKm == nil || *p.DistanceKm < 1 || *p.DistanceKm > 5 || p.SharedInterests != 1 || len(p.Photos) != 1 {
+			if p.DistanceKm == nil || *p.DistanceKm != 5 || p.SharedInterests != 1 || len(p.Photos) != 1 {
 				t.Fatalf("unexpected bob card: %+v", p)
 			}
 		}
