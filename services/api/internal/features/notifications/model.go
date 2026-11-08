@@ -2,34 +2,37 @@ package notifications
 
 import "time"
 
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
+
+type Actor struct {
+	UserID    string  `json:"userId"`
+	FirstName string  `json:"firstName"`
+	PhotoURL  *string `json:"photoUrl,omitempty"`
+}
+
 type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
-
-type NotificationResponse struct {
 	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
 	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
+	Actor     *Actor     `json:"actor,omitempty"`
+	RefID     *string    `json:"refId,omitempty"` // match id or conversation id
 	ReadAt    *time.Time `json:"readAt,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
 }
 
-type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
+type ListResponse struct {
+	Notifications []Notification `json:"notifications"`
+	UnreadCount   int            `json:"unreadCount"`
+	NextBefore    *time.Time     `json:"nextBefore,omitempty"`
 }
 
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+type stored struct {
+	ID        string
+	Type      string
+	ActorID   *string
+	RefID     *string
+	ReadAt    *time.Time
+	CreatedAt time.Time
 }

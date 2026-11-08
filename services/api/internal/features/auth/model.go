@@ -7,42 +7,65 @@ import (
 )
 
 type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type StoredUser struct {
+	ID        string
+	Email     string
+	CreatedAt time.Time
+}
+
+type StoredUserAuth struct {
+	StoredUser
+	PasswordHash string
+}
+
+type StoredSession struct {
+	ID     string
+	UserID string
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,min=8,max=128"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"firstName"`
+	BirthDate string `json:"birthDate"` // YYYY-MM-DD
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,max=128"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
 }
 
-type LogoutRequest struct {
-	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
 }
 
-type MeResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
+type ResetPasswordRequest struct {
+	Code        string `json:"code"`
+	NewPassword string `json:"newPassword"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password"`
 }
 
 type AuthResponse struct {
-	Token        string     `json:"token"`
-	AccessToken  string     `json:"accessToken"`
-	RefreshToken string     `json:"refreshToken"`
-	User         MeResponse `json:"user"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	User         User   `json:"user"`
 }
 
 type Tokens struct {
@@ -51,8 +74,7 @@ type Tokens struct {
 }
 
 type AccessTokenClaims struct {
-	UserID         string `json:"uid"`
-	OrganizationID string `json:"oid"`
-	SessionID      string `json:"sid"`
+	UserID    string `json:"uid"`
+	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
 }
