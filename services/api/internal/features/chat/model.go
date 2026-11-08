@@ -18,6 +18,7 @@ type Message struct {
 
 type Conversation struct {
 	ID             string        `json:"id"`
+	MatchID        string        `json:"matchId"`
 	Peer           profiles.Card `json:"peer"`
 	LastMessage    *Message      `json:"lastMessage,omitempty"`
 	UnreadCount    int           `json:"unreadCount"`
@@ -41,6 +42,7 @@ type SendMessageRequest struct {
 
 type storedConversation struct {
 	ID             string
+	MatchID        string
 	PeerID         string
 	LastMessage    *Message
 	UnreadCount    int

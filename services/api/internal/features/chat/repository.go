@@ -46,7 +46,7 @@ func (r *PGRepository) Participant(ctx context.Context, conversationID, userID s
 // user's own "clear" marker), most recently active first. Unread counts are computed in the same query.
 func (r *PGRepository) ListConversations(ctx context.Context, userID string, before *time.Time, limit int) ([]storedConversation, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT c.id, peer.user_id, peer.last_read_at,
+		SELECT c.id, c.match_id, peer.user_id, peer.last_read_at,
 		       lm.id, lm.sender_id, lm.body, lm.created_at,
 		       (SELECT COUNT(*) FROM messages x
 		         WHERE x.conversation_id = c.id AND x.sender_id <> me.user_id
@@ -72,7 +72,7 @@ func (r *PGRepository) ListConversations(ctx context.Context, userID string, bef
 	for rows.Next() {
 		var s storedConversation
 		m := Message{}
-		if err := rows.Scan(&s.ID, &s.PeerID, &s.PeerLastReadAt, &m.ID, &m.SenderID, &m.Body, &m.CreatedAt, &s.UnreadCount); err != nil {
+		if err := rows.Scan(&s.ID, &s.MatchID, &s.PeerID, &s.PeerLastReadAt, &m.ID, &m.SenderID, &m.Body, &m.CreatedAt, &s.UnreadCount); err != nil {
 			return nil, err
 		}
 		m.ConversationID = s.ID

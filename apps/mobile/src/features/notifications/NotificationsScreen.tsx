@@ -40,7 +40,12 @@ export function NotificationsScreen({ navigation }: Props) {
       const match = page.matches.find((m) =>
         n.type === "match" ? m.id === n.refId : m.conversationId === n.refId
       );
-      if (match) navigation.navigate("Chat", { conversationId: match.conversationId, peer: match.user });
+      if (match)
+        navigation.navigate("Chat", {
+          conversationId: match.conversationId,
+          matchId: match.id,
+          peer: match.user
+        });
     });
   };
 

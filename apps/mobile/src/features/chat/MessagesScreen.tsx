@@ -34,7 +34,9 @@ function NewMatches({ matches }: { matches: Match[] }) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Nouveau match : ${item.user.firstName}`}
-            onPress={() => nav.navigate("Chat", { conversationId: item.conversationId, peer: item.user })}
+            onPress={() =>
+              nav.navigate("Chat", { conversationId: item.conversationId, matchId: item.id, peer: item.user })
+            }
             style={styles.railItem}
             testID={`new-match-${item.user.firstName}`}
           >
@@ -60,7 +62,9 @@ function ConversationRow({ item, meId }: { item: Conversation; meId: string }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Conversation avec ${item.peer.firstName}${unread ? `, ${item.unreadCount} non lu` : ""}`}
-      onPress={() => nav.navigate("Chat", { conversationId: item.id, peer: item.peer })}
+      onPress={() =>
+        nav.navigate("Chat", { conversationId: item.id, matchId: item.matchId, peer: item.peer })
+      }
       style={({ pressed }) => [
         styles.row,
         { backgroundColor: pressed ? colors.surfaceMuted : "transparent" }

@@ -7,7 +7,7 @@ export type RootParamList = {
   ForgotPassword: undefined;
   Onboarding: undefined;
   Main: undefined;
-  Chat: { conversationId: string; peer: ProfileCard };
+  Chat: { conversationId: string; matchId: string; peer: ProfileCard };
   UserProfile: { userId: string; card?: ProfileCard; canSwipe?: boolean };
   Notifications: undefined;
   EditProfile: undefined;

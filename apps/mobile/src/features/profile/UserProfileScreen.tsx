@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native"
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootParamList } from "../../navigation/types";
+import { useAuth } from "../../auth/AuthContext";
 import { useUserProfile } from "../../hooks/queries";
 import { formatDistance } from "../../lib/format";
 import { radii, spacing, useTheme } from "../../theme/theme";
@@ -23,6 +24,8 @@ export function UserProfileScreen({ navigation, route }: Props) {
   const { width } = useWindowDimensions();
   const query = useUserProfile(userId);
   const swipe = useSwipe();
+  const { user } = useAuth();
+  const isSelf = user?.id === userId;
   const [page, setPage] = useState(0);
   const card = query.data ?? initial;
   const safety = useSafetyMenu({
@@ -85,12 +88,14 @@ export function UserProfileScreen({ navigation, route }: Props) {
             <Text variant="display" style={styles.flex}>
               {card.firstName}, {card.age}
             </Text>
-            <IconButton
-              icon="ellipsis-horizontal"
-              label="Plus d'options"
-              onPress={safety.open}
-              testID="profile-menu"
-            />
+            {isSelf ? null : (
+              <IconButton
+                icon="ellipsis-horizontal"
+                label="Plus d'options"
+                onPress={safety.open}
+                testID="profile-menu"
+              />
+            )}
           </View>
           <View style={styles.meta}>
             <Ionicons name="location-outline" size={16} color={colors.textMuted} />

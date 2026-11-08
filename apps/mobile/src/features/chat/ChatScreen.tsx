@@ -16,7 +16,7 @@ import { ApiError } from "../../api/client";
 import { chatApi, matchesApi } from "../../api/endpoints";
 import type { Message, MessagesPage } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
-import { keys, useMatches, useMessages } from "../../hooks/queries";
+import { keys, useMessages } from "../../hooks/queries";
 import { formatDayHeader, formatMessageTime } from "../../lib/format";
 import { isRead, mergeMessage } from "../../lib/messages";
 import type { RootParamList } from "../../navigation/types";
@@ -59,13 +59,12 @@ function Bubble({ message, mine, read }: { message: Message; mine: boolean; read
 }
 
 export function ChatScreen({ navigation, route }: Props) {
-  const { conversationId, peer } = route.params;
+  const { conversationId, matchId, peer } = route.params;
   const { user } = useAuth();
   const { colors } = useTheme();
   const toast = useToast();
   const queryClient = useQueryClient();
   const messagesQuery = useMessages(conversationId);
-  const matches = useMatches();
   const [text, setText] = useState("");
   const [confirm, setConfirm] = useState<"clear" | "unmatch" | null>(null);
   const listRef = useRef<FlatList<Row>>(null);
@@ -143,12 +142,8 @@ export function ChatScreen({ navigation, route }: Props) {
     },
     onError: (e) => toast.show(e instanceof Error ? e.message : "Action impossible.", "error")
   });
-  const matchId = matches.data?.pages
-    .flatMap((p) => p.matches)
-    .find((m) => m.conversationId === conversationId)?.id;
   const unmatch = useMutation({
-    mutationFn: () =>
-      matchId ? matchesApi.unmatch(matchId) : Promise.reject(new Error("Match introuvable.")),
+    mutationFn: () => matchesApi.unmatch(matchId),
     onSuccess: () => {
       void queryClient.invalidateQueries();
       leave();

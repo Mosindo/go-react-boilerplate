@@ -53,6 +53,7 @@ export type Message = {
 };
 export type Conversation = {
   id: string;
+  matchId: string;
   peer: ProfileCard;
   lastMessage?: Message;
   unreadCount: number;

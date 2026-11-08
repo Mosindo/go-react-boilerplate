@@ -27,9 +27,9 @@ export function MatchCelebrationProvider({ children }: { children: React.ReactNo
   const close = () => setMatch(null);
   const openChat = () => {
     if (!match) return;
-    const { conversationId, user } = match;
+    const { conversationId, user, id: matchId } = match;
     setMatch(null);
-    if (navigationRef.isReady()) navigationRef.navigate("Chat", { conversationId, peer: user });
+    if (navigationRef.isReady()) navigationRef.navigate("Chat", { conversationId, matchId, peer: user });
   };
 
   return (

@@ -70,7 +70,7 @@ func (s *Service) ListConversations(ctx context.Context, userID string, before *
 	out := make([]Conversation, 0, len(rows))
 	for _, r := range rows {
 		if c, ok := byID[r.PeerID]; ok {
-			out = append(out, Conversation{ID: r.ID, Peer: c, LastMessage: r.LastMessage, UnreadCount: r.UnreadCount, PeerLastReadAt: r.PeerLastReadAt})
+			out = append(out, Conversation{ID: r.ID, MatchID: r.MatchID, Peer: c, LastMessage: r.LastMessage, UnreadCount: r.UnreadCount, PeerLastReadAt: r.PeerLastReadAt})
 		}
 	}
 	return ConversationsResponse{Conversations: out, NextBefore: next}, nil
