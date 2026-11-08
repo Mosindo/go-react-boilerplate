@@ -1,30 +1,24 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Ember
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Ember`, a free dating application built on the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve. The product is 100 % free: never add subscriptions, paywalls, paid boosts, artificial like limits or mandatory ads.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+A modern dating app: accounts, profiles with photos, discovery, like/pass, matches, real-time chat,
+notifications, preferences, privacy, block/report, account deletion.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Core modules (`services/api/internal/features`):
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- discovery
+- matches
 - chat
 - notifications
-- files
+- safety
 
 ---
 
@@ -65,12 +59,13 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matches/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +125,11 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `swipes (target_id, action)`
+- `profiles (latitude, longitude)` (partial, discoverable)
 
 ---
 
@@ -146,17 +140,14 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Health (`/health`), Auth (`/auth/*`, `/me`), Profiles/Photos, Discovery (`/discover`), Swipes/Matches
+- Chat (`/conversations/*`) incl. permissions, Blocks/Reports, Notifications, WebSocket (`/ws`)
+- Run with `DATABASE_URL_TEST` pointing to a dedicated empty database
 
 ---
 
@@ -171,16 +162,14 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+- A frontend is only "ready" after a real smoke test (`npm run e2e:api`, `npm run e2e:web`):
+  - register and complete the profile
+  - discovery loads, like creates a match
+  - chat send/read in real time
   - notifications read flow
 
 ---

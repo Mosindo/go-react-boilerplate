@@ -1,12 +1,37 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Ember",
+    "slug": "ember",
+    "scheme": "ember",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.ember.dating"
+    },
+    "android": {
+      "package": "app.ember.dating"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ember a besoin d'accéder à tes photos pour que tu puisses les ajouter à ton profil."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ember utilise ta position approximative pour te proposer des personnes près de toi. Elle n'est jamais affichée précisément."
+        }
+      ]
     ]
   }
 }
