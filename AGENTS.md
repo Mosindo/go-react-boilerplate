@@ -7,24 +7,18 @@ The architecture must remain scalable, secure, maintainable, and easy to evolve 
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository is now **Tandem**, a 100% free dating application (see README.md).
+No subscription, paywall, paid boost, artificial like limit or mandatory advertising may ever be added.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
+Feature modules:
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- matching
 - chat
+- safety (blocks, reports)
 - notifications
-- files
+- users (account deletion)
 
 ---
 
@@ -65,12 +59,13 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
+  - `users/`
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +125,12 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `swipes (to_user_id, action, created_at)` and primary key `(from_user_id, to_user_id)`
+- `matches (user_a_id, user_b_id)` unique, plus per-user indexes
+- `messages (conversation_id, created_at, id)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` unique
+- `blocks (blocked_id)` and primary key `(blocker_id, blocked_id)`
 
 ---
 
@@ -143,20 +138,18 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `DATABASE_URL_TEST=... go test ./...`
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Health (`/health`), Auth, Profiles, Photos, Discovery/Swipes, Chat permissions,
+  Notifications, Block/Report, Account deletion, WebSocket (see `services/api/cmd/api/main_integration_test.go`)
+- Critical path: `npm run e2e:api` in `apps/mobile`
 
 ---
 
@@ -178,8 +171,9 @@ Mandatory rules to avoid recurring environment issues:
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile, photo, preferences)
+  - discover loads
+  - like / match
   - chat send/read
   - notifications read flow
 

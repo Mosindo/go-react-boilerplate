@@ -17,7 +17,8 @@ type Config struct {
 	AppEnv         string
 	UploadDir      string
 	AllowedOrigins []string
-	AppBaseURL     string
+	// TrustedProxies lists reverse-proxy IPs/CIDRs whose X-Forwarded-For is trusted (client IP for rate limiting).
+	TrustedProxies []string
 	SMTP           SMTPConfig
 }
 
@@ -39,7 +40,7 @@ func Load() (Config, error) {
 		AppEnv:         getenv("APP_ENV", "development"),
 		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
 		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
-		AppBaseURL:     strings.TrimSpace(os.Getenv("APP_BASE_URL")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
 		SMTP: SMTPConfig{
 			Host: strings.TrimSpace(os.Getenv("SMTP_HOST")),
 			User: strings.TrimSpace(os.Getenv("SMTP_USER")),

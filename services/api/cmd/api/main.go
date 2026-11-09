@@ -33,6 +33,7 @@ type app struct {
 	dbPool         *pgxpool.Pool
 	jwtSecret      []byte
 	allowedOrigins []string
+	trustedProxies []string
 	storage        photosfeature.Storage
 	mailer         mailer.Mailer
 }
@@ -61,7 +62,7 @@ func main() {
 		m = mailer.SMTPMailer{Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, User: cfg.SMTP.User, Pass: cfg.SMTP.Pass, From: cfg.SMTP.From}
 	}
 
-	a := &app{dbPool: pool, jwtSecret: []byte(cfg.JWTSecret), allowedOrigins: cfg.AllowedOrigins, storage: storage, mailer: m}
+	a := &app{dbPool: pool, jwtSecret: []byte(cfg.JWTSecret), allowedOrigins: cfg.AllowedOrigins, trustedProxies: cfg.TrustedProxies, storage: storage, mailer: m}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           setupRouter(a),
@@ -86,6 +87,11 @@ func main() {
 
 func setupRouter(a *app) *gin.Engine {
 	r := gin.New()
+	// Never trust X-Forwarded-For unless the operator lists the proxies: otherwise clients could spoof their IP
+	// and dodge per-IP rate limits.
+	if err := r.SetTrustedProxies(a.trustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))

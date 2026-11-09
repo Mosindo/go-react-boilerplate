@@ -1,161 +1,150 @@
-import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet } from "react-native";
-import { useAuth, useLogin, useRegister } from "../hooks/useAuth";
-import { ErrorView } from "../shared/feedback";
-import { Button, Card, Input, Text, colors, spacing } from "../shared/ui";
-import { Header, ScreenContainer } from "../shared/layout";
+import React, { useState } from "react";
+import { StyleSheet, View, KeyboardAvoidingView, Platform } from "react-native";
+import { authApi } from "../api/endpoints";
+import { useAuth } from "../auth/AuthContext";
+import { APP_NAME } from "../config";
+import { describeError, isValidEmail, passwordProblem } from "../lib/validation";
+import { Button, Input, Screen, Text, useToast } from "../ui";
+import { useTheme } from "../theme/theme";
 
-type Mode = "login" | "register";
+type Mode = "login" | "register" | "forgot" | "reset";
 
 export default function AuthScreen() {
+  const { login, register } = useAuth();
+  const toast = useToast();
+  const { colors } = useTheme();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const { authError, clearAuthError } = useAuth();
-  const loginMutation = useLogin();
-  const registerMutation = useRegister();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [touched, setTouched] = useState(false);
 
-  const title = useMemo(() => (mode === "login" ? "Welcome back" : "Create your workspace"), [mode]);
-  const subtitle = useMemo(
-    () =>
-      mode === "login"
-        ? "Sign in to continue into your shared SaaS workspace."
-        : "Open a clean account experience with persistent team access.",
-    [mode]
-  );
-  const switchLabel = mode === "login" ? "Need an account? Register" : "Already have an account? Login";
-  const submitting = loginMutation.isPending || registerMutation.isPending;
-  const surfaceError = formError ?? authError;
+  const emailError = touched && !isValidEmail(email) ? "Adresse email invalide." : null;
+  const passwordError =
+    touched && mode !== "forgot" && (mode === "login" ? (password ? null : "Mot de passe requis.") : passwordProblem(password));
 
-  async function onSubmit() {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) {
-      setFormError("email and password are required");
-      return;
-    }
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setTouched(false);
+  };
 
-    setFormError(null);
-    clearAuthError();
-
+  const submit = async () => {
+    setTouched(true);
+    if (!isValidEmail(email) && mode !== "reset") return;
+    setBusy(true);
     try {
       if (mode === "login") {
-        await loginMutation.mutateAsync({ email: normalizedEmail, password });
+        if (!password) return;
+        await login(email, password);
+      } else if (mode === "register") {
+        if (passwordProblem(password)) return;
+        await register(email, password);
+      } else if (mode === "forgot") {
+        await authApi.forgotPassword(email.trim());
+        toast.show("Si un compte existe, un code vous a été envoyé par email.");
+        switchMode("reset");
       } else {
-        await registerMutation.mutateAsync({ email: normalizedEmail, password });
+        if (!code.trim() || passwordProblem(password)) return;
+        await authApi.resetPassword(code.trim(), password);
+        toast.show("Mot de passe mis à jour. Connectez-vous.");
+        setPassword("");
+        switchMode("login");
       }
-    } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "authentication failed");
+    } catch (error) {
+      toast.show(describeError(error), "error");
+    } finally {
+      setBusy(false);
     }
-  }
+  };
+
+  const titles: Record<Mode, string> = {
+    login: "Content de vous revoir",
+    register: "Créez votre compte",
+    forgot: "Mot de passe oublié",
+    reset: "Nouveau mot de passe"
+  };
+  const cta: Record<Mode, string> = {
+    login: "Se connecter",
+    register: "Créer mon compte",
+    forgot: "Envoyer le code",
+    reset: "Réinitialiser"
+  };
 
   return (
-    <ScreenContainer centered contentMaxWidth={440}>
-      <Card padding="xl" style={styles.card} variant="accent">
-        <Header
-          centered
-          eyebrow="Go React SaaS"
-          style={styles.header}
-          subtitle={subtitle}
-          title={title}
-        />
+    <Screen scroll contentStyle={styles.content}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.form}>
+        <View style={styles.brand}>
+          <Text variant="title" color={colors.primary}>
+            {APP_NAME}
+          </Text>
+          <Text muted>Des rencontres sincères. Gratuites, pour toujours.</Text>
+        </View>
+        <Text variant="heading">{titles[mode]}</Text>
 
-        <Text style={styles.intro} tone="secondary">
-          Minimal, secure access for a premium team workspace.
-        </Text>
-
-        <Input
-          autoCapitalize="none"
-          autoComplete="email"
-          containerStyle={styles.field}
-          helperText="Use the email tied to your workspace."
-          keyboardType="email-address"
-          label="Email"
-          onChangeText={(value) => {
-            setEmail(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Email"
-          testID="auth-email-input"
-          value={email}
-        />
-
-        <Input
-          autoCapitalize="none"
-          containerStyle={styles.field}
-          error={formError?.toLowerCase().includes("password") ? formError : null}
-          helperText={mode === "login" ? "Enter your secure password." : "Create a password for future sessions."}
-          label="Password"
-          onChangeText={(value) => {
-            setPassword(value);
-            if (surfaceError) {
-              setFormError(null);
-              clearAuthError();
-            }
-          }}
-          placeholder="Password"
-          secureTextEntry
-          testID="auth-password-input"
-          value={password}
-        />
-
-        {surfaceError ? (
-          <ErrorView
-            compact
-            message={surfaceError}
-            style={styles.error}
-            title="Authentication issue"
+        {mode !== "reset" ? (
+          <Input
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            error={emailError}
+            testID="auth-email"
+          />
+        ) : (
+          <Input
+            label="Code reçu par email"
+            value={code}
+            onChangeText={setCode}
+            autoCapitalize="none"
+            autoCorrect={false}
+            testID="auth-code"
+          />
+        )}
+        {mode !== "forgot" ? (
+          <Input
+            label={mode === "reset" ? "Nouveau mot de passe" : "Mot de passe"}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            textContentType={mode === "login" ? "password" : "newPassword"}
+            error={passwordError || null}
+            testID="auth-password"
           />
         ) : null}
 
-        <Button
-          fullWidth
-          label={mode === "login" ? "Login" : "Register"}
-          loading={submitting}
-          onPress={onSubmit}
-          testID="auth-submit-button"
-        />
+        <Button title={cta[mode]} onPress={submit} loading={busy} testID="auth-submit" />
 
-        <Pressable
-          disabled={submitting}
-          onPress={() => {
-            setMode((prev) => (prev === "login" ? "register" : "login"));
-            setFormError(null);
-            clearAuthError();
-          }}
-          testID="auth-switch-mode-button"
-        >
-          <Text style={styles.switchText} tone="secondary" variant="label" weight="semibold">
-            {switchLabel}
+        {mode === "login" ? (
+          <>
+            <Button title="Mot de passe oublié ?" variant="ghost" onPress={() => switchMode("forgot")} />
+            <Button
+              title="Pas encore de compte ? S'inscrire"
+              variant="secondary"
+              onPress={() => switchMode("register")}
+              testID="auth-switch-register"
+            />
+          </>
+        ) : (
+          <Button title="Retour à la connexion" variant="ghost" onPress={() => switchMode("login")} />
+        )}
+        {mode === "register" ? (
+          <Text variant="caption" muted style={styles.legal}>
+            En créant un compte vous confirmez avoir au moins 18 ans.
           </Text>
-        </Pressable>
-      </Card>
-    </ScreenContainer>
+        ) : null}
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: "100%"
-  },
-  header: {
-    marginBottom: spacing.lg
-  },
-  intro: {
-    marginBottom: spacing.xl,
-    textAlign: "center"
-  },
-  field: {
-    marginBottom: spacing.md
-  },
-  switchText: {
-    marginTop: spacing.lg,
-    textAlign: "center"
-  },
-  error: {
-    marginBottom: spacing.sm
-  }
+  content: { flexGrow: 1, justifyContent: "center" },
+  form: { gap: 16 },
+  brand: { gap: 4, marginBottom: 12 },
+  legal: { textAlign: "center" }
 });

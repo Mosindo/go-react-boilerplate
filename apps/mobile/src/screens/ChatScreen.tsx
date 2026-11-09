@@ -1,415 +1,237 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View
-} from "react-native";
-import {
-  listChatMessages,
-  listChats,
-  listUsers,
-  sendChatMessage,
-  type ChatMessage,
-  type ChatSummary,
-  type PlatformUser
-} from "../api/platform";
-import { EmptyView, ErrorView, LoadingView } from "../shared/feedback";
-import { Header, ScreenContainer, Section } from "../shared/layout";
-import { Avatar, Button, Card, Input, ListItem, MessageItem, Notice, Text, colors, radii, spacing } from "../shared/ui";
+import React, { useEffect, useRef, useState } from "react";
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { chatApi, matchingApi, safetyApi } from "../api/endpoints";
+import type { Message } from "../api/types";
+import { useAuth } from "../auth/AuthContext";
+import { ReportSheet } from "../features/ReportSheet";
+import { keys } from "../features/keys";
+import { prependMessage } from "../features/messageCache";
+import { formatTime } from "../lib/dates";
+import { describeError } from "../lib/validation";
+import { useNav, type Route } from "../nav/Navigation";
+import { radii, useTheme } from "../theme/theme";
+import { ActionSheet, ErrorState, LoadingView, PhotoImage, Screen, Text, useToast } from "../ui";
 
-type ChatScreenProps = {
-  token: string;
-  currentUserId: string;
-};
+type ChatRoute = Extract<Route, { name: "chat" }>;
 
-type ChatTarget = {
-  user: PlatformUser;
-  lastMessage?: ChatSummary["lastMessage"];
-};
-
-const CHAT_LIST_POLL_MS = 8000;
-const CHAT_MESSAGES_POLL_MS = 3000;
-
-function formatChatError(error: unknown, fallback: string): string {
-  if (!(error instanceof Error) || !error.message) {
-    return fallback;
-  }
-  const message = error.message.toLowerCase();
-  if (message.includes("network") || message.includes("failed to fetch")) {
-    return "Network error. Check connection and retry.";
-  }
-  if (message.includes("timeout")) {
-    return "Request timed out. Please retry.";
-  }
-  return error.message;
-}
-
-function chatSummaryToTarget(chat: ChatSummary): ChatTarget {
-  return { user: chat.user, lastMessage: chat.lastMessage };
-}
-
-export default function ChatScreen({ token, currentUserId }: ChatScreenProps) {
-  const [chatList, setChatList] = useState<ChatSummary[]>([]);
-  const [directory, setDirectory] = useState<PlatformUser[]>([]);
-  const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export default function ChatScreen({ route }: { route: ChatRoute }) {
+  const { colors } = useTheme();
+  const nav = useNav();
+  const toast = useToast();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { conversationId, peer, matchId } = route;
   const [draft, setDraft] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [backgroundError, setBackgroundError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const lobbyInFlight = useRef(false);
-  const messagesInFlight = useRef(false);
+  const [menu, setMenu] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const listRef = useRef<FlatList<Message>>(null);
 
-  const loadLobby = useCallback(async (silent = false) => {
-    if (lobbyInFlight.current) {
-      return;
+  const query = useInfiniteQuery({
+    queryKey: keys.messages(conversationId),
+    queryFn: ({ pageParam }) => chatApi.messages(conversationId, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => (last.length >= 30 ? last[last.length - 1].id : undefined)
+  });
+
+  const messages = query.data?.pages.flat() ?? [];
+  const newestFromPeer = messages.find((m) => m.senderId !== user?.id);
+
+  const markRead = useMutation({
+    mutationFn: () => chatApi.markRead(conversationId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.conversations });
+      void queryClient.invalidateQueries({ queryKey: keys.notifications });
     }
+  });
 
-    lobbyInFlight.current = true;
-    if (!silent) {
-      setLoading(true);
-      setError(null);
+  // Mark as read on open and whenever a new message from the other person arrives while the chat is open.
+  const { mutate: markConversationRead } = markRead;
+  const hasUnreadFromPeer = !!newestFromPeer && !newestFromPeer.readAt;
+  const newestFromPeerId = newestFromPeer?.id;
+  useEffect(() => {
+    if (query.isSuccess && hasUnreadFromPeer) {
+      markConversationRead();
     }
+  }, [query.isSuccess, hasUnreadFromPeer, newestFromPeerId, markConversationRead]);
 
-    try {
-      const [nextChats, nextUsers] = await Promise.all([listChats(token), listUsers(token)]);
-      const filteredUsers = nextUsers.filter((user) => user.id !== currentUserId);
-
-      setChatList(nextChats);
-      setDirectory(filteredUsers);
-      setBackgroundError(null);
-      setSelectedChat((current) => {
-        if (!current) {
-          return null;
-        }
-
-        const existingChat = nextChats.find((chat) => chat.user.id === current.user.id);
-        if (existingChat) {
-          return chatSummaryToTarget(existingChat);
-        }
-
-        const existingUser = filteredUsers.find((user) => user.id === current.user.id);
-        if (existingUser) {
-          return { user: existingUser, lastMessage: current.lastMessage };
-        }
-
-        return current;
-      });
-    } catch (loadError) {
-      const formattedError = formatChatError(loadError, "could not load conversations");
-      if (silent) {
-        setBackgroundError(formattedError);
-      } else {
-        setError(formattedError);
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-      lobbyInFlight.current = false;
-    }
-  }, [token, currentUserId]);
-
-  const loadMessages = useCallback(
-    async (chat: ChatTarget, silent = false): Promise<boolean> => {
-      if (messagesInFlight.current) {
-        return true;
-      }
-
-      messagesInFlight.current = true;
-      if (!silent) {
-        setLoading(true);
-        setError(null);
-      }
-
-      try {
-        const nextMessages = await listChatMessages(token, chat.user.id);
-        setMessages(nextMessages);
-        setBackgroundError(null);
-        return true;
-      } catch (loadError) {
-        const formattedError = formatChatError(loadError, "could not load messages");
-        if (silent) {
-          setBackgroundError(formattedError);
-        } else {
-          setError(formattedError);
-        }
-        return false;
-      } finally {
-        if (!silent) {
-          setLoading(false);
-        }
-        messagesInFlight.current = false;
-      }
+  const send = useMutation({
+    mutationFn: (body: string) => chatApi.send(conversationId, body),
+    onSuccess: (message) => {
+      prependMessage(queryClient, message);
+      void queryClient.invalidateQueries({ queryKey: keys.conversations });
     },
-    [token]
-  );
-
-  useEffect(() => {
-    loadLobby();
-  }, [loadLobby]);
-
-  async function openChat(target: ChatTarget) {
-    setSelectedChat(target);
-    setError(null);
-    setBackgroundError(null);
-    const ok = await loadMessages(target);
-    if (!ok) {
-      setMessages([]);
+    onError: (error, body) => {
+      setDraft((current) => current || body);
+      toast.show(describeError(error), "error");
     }
-  }
+  });
 
-  async function onSend() {
-    if (!selectedChat) {
-      return;
-    }
+  const submit = () => {
+    const body = draft.trim();
+    if (!body || send.isPending) return;
+    setDraft("");
+    send.mutate(body);
+  };
 
-    const content = draft.trim();
-    if (!content) {
-      return;
-    }
+  const leave = () => {
+    void queryClient.invalidateQueries({ queryKey: keys.conversations });
+    nav.back();
+  };
 
-    setSending(true);
-    setError(null);
-    setBackgroundError(null);
-    try {
-      const sent = await sendChatMessage(token, selectedChat.user.id, content);
-      setMessages((prev) => [...prev, sent]);
-      setDraft("");
-      await loadLobby(true);
-      await loadMessages(selectedChat, true);
-    } catch (sendError) {
-      setError(formatChatError(sendError, "could not send message"));
-    } finally {
-      setSending(false);
-    }
-  }
+  const unmatch = useMutation({
+    mutationFn: () => matchingApi.unmatch(matchId as string),
+    onSuccess: leave,
+    onError: (e) => toast.show(describeError(e), "error")
+  });
+  const block = useMutation({
+    mutationFn: () => safetyApi.block(peer.userId),
+    onSuccess: () => {
+      toast.show("Personne bloquée.");
+      leave();
+    },
+    onError: (e) => toast.show(describeError(e), "error")
+  });
+  const hide = useMutation({
+    mutationFn: () => chatApi.hide(conversationId),
+    onSuccess: leave,
+    onError: (e) => toast.show(describeError(e), "error")
+  });
 
-  async function reloadCurrentView() {
-    setBackgroundError(null);
-    if (selectedChat) {
-      await loadMessages(selectedChat);
-      return;
-    }
-    await loadLobby();
-  }
-
-  useEffect(() => {
-    if (selectedChat) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      void loadLobby(true);
-    }, CHAT_LIST_POLL_MS);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [selectedChat, loadLobby]);
-
-  useEffect(() => {
-    if (!selectedChat) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      void loadMessages(selectedChat, true);
-      void loadLobby(true);
-    }, CHAT_MESSAGES_POLL_MS);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [selectedChat, loadMessages, loadLobby]);
-
-  const availableContacts = useMemo(
-    () => directory.filter((user) => !chatList.some((chat) => chat.user.id === user.id)),
-    [directory, chatList]
-  );
-
-  const title = useMemo(() => (selectedChat ? selectedChat.user.email : "Chat"), [selectedChat]);
-  const subtitle = selectedChat ? "Direct conversation" : "Conversations and team directory";
+  const lastOwnId = messages.find((m) => m.senderId === user?.id)?.id;
 
   return (
-    <ScreenContainer testID="chat-screen">
-      <Header
-        action={
-          <Button
-            disabled={loading || sending}
-            label="Reload"
-            onPress={reloadCurrentView}
-            size="sm"
-            testID="chat-reload-button"
-            variant="outline"
-          />
-        }
-        eyebrow="Inbox"
-        leading={
-          selectedChat ? (
-            <Button
-              label="Back"
-              onPress={() => {
-                setSelectedChat(null);
-                setMessages([]);
-                setDraft("");
-                setError(null);
-                setBackgroundError(null);
-              }}
-              size="sm"
-              testID="chat-back-button"
-              variant="ghost"
-            />
-          ) : null
-        }
-        style={styles.headerShell}
-        subtitle={subtitle}
-        title={title}
-      />
-
-      {error ? (
-        <ErrorView actionLabel="Retry" compact message={error} onAction={() => void reloadCurrentView()} style={styles.errorWrap} />
-      ) : null}
-
-      {!error && backgroundError ? (
-        <Notice
-          description="The chat UI is still usable, but the latest background refresh did not complete."
-          style={styles.warnWrap}
-          title={backgroundError}
-          tone="warning"
-        />
-      ) : null}
-
-      {loading ? (
-        <LoadingView
-          fullScreen
-          label={selectedChat ? "Loading conversation..." : "Loading chat workspace..."}
-          style={styles.loaderWrap}
-        />
-      ) : selectedChat ? (
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.chatWrap}>
+    <Screen
+      onBack={nav.back}
+      title={peer.firstName}
+      right={
+        <Pressable accessibilityRole="button" accessibilityLabel="Plus d'options" onPress={() => setMenu(true)} hitSlop={10}>
+          <Text variant="heading">⋯</Text>
+        </Pressable>
+      }
+    >
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => nav.push({ name: "profile", userId: peer.userId })}
+          style={[styles.peerBar, { borderBottomColor: colors.border }]}
+        >
+          <PhotoImage url={peer.photoUrl} name={peer.firstName} circle style={styles.peerAvatar} />
+          <Text variant="caption" muted>
+            Voir le profil de {peer.firstName}
+          </Text>
+        </Pressable>
+        {query.isPending ? (
+          <LoadingView />
+        ) : query.isError ? (
+          <ErrorState message={describeError(query.error, "Conversation indisponible.")} onRetry={() => void query.refetch()} />
+        ) : (
           <FlatList
-            contentContainerStyle={styles.messageList}
+            ref={listRef}
+            inverted
             data={messages}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(m) => m.id}
+            contentContainerStyle={styles.list}
+            onEndReached={() => query.hasNextPage && !query.isFetchingNextPage && void query.fetchNextPage()}
             ListEmptyComponent={
-              <EmptyView
-                message="Start with a quick hello to open the conversation."
-                title="No messages yet"
-              />
+              <Text muted style={styles.empty}>
+                C'est un match ! Envoyez le premier message à {peer.firstName}.
+              </Text>
             }
             renderItem={({ item }) => {
-              const mine = item.senderUserId === currentUserId;
-              return <MessageItem content={item.content} mine={mine} />;
+              const mine = item.senderId === user?.id;
+              return (
+                <View style={[styles.bubbleWrap, mine ? styles.mine : styles.theirs]}>
+                  <View style={[styles.bubble, { backgroundColor: mine ? colors.primary : colors.surfaceAlt }]}>
+                    <Text color={mine ? colors.onPrimary : colors.text}>{item.body}</Text>
+                  </View>
+                  <Text variant="caption" muted>
+                    {formatTime(item.createdAt)}
+                    {mine && item.id === lastOwnId ? (item.readAt ? " · Lu" : " · Envoyé") : ""}
+                  </Text>
+                </View>
+              );
             }}
           />
-
-          <View style={styles.composer}>
-            <Input
-              containerStyle={styles.inputWrap}
-              onChangeText={setDraft}
-              placeholder="Write a message..."
-              style={styles.input}
-              testID="chat-message-input"
-              value={draft}
-            />
-            <Button
-              disabled={loading}
-              label="Send"
-              loading={sending}
-              onPress={onSend}
-              size="sm"
-              testID="chat-send-button"
-            />
-          </View>
-        </KeyboardAvoidingView>
-      ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Section eyebrow="Inbox" title="Recent conversations">
-            {chatList.length === 0 ? (
-              <EmptyView message="New conversations will appear here as soon as you start messaging." title="No conversations yet" />
-            ) : null}
-            {chatList.map((chat) => (
-              <ListItem
-                key={chat.user.id}
-                disabled={loading || sending}
-                leading={<Avatar name={chat.user.email} size={40} />}
-                onPress={() => void openChat(chatSummaryToTarget(chat))}
-                style={loading || sending ? styles.chatCardDisabled : null}
-                subtitle={chat.lastMessage?.content ?? "Open conversation"}
-                testID={`chat-open-${chat.user.id}`}
-                title={chat.user.email}
-              />
-            ))}
-          </Section>
-
-          <Section eyebrow="Directory" title="Start a new conversation">
-            {availableContacts.length === 0 ? (
-              <EmptyView message="Invite more teammates to unlock new conversations." title="No additional members available" />
-            ) : null}
-            {availableContacts.map((user) => (
-              <ListItem
-                key={user.id}
-                disabled={loading || sending}
-                leading={<Avatar name={user.email} size={40} />}
-                onPress={() => void openChat({ user })}
-                style={loading || sending ? styles.chatCardDisabled : null}
-                subtitle="Message this member"
-                title={user.email}
-                variant="muted"
-              />
-            ))}
-          </Section>
-        </ScrollView>
-      )}
-    </ScreenContainer>
+        )}
+        <View style={[styles.composer, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
+          <TextInput
+            accessibilityLabel="Votre message"
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Écrire un message…"
+            placeholderTextColor={colors.textMuted}
+            multiline
+            maxLength={2000}
+            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+            testID="chat-input"
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Envoyer"
+            disabled={!draft.trim() || send.isPending}
+            onPress={submit}
+            style={[styles.send, { backgroundColor: colors.primary, opacity: draft.trim() ? 1 : 0.4 }]}
+            testID="chat-send"
+          >
+            <Text variant="heading" color={colors.onPrimary}>
+              ➤
+            </Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+      <ActionSheet
+        visible={menu}
+        actions={[
+          { label: "Supprimer la conversation", onPress: () => hide.mutate() },
+          ...(matchId ? [{ label: "Annuler le match", destructive: true, onPress: () => unmatch.mutate() }] : []),
+          { label: "Signaler", destructive: true, onPress: () => setReporting(true) },
+          { label: "Bloquer", destructive: true, onPress: () => block.mutate() }
+        ]}
+        onClose={() => setMenu(false)}
+      />
+      <ReportSheet
+        visible={reporting}
+        userId={peer.userId}
+        name={peer.firstName}
+        onClose={() => setReporting(false)}
+        onDone={() => {
+          setReporting(false);
+          leave();
+        }}
+      />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerShell: {
-    marginBottom: spacing.md,
-  },
-  scrollContent: {
-    paddingBottom: spacing.xxxl
-  },
-  chatCardDisabled: {
-    opacity: 0.7
-  },
-  errorWrap: {
-    marginBottom: spacing.sm,
-  },
-  warnWrap: {
-    marginBottom: spacing.sm,
-  },
-  loaderWrap: {
-    flex: 1
-  },
-  chatWrap: {
-    flex: 1
-  },
-  messageList: {
-    paddingBottom: spacing.md
-  },
-  composer: {
+  flex: { flex: 1 },
+  peerBar: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    backgroundColor: colors.backgroundElevated,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth
   },
-  inputWrap: {
-    flex: 1
-  },
+  peerAvatar: { width: 28, height: 28 },
+  list: { padding: 16, gap: 8, flexGrow: 1 },
+  empty: { textAlign: "center", padding: 24, transform: [{ scaleY: -1 }] },
+  bubbleWrap: { maxWidth: "80%", gap: 2 },
+  mine: { alignSelf: "flex-end", alignItems: "flex-end" },
+  theirs: { alignSelf: "flex-start", alignItems: "flex-start" },
+  bubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: radii.lg },
+  composer: { flexDirection: "row", alignItems: "flex-end", gap: 8, padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
   input: {
-    minHeight: 48
-  }
+    flex: 1,
+    maxHeight: 120,
+    minHeight: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 11,
+    paddingBottom: 11,
+    fontSize: 16
+  },
+  send: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" }
 });

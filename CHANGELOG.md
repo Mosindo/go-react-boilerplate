@@ -8,7 +8,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Tandem: free dating app built on the boilerplate — profiles, preferences, photos, discovery, matching, WebSocket chat,
+  notifications, blocks/reports, password recovery, account deletion, demo seed, e2e script, lint/format/jest, new CI.
+
+### Changed
+- Migrations were reset and are now tracked in `schema_migrations`.
+- Mobile app rewritten without Tamagui / React Navigation.
+
+### Removed
+- Stripe billing, posts, comments, generic files, organizations/multi-tenancy, PowerShell smoke scripts.
 
 ## [0.1.0] - 2026-03-17
 

@@ -1,12 +1,27 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Tandem",
+    "slug": "tandem",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.tandem.mobile",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Tandem utilise votre position pour vous montrer des profils proches. Elle est arrondie et jamais affichée précisément.",
+        "NSPhotoLibraryUsageDescription": "Tandem a besoin d'accéder à vos photos pour les ajouter à votre profil."
+      }
+    },
+    "android": {
+      "package": "app.tandem.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION", "READ_MEDIA_IMAGES"]
+    },
+    "plugins": [
+      "expo-secure-store",
+      ["expo-location", { "locationWhenInUsePermission": "Tandem utilise votre position pour vous montrer des profils proches." }],
+      ["expo-image-picker", { "photosPermission": "Tandem a besoin d'accéder à vos photos pour les ajouter à votre profil." }]
     ]
   }
 }
