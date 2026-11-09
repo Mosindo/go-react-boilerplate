@@ -4,32 +4,37 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	authfeature "example.com/api/internal/features/auth"
-	billingfeature "example.com/api/internal/features/billing"
 	chatfeature "example.com/api/internal/features/chat"
-	commentsfeature "example.com/api/internal/features/comments"
-	filesfeature "example.com/api/internal/features/files"
+	matchingfeature "example.com/api/internal/features/matching"
 	notificationsfeature "example.com/api/internal/features/notifications"
-	postsfeature "example.com/api/internal/features/posts"
+	photosfeature "example.com/api/internal/features/photos"
+	profilesfeature "example.com/api/internal/features/profiles"
+	safetyfeature "example.com/api/internal/features/safety"
 	usersfeature "example.com/api/internal/features/users"
 	"example.com/api/internal/platform/config"
 	"example.com/api/internal/platform/db"
 	platformhandlers "example.com/api/internal/platform/handlers"
+	"example.com/api/internal/platform/mailer"
 	"example.com/api/internal/platform/middleware"
+	"example.com/api/internal/platform/ratelimit"
+	"example.com/api/internal/platform/realtime"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// app holds the shared dependencies used to build the router.
 type app struct {
-	dbPool              *pgxpool.Pool
-	jwtSecret           []byte
-	stripeSecretKey     string
-	stripeWebhookSecret string
-	stripePriceID       string
-	appBaseURL          string
-	allowedOrigins      []string
+	dbPool         *pgxpool.Pool
+	jwtSecret      []byte
+	allowedOrigins []string
+	storage        photosfeature.Storage
+	mailer         mailer.Mailer
 }
 
 func main() {
@@ -37,35 +42,46 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	ctx := context.Background()
-	pool, err := db.ConnectWithRetry(ctx, cfg.DatabaseURL, 10*time.Second, time.Second)
+	pool, err := db.ConnectWithRetry(ctx, cfg.DatabaseURL, 30*time.Second, time.Second)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer pool.Close()
-
 	if err := db.RunMigrations(ctx, pool); err != nil {
 		log.Fatal(err)
 	}
-
-	a := &app{
-		dbPool:              pool,
-		jwtSecret:           []byte(cfg.JWTSecret),
-		stripeSecretKey:     cfg.StripeSecretKey,
-		stripeWebhookSecret: cfg.StripeWebhookSecret,
-		stripePriceID:       cfg.StripePriceID,
-		appBaseURL:          cfg.AppBaseURL,
-		allowedOrigins:      cfg.AllowedOrigins,
-	}
-
-	r := setupRouter(a)
-
-	addr := ":" + cfg.Port
-	log.Printf("api listening on %s", addr)
-	if err := r.Run(addr); err != nil {
+	storage, err := photosfeature.NewDiskStorage(cfg.UploadDir)
+	if err != nil {
 		log.Fatal(err)
 	}
+
+	var m mailer.Mailer = mailer.LogMailer{}
+	if cfg.SMTP.Enabled() {
+		m = mailer.SMTPMailer{Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, User: cfg.SMTP.User, Pass: cfg.SMTP.Pass, From: cfg.SMTP.From}
+	}
+
+	a := &app{dbPool: pool, jwtSecret: []byte(cfg.JWTSecret), allowedOrigins: cfg.AllowedOrigins, storage: storage, mailer: m}
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           setupRouter(a),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	go func() {
+		log.Printf("api listening on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutdownCtx)
 }
 
 func setupRouter(a *app) *gin.Engine {
@@ -77,46 +93,38 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
-	authRepo := authfeature.NewPGRepository(a.dbPool)
-	authService := authfeature.NewService(authRepo, a.jwtSecret)
-	authHandler := authfeature.NewHandler(authService)
-	usersRepo := usersfeature.NewPGRepository(a.dbPool)
-	usersService := usersfeature.NewService(usersRepo)
-	usersHandler := usersfeature.NewHandler(usersService)
-	chatRepo := chatfeature.NewPGRepository(a.dbPool)
-	chatService := chatfeature.NewService(chatRepo)
-	chatHandler := chatfeature.NewHandler(chatService)
-	postsRepo := postsfeature.NewPGRepository(a.dbPool)
-	postsService := postsfeature.NewService(postsRepo)
-	postsHandler := postsfeature.NewHandler(postsService)
-	commentsRepo := commentsfeature.NewPGRepository(a.dbPool)
-	commentsService := commentsfeature.NewService(commentsRepo)
-	commentsHandler := commentsfeature.NewHandler(commentsService)
-	notificationsRepo := notificationsfeature.NewPGRepository(a.dbPool)
-	notificationsService := notificationsfeature.NewService(notificationsRepo)
-	notificationsHandler := notificationsfeature.NewHandler(notificationsService)
-	filesRepo := filesfeature.NewPGRepository(a.dbPool)
-	filesService := filesfeature.NewService(filesRepo)
-	filesHandler := filesfeature.NewHandler(filesService)
-	billingRepo := billingfeature.NewPGRepository(a.dbPool)
-	billingService := billingfeature.NewService(billingRepo, billingfeature.Config{
-		StripeSecretKey:     a.stripeSecretKey,
-		StripeWebhookSecret: a.stripeWebhookSecret,
-		StripePriceID:       a.stripePriceID,
-		AppBaseURL:          a.appBaseURL,
-		HTTPClient:          &http.Client{Timeout: 10 * time.Second},
-	})
-	billingHandler := billingfeature.NewHandler(billingService)
+
+	hub := realtime.NewHub()
 	requireUser := middleware.RequireUser(a.jwtSecret)
 
+	// Rate limits (per process). Auth limits are per IP, the rest per authenticated user.
+	authLimit := ratelimit.New(20, time.Minute).ByIP()
+	globalLimit := ratelimit.New(600, time.Minute).ByIP()
+	swipeLimit := ratelimit.New(120, time.Minute).ByUser()
+	sendLimit := ratelimit.New(60, time.Minute).ByUser()
+	uploadLimit := ratelimit.New(20, time.Minute).ByUser()
+	reportLimit := ratelimit.New(10, time.Minute).ByUser()
+	deleteLimit := ratelimit.New(5, time.Minute).ByUser()
+	r.Use(globalLimit)
+
+	authService := authfeature.NewService(authfeature.NewPGRepository(a.dbPool), a.jwtSecret, a.mailer)
+	profilesRepo := profilesfeature.NewPGRepository(a.dbPool)
+	profilesService := profilesfeature.NewService(profilesRepo)
+	photosService := photosfeature.NewService(photosfeature.NewPGRepository(a.dbPool), a.storage)
+	matchingService := matchingfeature.NewService(matchingfeature.NewPGRepository(a.dbPool), profilesRepo, hub)
+	chatService := chatfeature.NewService(chatfeature.NewPGRepository(a.dbPool), hub)
+	safetyService := safetyfeature.NewService(safetyfeature.NewRepository(a.dbPool), hub)
+	usersService := usersfeature.NewService(a.dbPool, a.storage)
+
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
-	authfeature.RegisterRoutes(r, authHandler, requireUser)
-	usersfeature.RegisterRoutes(r, usersHandler, requireUser)
-	chatfeature.RegisterRoutes(r, chatHandler, requireUser)
-	postsfeature.RegisterRoutes(r, postsHandler, requireUser)
-	commentsfeature.RegisterRoutes(r, commentsHandler, requireUser)
-	notificationsfeature.RegisterRoutes(r, notificationsHandler, requireUser)
-	filesfeature.RegisterRoutes(r, filesHandler, requireUser)
-	billingfeature.RegisterRoutes(r, billingHandler, requireUser)
+	r.GET("/ws", hub.Handler(a.jwtSecret))
+	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, authLimit)
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
+	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser, uploadLimit)
+	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, swipeLimit)
+	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser, sendLimit)
+	safetyfeature.RegisterRoutes(r, safetyfeature.NewHandler(safetyService), requireUser, reportLimit)
+	notificationsfeature.RegisterRoutes(r, notificationsfeature.NewHandler(notificationsfeature.NewRepository(a.dbPool)), requireUser)
+	usersfeature.RegisterRoutes(r, usersfeature.NewHandler(usersService), requireUser, deleteLimit)
 	return r
 }

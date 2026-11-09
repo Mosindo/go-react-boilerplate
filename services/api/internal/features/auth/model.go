@@ -1,30 +1,52 @@
 package auth
 
 import (
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID        string
+	Email     string
+	CreatedAt time.Time
+}
+
+// Email trims and lower-cases itself while decoding JSON, so validation sees the normalized value.
+type Email string
+
+func (e *Email) UnmarshalJSON(b []byte) error {
+	var raw string
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*e = Email(strings.ToLower(strings.TrimSpace(raw)))
+	return nil
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    Email  `json:"email" binding:"required,email,max=254"`
 	Password string `json:"password" binding:"required,min=8,max=128"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    Email  `json:"email" binding:"required,email,max=254"`
 	Password string `json:"password" binding:"required,max=128"`
 }
 
 type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
+}
+
+type ForgotPasswordRequest struct {
+	Email Email `json:"email" binding:"required,email,max=254"`
+}
+
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding:"required,max=256"`
+	Password string `json:"password" binding:"required,min=8,max=128"`
 }
 
 type LogoutRequest struct {

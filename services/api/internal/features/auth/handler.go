@@ -24,7 +24,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	tokens, user, err := h.service.Register(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
+	tokens, user, err := h.service.Register(c.Request.Context(), string(req.Email), req.Password, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
@@ -45,10 +45,9 @@ func (h *Handler) Register(c *gin.Context) {
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
+			ID:        user.ID,
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
 		},
 	})
 	logger.LogHandlerEvent(c, "auth.register.success", status, map[string]string{"created_user_id": user.ID})
@@ -62,7 +61,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	tokens, user, err := h.service.Login(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
+	tokens, user, err := h.service.Login(c.Request.Context(), string(req.Email), req.Password, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
@@ -83,10 +82,9 @@ func (h *Handler) Login(c *gin.Context) {
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
+			ID:        user.ID,
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
 		},
 	})
 	logger.LogHandlerEvent(c, "auth.login.success", status, map[string]string{"authenticated_user_id": user.ID})
@@ -124,10 +122,9 @@ func (h *Handler) Refresh(c *gin.Context) {
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
+			ID:        user.ID,
+			Email:     user.Email,
+			CreatedAt: user.CreatedAt,
 		},
 	})
 	logger.LogHandlerEvent(c, "auth.refresh.success", status, map[string]string{"authenticated_user_id": user.ID})
@@ -158,6 +155,37 @@ func (h *Handler) Logout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	// Always answer 202 so the endpoint cannot be used to discover registered emails.
+	if err := h.service.RequestPasswordReset(c.Request.Context(), string(req.Email)); err != nil {
+		logger.LogHandlerError(c, "auth.forgot", http.StatusAccepted, err)
+	}
+	c.JSON(http.StatusAccepted, gin.H{"status": "if the account exists, an email was sent"})
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.Password); err != nil {
+		if errors.Is(err, ErrInvalidResetToken) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "reset code is invalid or expired"})
+			return
+		}
+		logger.LogHandlerError(c, "auth.reset", http.StatusInternalServerError, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not reset password"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) Me(c *gin.Context) {
 	userID := c.GetString("userID")
 	user, err := h.service.Me(c.Request.Context(), userID)
@@ -176,9 +204,8 @@ func (h *Handler) Me(c *gin.Context) {
 
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, MeResponse{
-		ID:             user.ID,
-		Email:          user.Email,
-		OrganizationID: user.OrganizationID,
-		CreatedAt:      user.CreatedAt,
+		ID:        user.ID,
+		Email:     user.Email,
+		CreatedAt: user.CreatedAt,
 	})
 }
