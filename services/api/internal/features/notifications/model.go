@@ -2,34 +2,40 @@ package notifications
 
 import "time"
 
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
+
 type Notification struct {
 	ID        string
-	UserID    string
 	Type      string
-	Title     string
+	ActorID   *string
+	MatchID   *string
 	Body      string
-	IsRead    bool
 	CreatedAt time.Time
 	ReadAt    *time.Time
 }
 
 type NotificationResponse struct {
 	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
 	Type      string     `json:"type"`
-	Title     string     `json:"title"`
+	ActorID   *string    `json:"actorId"`
+	MatchID   *string    `json:"matchId"`
 	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
 	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
+	ReadAt    *time.Time `json:"readAt"`
 }
 
-type NotificationsResponse struct {
+type ListResponse struct {
 	Notifications []NotificationResponse `json:"notifications"`
+	UnreadCount   int                    `json:"unreadCount"`
+	NextCursor    *string                `json:"nextCursor"`
 }
 
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+func ToResponse(n Notification) NotificationResponse {
+	return NotificationResponse{
+		ID: n.ID, Type: n.Type, ActorID: n.ActorID, MatchID: n.MatchID,
+		Body: n.Body, CreatedAt: n.CreatedAt, ReadAt: n.ReadAt,
+	}
 }
