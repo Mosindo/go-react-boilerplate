@@ -1,0 +1,6 @@
+node_modules
+dist
+.expo
+package-lock.json
+e2e/report
+test-results

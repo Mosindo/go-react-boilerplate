@@ -53,3 +53,11 @@ docker-data/
 # Mobile e2e runtime artifacts
 apps/mobile/.e2e/
 
+
+# Playwright artifacts
+test-results/
+playwright-report/
+
+# Local API uploads (photos)
+data/
+services/api/data/
