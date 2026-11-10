@@ -218,8 +218,10 @@ npm run format:check       # Prettier
 ### E2E (interface)
 
 Le parcours critique (inscription → onboarding avec vraie photo et géolocalisation → découverte →
-like → match → chat temps réel avec accusé de lecture → liste des conversations → notifications)
-est automatisé avec Playwright sur le build web :
+like → match → chat temps réel avec accusé de lecture → liste des conversations → notifications),
+ainsi que le parcours sécurité (signalement depuis une conversation → blocage automatique →
+conversation supprimée des deux côtés → suppression du compte), sont automatisés avec Playwright
+sur le build web :
 
 ```bash
 # API démarrée sur :18080 avec ALLOWED_ORIGINS=http://localhost:8081
