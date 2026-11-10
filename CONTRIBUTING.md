@@ -35,7 +35,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -77,20 +77,25 @@ Run these checks before pushing changes:
 
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
+gofmt -l .                      # must print nothing
+go vet ./...
+DATABASE_URL_TEST=postgres://... go test ./...   # integration tests need Postgres
 go build ./cmd/api
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm run typecheck
+npm run lint
+npm run format:check
 ```
 
-If the change touches integrated flows, also run:
+If the change touches integrated flows, also run the runtime smoke test and the
+UI end-to-end suite (see README, section "Tests"):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+./scripts/smoke.sh http://localhost:18080
+cd apps/mobile && npm run build:web && npm run test:e2e
 ```
 
 ## Documentation Expectations

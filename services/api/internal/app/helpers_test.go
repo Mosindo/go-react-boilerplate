@@ -117,7 +117,7 @@ func newEnv(t *testing.T, limits Limits) *env {
 func generousLimits() Limits {
 	l := DefaultLimits()
 	big := [2]int{100000, 100000}
-	l.GlobalPerIP, l.Credentials, l.Sensitive, l.Uploads, l.Messages, l.Swipes, l.Reports, l.RealtimeAuth = big, big, big, big, big, big, big, big
+	l.GlobalPerIP, l.Credentials, l.Refresh, l.Sensitive, l.Uploads, l.Messages, l.Swipes, l.Reports, l.RealtimeAuth = big, big, big, big, big, big, big, big, big
 	return l
 }
 

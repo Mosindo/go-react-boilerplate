@@ -57,6 +57,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     width: "100%",
     maxWidth: 640,
+    marginHorizontal: "auto",
     alignSelf: "center"
   },
   header: { flexDirection: "row", alignItems: "center", paddingVertical: 8 }

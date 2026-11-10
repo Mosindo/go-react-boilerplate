@@ -12,7 +12,7 @@ import { useLocationSync } from "../../hooks/useLocation";
 import { celebrateMatch } from "../../hooks/useRealtime";
 import type { MainStackParamList } from "../../navigation/types";
 import { useTheme } from "../../theme/ThemeProvider";
-import { EmptyState, ErrorState, Header, IconButton, LoadingState, Screen, Text, showToast } from "../../ui";
+import { Button, EmptyState, ErrorState, Header, IconButton, LoadingState, Screen, Text, showToast } from "../../ui";
 import { SwipeDeck, type SwipeDeckHandle } from "./SwipeDeck";
 
 const PREFETCH_BELOW = 3;
@@ -32,6 +32,9 @@ export function DiscoverScreen() {
   const loadingMore = useRef(false);
 
   const hasLocation = me.data?.profile?.hasLocation ?? false;
+  const prefs = me.data?.preferences;
+  // Reload the deck whenever the criteria that shape it change.
+  const criteriaKey = prefs ? `${prefs.interestedIn.join(",")}|${prefs.minAge}|${prefs.maxAge}|${prefs.maxDistanceKm}` : "";
 
   const load = useCallback(
     async (reset = false) => {
@@ -62,7 +65,7 @@ export function DiscoverScreen() {
     if (me.data && hasLocation) void load(true);
     else if (me.data) setStatus("incomplete");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me.data?.profile?.hasLocation, me.data?.photos.length]);
+  }, [hasLocation, me.data?.photos.length, criteriaKey]);
 
   useEffect(() => {
     if (status === "ready" && !exhausted && cards.length < PREFETCH_BELOW) void load();
@@ -117,13 +120,16 @@ export function DiscoverScreen() {
     content = <ErrorState onRetry={() => load(true)} />;
   } else if (cards.length === 0) {
     content = (
-      <EmptyState
-        actionLabel="Élargir mes critères"
-        icon="sparkles-outline"
-        message="Vous avez vu tous les profils correspondant à vos critères. Revenez plus tard ou élargissez la distance et l'âge."
-        onAction={() => navigation.navigate("Preferences")}
-        title="C'est tout pour l'instant"
-      />
+      <View style={styles.empty}>
+        <EmptyState
+          actionLabel="Élargir mes critères"
+          icon="sparkles-outline"
+          message="Vous avez vu tous les profils correspondant à vos critères. Revenez plus tard ou élargissez la distance et l'âge."
+          onAction={() => navigation.navigate("Preferences")}
+          title="C'est tout pour l'instant"
+        />
+        <Button label="Actualiser" onPress={() => load(true)} size="md" variant="ghost" />
+      </View>
     );
   } else {
     content = (
@@ -184,5 +190,6 @@ export function DiscoverScreen() {
 const styles = StyleSheet.create({
   deck: { flex: 1, marginTop: 4, width: "100%", maxWidth: 480, alignSelf: "center" },
   actions: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 28, paddingVertical: 18 },
-  banner: { borderRadius: 14, padding: 12, marginBottom: 8 }
+  banner: { borderRadius: 14, padding: 12, marginBottom: 8 },
+  empty: { flex: 1, paddingBottom: 24 }
 });

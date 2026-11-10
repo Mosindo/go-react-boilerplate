@@ -31,6 +31,7 @@ import (
 type Limits struct {
 	GlobalPerIP  [2]int
 	Credentials  [2]int
+	Refresh      [2]int
 	Sensitive    [2]int
 	Uploads      [2]int
 	Messages     [2]int
@@ -43,6 +44,7 @@ func DefaultLimits() Limits {
 	return Limits{
 		GlobalPerIP:  [2]int{600, 300},
 		Credentials:  [2]int{10, 10},
+		Refresh:      [2]int{120, 60},
 		Sensitive:    [2]int{5, 5},
 		Uploads:      [2]int{20, 10},
 		Messages:     [2]int{60, 20},
@@ -117,6 +119,7 @@ func NewRouter(opts Options) (*gin.Engine, error) {
 	auth.RegisterRoutes(r, auth.NewHandler(authSvc), auth.RouteGuards{
 		RequireUser: requireUser,
 		Credentials: limiter(opts.Limits.Credentials, "credentials", ratelimit.ByIP),
+		Refresh:     limiter(opts.Limits.Refresh, "refresh", ratelimit.ByIP),
 		Sensitive:   limiter(opts.Limits.Sensitive, "sensitive", byUser),
 	})
 	profiles.RegisterRoutes(r, profiles.NewHandler(profilesSvc), requireUser)

@@ -1,4 +1,5 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -18,7 +19,8 @@ import { AccountScreen } from "../features/settings/AccountScreen";
 import { PreferencesScreen } from "../features/settings/PreferencesScreen";
 import { PrivacyScreen } from "../features/settings/PrivacyScreen";
 import { useAuth } from "../hooks/useAuth";
-import { useMatches, useMyProfile, useUnreadCount } from "../hooks/queries";
+import { keys, useMatches, useMyProfile, useUnreadCount } from "../hooks/queries";
+import { useLocationRefresh } from "../hooks/useLocation";
 import { useRealtime } from "../hooks/useRealtime";
 import { useTheme } from "../theme/ThemeProvider";
 import { ErrorState, LoadingState, Screen } from "../ui";
@@ -65,8 +67,12 @@ function MainTabs() {
 
 function SignedIn() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const me = useMyProfile();
-  useRealtime(!!me.data?.completion && !needsOnboarding(me.data.completion.missing), user?.id ?? null);
+  const ready = !!me.data && !needsOnboarding(me.data.completion.missing);
+  useRealtime(ready, user?.id ?? null);
+  const onLocationUpdated = useCallback(() => void qc.invalidateQueries({ queryKey: keys.me }), [qc]);
+  useLocationRefresh(ready && !!me.data?.profile?.hasLocation, onLocationUpdated);
 
   if (me.isLoading) return <LoadingState label="Chargement de votre profil…" />;
   if (me.error || !me.data)

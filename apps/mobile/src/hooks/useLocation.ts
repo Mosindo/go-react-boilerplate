@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Platform } from "react-native";
 import * as Location from "expo-location";
 import { profileApi } from "../api/endpoints";
@@ -30,4 +30,29 @@ export function useLocationSync() {
       return "unavailable";
     }
   }, []);
+}
+
+const REFRESH_EVERY_MS = 6 * 3600_000;
+let lastRefresh = 0;
+
+/**
+ * Silently refreshes the coarse location at most every 6 hours while the app
+ * is used, only if the permission was already granted (never prompts).
+ */
+export function useLocationRefresh(enabled: boolean, onUpdated: () => void) {
+  useEffect(() => {
+    if (!enabled || Date.now() - lastRefresh < REFRESH_EVERY_MS) return;
+    lastRefresh = Date.now();
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== "granted") return;
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+        await profileApi.updateLocation(pos.coords.latitude, pos.coords.longitude);
+        onUpdated();
+      } catch {
+        /* best effort */
+      }
+    })();
+  }, [enabled, onUpdated]);
 }

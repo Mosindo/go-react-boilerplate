@@ -1,30 +1,28 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Lueur**, a free dating application built on the former
+`go-react-saas` boilerplate (Go API + Expo app). The architecture must remain
+scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+A modern dating application that is 100% free for its members:
+no subscription, no paywall, no paid boost, no artificial like limit,
+no essential feature locked, no mandatory advertising.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Rate limits exist only as anti-abuse protection and must never become quotas.
 
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Core modules:
+- auth (accounts, sessions, password reset, account deletion)
+- profiles (profile, preferences, privacy, interests, coarse location)
+- photos (secure upload pipeline, signed media URLs)
+- discovery (eligibility + ranking, swipes)
+- matches (mutual likes, conversations, messages, read receipts)
+- safety (blocks, reports, moderation status)
+- notifications (in-app, realtime)
+- realtime (WebSocket fan-out)
 
 ---
 
@@ -65,12 +63,13 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
-  - `chat/`
-  - `posts/`
-  - `comments/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matches/`
+  - `safety/`
   - `notifications/`
+  - `realtime/`
 
 Each feature should contain:
 - `handler.go`
@@ -129,13 +128,14 @@ Secrets:
 - Keep common API paths O(n) over page size
 
 Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `users.email` (unique)
+- `swipes (swiper_id, target_id)` (primary key) and `(target_id, swiper_id) WHERE action = 'like'`
+- `matches (user_a_id, user_b_id)` (unique) and `(user_x_id, last_activity_at)`
+- `messages (match_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` (unique)
+- `blocks (blocker_id, blocked_id)` and `(blocked_id, blocker_id)`
+- `profiles (latitude, longitude)` partial index for discoverable profiles
 
 ---
 
@@ -152,11 +152,16 @@ If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/password/*`, `/me`)
+- Profiles & photos (`/profile`, `/profile/photos`, `/media/:key`)
+- Discovery (`/discovery`, `/discovery/swipes`)
+- Matches & chat (`/matches`, `/matches/:matchId/messages`)
+- Safety (`/blocks`, `/reports`)
 - Notifications (`/notifications`)
+- Realtime (`/realtime/ticket`, `/realtime`)
+
+These live in `services/api/internal/app/app_integration_test.go`; the UI
+critical path lives in `apps/mobile/e2e/critical-flow.spec.ts`.
 
 ---
 
@@ -171,15 +176,15 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml` (`API_HOST_PORT`)
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
-  - login
-  - users load
-  - posts load
+  - onboarding (profile, photo, preferences, location)
+  - discovery loads
+  - like → match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +212,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Introducing paid features, paywalls or artificial usage limits
+- Exposing exact user locations or raw coordinates
 
 ---
 

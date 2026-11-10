@@ -148,3 +148,55 @@ async function aliceId(email: string): Promise<string> {
   const login = await api<{ user: { id: string } }>("/auth/login", { body: { email, password: PASSWORD } });
   return login.user.id;
 }
+
+test("report from a conversation, then delete the account", async ({ browser }) => {
+  const email = `e2e-safety-${Date.now()}@e2e.test`;
+  const auth = await api<{ accessToken: string; user: { id: string } }>("/auth/register", { body: { email, password: PASSWORD } });
+  const token = auth.accessToken;
+  await api("/profile", { method: "PUT", token, body: { firstName: "Lina", birthdate: "1995-02-02", gender: "woman", bio: "", interestIds: [] } });
+  await api("/profile/preferences", { method: "PUT", token, body: { interestedIn: ["man"], minAge: 18, maxAge: 60, maxDistanceKm: 25 } });
+  await api("/profile/location", { method: "PUT", token, body: HOME });
+  const form = new FormData();
+  form.append("photo", new Blob([fs.readFileSync(PHOTO)], { type: "image/png" }), "photo.png");
+  await api("/profile/photos", { token, form });
+  const max = await createApiUser("Max", "man", ["woman"]);
+  await api("/discovery/swipes", { token: max.token, body: { targetId: auth.user.id, action: "like" } });
+  const res = await api<{ matchId: string }>("/discovery/swipes", { token, body: { targetId: max.id, action: "like" } });
+  await api(`/matches/${res.matchId}/messages`, { token: max.token, body: { body: "Message déplacé" } });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  page.on("dialog", (d) => d.accept());
+  await page.goto("/");
+  await page.getByText("Se connecter").first().click();
+  await page.getByTestId("auth-email").fill(email);
+  await page.getByTestId("auth-password").fill(PASSWORD);
+  await page.getByTestId("auth-submit").click();
+
+  await page.getByText("Messages").last().click();
+  await page.getByTestId("conversation-Max").click();
+  await expect(page.getByText("Message déplacé").last()).toBeVisible();
+  await page.getByLabel("Options").click();
+  await page.getByTestId("profile-report").click();
+  await page.getByTestId("report-harassment").click();
+  await page.getByTestId("report-submit").click();
+  await expect(page.getByText(/Max est bloqué·e/)).toBeVisible();
+
+  // The conversation is gone for both people.
+  await page.getByText("Messages").last().click();
+  await expect(page.getByText("Pas encore de match")).toBeVisible();
+  const maxMatches = await api<{ matches: unknown[] }>("/matches", { token: max.token });
+  expect(maxMatches.matches).toHaveLength(0);
+
+  // Account deletion.
+  await page.getByText("Profil").last().click();
+  await page.getByTestId("me-account").click();
+  await page.getByTestId("account-delete").click();
+  await page.getByTestId("account-current-password").fill(PASSWORD);
+  await page.getByTestId("account-delete-confirm").click();
+  await expect(page.getByTestId("auth-submit")).toBeVisible();
+  // The account no longer exists: even a still-unexpired access token is rejected.
+  const me = await fetch(`${API}/me`, { headers: { Authorization: `Bearer ${token}` } });
+  expect(me.status).toBe(401);
+  await context.close();
+});

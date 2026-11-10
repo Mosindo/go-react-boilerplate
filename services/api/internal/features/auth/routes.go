@@ -6,6 +6,8 @@ type RouteGuards struct {
 	RequireUser gin.HandlerFunc
 	// Credentials guards login/register/reset endpoints (per IP).
 	Credentials gin.HandlerFunc
+	// Refresh guards token rotation (per IP, more generous: shared NATs).
+	Refresh gin.HandlerFunc
 	// Sensitive guards authenticated, password-checking endpoints (per user).
 	Sensitive gin.HandlerFunc
 }
@@ -13,7 +15,7 @@ type RouteGuards struct {
 func RegisterRoutes(r gin.IRouter, handler *Handler, guards RouteGuards) {
 	r.POST("/auth/register", guards.Credentials, handler.Register)
 	r.POST("/auth/login", guards.Credentials, handler.Login)
-	r.POST("/auth/refresh", guards.Credentials, handler.Refresh)
+	r.POST("/auth/refresh", guards.Refresh, handler.Refresh)
 	r.POST("/auth/logout", handler.Logout)
 	r.POST("/auth/password/forgot", guards.Credentials, handler.ForgotPassword)
 	r.POST("/auth/password/reset", guards.Credentials, handler.ResetPassword)
