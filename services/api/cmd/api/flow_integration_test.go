@@ -235,6 +235,8 @@ func TestDatingFlowMatchChatSafety(t *testing.T) {
 		t.Fatalf("websocket dial: %v", err)
 	}
 	defer ws.Close()
+	aliceWS := e.dialRealtime(alice)
+	defer aliceWS.Close()
 
 	if !containsCard(e.discover(bob), alice.ID) {
 		t.Fatal("bob should discover alice")
@@ -253,7 +255,11 @@ func TestDatingFlowMatchChatSafety(t *testing.T) {
 		t.Fatalf("expected match with alice: %s", r.Body)
 	}
 	matchID := swipe.Match.MatchID
-	expectEvent(t, ws, "match.created")
+	// The other member (alice) is told in real time; bob got the HTTP response.
+	if evt := expectEvent(t, aliceWS, "match.created"); !strings.Contains(string(evt), bob.ID) {
+		t.Fatalf("alice's match event should carry bob's card: %s", evt)
+	}
+	expectEvent(t, ws, "notification.created")
 
 	var matchCount int
 	_ = e.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM matches WHERE id = $1`, matchID).Scan(&matchCount)
@@ -489,6 +495,21 @@ func TestRateLimitOnCredentialEndpoints(t *testing.T) {
 	if !limited {
 		t.Fatal("credential endpoints should be rate limited with a Retry-After header")
 	}
+}
+
+func (e *testEnv) dialRealtime(m member) *websocket.Conn {
+	e.t.Helper()
+	r := e.do("POST", "/realtime/ticket", m.Access, nil)
+	e.expect(r, http.StatusOK, "ticket")
+	var ticket struct {
+		Ticket string `json:"ticket"`
+	}
+	r.decode(e.t, &ticket)
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(e.server.URL, "http")+"/realtime?ticket="+url.QueryEscape(ticket.Ticket), nil)
+	if err != nil {
+		e.t.Fatalf("websocket dial: %v", err)
+	}
+	return conn
 }
 
 // expectEvent reads realtime events until one of the given type arrives,

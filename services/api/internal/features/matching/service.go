@@ -104,7 +104,8 @@ func (s *Service) Swipe(ctx context.Context, userID, targetID, direction string)
 	mine := MatchPayload{MatchID: match.ID, CreatedAt: match.CreatedAt, User: cardsForMe[targetID]}
 	theirs := MatchPayload{MatchID: match.ID, CreatedAt: match.CreatedAt, User: cardsForThem[userID]}
 
-	s.pub.Publish(userID, realtime.Event{Type: realtime.EventMatchCreated, Data: mine})
+	// The swiper learns about the match from the HTTP response; only the other
+	// member needs the real-time event.
 	s.pub.Publish(targetID, realtime.Event{Type: realtime.EventMatchCreated, Data: theirs})
 	s.notifyMatch(ctx, targetID, match.ID, theirs.User.FirstName)
 	s.notifyMatch(ctx, userID, match.ID, mine.User.FirstName)

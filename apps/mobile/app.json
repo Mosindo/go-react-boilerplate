@@ -1,12 +1,44 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Seren",
+    "slug": "seren",
+    "scheme": "seren",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.seren.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Seren a besoin d'accéder à tes photos pour que tu puisses les ajouter à ton profil.",
+        "NSLocationWhenInUseUsageDescription": "Seren utilise ta position approximative pour te proposer des profils proches. Elle n'est jamais affichée."
+      }
+    },
+    "android": {
+      "package": "app.seren.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION"],
+      "blockedPermissions": ["ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Seren a besoin d'accéder à tes photos pour que tu puisses les ajouter à ton profil.",
+          "cameraPermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Seren utilise ta position approximative pour te proposer des profils proches. Elle n'est jamais affichée."
+        }
+      ]
     ]
   }
 }

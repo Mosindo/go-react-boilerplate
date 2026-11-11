@@ -3,6 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
-    "moduleResolution": "bundler"
-  }
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true
+  },
+  "exclude": ["node_modules", "dist", "e2e/.results"]
 }
