@@ -2,8 +2,8 @@
 
 ## Responsibility
 
-- Integrate React Query into the mobile frontend
-- Implement auth hooks such as `useAuth`, `useLogin`, `useRegister`, and `useCurrentUser`
+- Maintain the React Query layer (`src/hooks/queries.ts`) and realtime cache updates (`src/hooks/useRealtime.tsx`)
+- Maintain session handling in `src/hooks/useAuth.tsx`
 - Connect hooks through the existing API client abstraction
 - Handle loading, error, and session state coherently
 
@@ -12,7 +12,7 @@
 - Must use the existing API client layer
 - No direct `fetch` calls from screens or components
 - Shared logic belongs in reusable hooks/modules, not screens
-- Must preserve existing navigation and working chat behavior
+- Must preserve existing navigation, the free (no paywall) product rules and working chat behavior
 
 ## Allowed Actions
 

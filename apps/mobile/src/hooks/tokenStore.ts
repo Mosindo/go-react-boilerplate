@@ -1,9 +1,13 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
+import type { AuthUser } from "../api/types";
+
 export type StoredTokens = {
   accessToken: string;
   refreshToken: string;
+  /** Last known account, used to start offline. Not sensitive (id, e-mail). */
+  user?: AuthUser;
 };
 
 const KEY = "seren.session.v1";
@@ -42,7 +46,7 @@ export async function loadTokens(): Promise<StoredTokens | null> {
     }
     const parsed = JSON.parse(raw) as Partial<StoredTokens>;
     if (typeof parsed.accessToken === "string" && typeof parsed.refreshToken === "string") {
-      return { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken };
+      return { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken, user: parsed.user };
     }
   } catch {
     // Corrupted entry: treat as signed out.

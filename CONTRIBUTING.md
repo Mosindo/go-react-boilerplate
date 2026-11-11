@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Seren.
 
 ## Ground Rules
 
@@ -35,7 +35,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -77,20 +77,22 @@ Run these checks before pushing changes:
 
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+gofmt -w . && go vet ./...
+DATABASE_URL_TEST=postgres://app:app@localhost:5432/app_test?sslmode=disable go test ./...
+go build ./cmd/api ./cmd/seed
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm run typecheck && npm run lint && npm run format:check && npm test
 ```
 
-If the change touches integrated flows, also run:
+If the change touches integrated flows, also run against a running API:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+cd apps/mobile
+npm run e2e:smoke
+npm run e2e:web   # see README for the web build/serve prerequisites
 ```
 
 ## Documentation Expectations

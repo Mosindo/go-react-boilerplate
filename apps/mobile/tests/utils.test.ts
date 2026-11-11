@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Card } from "../src/api/types.ts";
 import {
   ageFromIso,
   formatDistance,
@@ -8,6 +9,7 @@ import {
   maskDate,
   parseFrenchDate
 } from "../src/utils/format.ts";
+import { mergeFeed } from "../src/utils/feed.ts";
 import { looksLikeEmail, passwordProblem } from "../src/utils/validation.ts";
 
 test("parseFrenchDate accepts valid dates and rejects impossible ones", () => {
@@ -56,4 +58,29 @@ test("password and e-mail validation mirror the server rules", () => {
   assert.ok(looksLikeEmail(" camille@example.fr "));
   assert.ok(!looksLikeEmail("camille@example"));
   assert.ok(!looksLikeEmail("cam ille@example.fr"));
+});
+
+test("mergeFeed keeps on-screen order, drops ineligible and appends new profiles", () => {
+  const card = (userId: string): Card => ({
+    userId,
+    firstName: userId,
+    age: 30,
+    gender: "woman",
+    bio: "",
+    jobTitle: "",
+    city: "",
+    distanceKm: null,
+    interests: [],
+    photos: []
+  });
+  const previous = [card("a"), card("b"), card("c")];
+  const fresh = [card("d"), card("c"), card("a")];
+  assert.deepEqual(
+    mergeFeed([...previous], [...fresh]).map((c) => c.userId),
+    ["a", "c", "d"]
+  );
+  assert.deepEqual(
+    mergeFeed(undefined, [...fresh]).map((c) => c.userId),
+    ["d", "c", "a"]
+  );
 });

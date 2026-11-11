@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient]);
 
   const persist = useCallback(async (session: AuthSession) => {
-    const tokens = { accessToken: session.accessToken, refreshToken: session.refreshToken };
+    const tokens = { accessToken: session.accessToken, refreshToken: session.refreshToken, user: session.user };
     tokensRef.current = tokens;
     await saveTokens(tokens);
     setUser(session.user);
@@ -77,8 +77,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(me);
           setStatus("signedIn");
         }
-      } catch {
-        if (active) {
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        // Only an explicit rejection ends the session; being offline at
+        // launch keeps the user signed in with the last known account.
+        if (error instanceof ApiError && error.status === 401) {
+          await forgetSession();
+        } else if (stored.user) {
+          setUser(stored.user);
+          setStatus("signedIn");
+        } else {
           await forgetSession();
         }
       }

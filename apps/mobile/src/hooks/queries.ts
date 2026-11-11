@@ -7,6 +7,7 @@ import {
   type QueryClient
 } from "@tanstack/react-query";
 import { chatApi, discoveryApi, notificationsApi, profileApi, safetyApi } from "../api/endpoints";
+import { mergeFeed } from "../utils/feed";
 import type {
   Card,
   ConversationsPage,
@@ -53,9 +54,10 @@ export function useInterestCatalog() {
 }
 
 export function useDiscover(enabled: boolean) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: keys.discover,
-    queryFn: async () => (await discoveryApi.feed(10)).profiles,
+    queryFn: async () => mergeFeed(qc.getQueryData<Card[]>(keys.discover), (await discoveryApi.feed(10)).profiles),
     enabled,
     staleTime: 60_000
   });

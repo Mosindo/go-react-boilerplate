@@ -1,30 +1,24 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Seren
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is Seren, a free dating application (Expo mobile/web client + Go API) built on the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Seren is a 100% free dating app: no subscription, no paywall, no paid boost,
+no artificial like quota, no mandatory ads. Never introduce monetization gates.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Core modules:
+- auth (accounts, sessions, password reset, account deletion)
+- profiles (profile, preferences, interests, approximate location, visibility)
+- photos
+- matching (discovery, likes/passes, matches)
+- chat (match-gated conversations, realtime)
+- safety (blocks, reports)
 - notifications
-- files
+- realtime (WebSocket)
 
 ---
 
@@ -63,14 +57,16 @@ Target structure:
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `tokens/`, `httpx/`, `ratelimit/`, `storage/`, `media/`, `mailer/`, `realtime/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
+  - `realtime/`
 
 Each feature should contain:
 - `handler.go`
@@ -113,10 +109,16 @@ User input:
 
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
+- Expected environment variables (see `.env.example`):
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - `APP_ENV`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `UPLOAD_DIR`, `SMTP_*` (optional)
+
+Privacy:
+- Never expose e-mail, birthdate or coordinates of other members
+- Store and transmit only rounded (~1 km) coordinates; display approximate distances
+- Re-encode uploaded images (strip metadata); serve them only via signed URLs
 
 ---
 
@@ -130,12 +132,12 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `swipes (swiper_id, target_id)` (primary key)
+- `matches (user_low_id, user_high_id)` (unique)
+- `match_members (match_id, user_id)`
+- `messages (match_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` (unique)
 
 ---
 
@@ -143,20 +145,23 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (empty) and `go vet ./...`
+- `go test ./...` (set `DATABASE_URL_TEST` to run integration tests)
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/*_integration_test.go`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth (`/auth/*`, `/me`), password reset, account deletion
+- Profiles and photos (`/me/profile`, `/me/photos`, `/media/:key`)
+- Matching (`/discover`, `/swipes`), including concurrent mutual likes
+- Chat (`/conversations`, `/conversations/:matchId/messages`) and permissions
+- Safety (`/blocks`, `/reports`)
+- Notifications (`/notifications`) and realtime (`/realtime`)
+
+End-to-end: `npm run e2e:smoke` (API) and `npm run e2e:web` (Playwright UI flow).
 
 ---
 
@@ -171,15 +176,16 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile, preferences, photo)
+  - discovery loads
+  - like → match
   - chat send/read
   - notifications read flow
 

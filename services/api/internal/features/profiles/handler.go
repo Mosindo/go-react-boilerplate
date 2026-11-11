@@ -25,10 +25,6 @@ func (h *Handler) GetMine(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *Handler) respondMine(c *gin.Context) {
-	h.GetMine(c)
-}
-
 func (h *Handler) SaveProfile(c *gin.Context) {
 	var req ProfileRequest
 	if !httpx.BindJSON(c, &req) {
@@ -38,7 +34,7 @@ func (h *Handler) SaveProfile(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.respondMine(c)
+	h.GetMine(c)
 }
 
 func (h *Handler) SavePreferences(c *gin.Context) {
@@ -50,7 +46,7 @@ func (h *Handler) SavePreferences(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.respondMine(c)
+	h.GetMine(c)
 }
 
 func (h *Handler) SaveInterests(c *gin.Context) {
@@ -62,7 +58,7 @@ func (h *Handler) SaveInterests(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.respondMine(c)
+	h.GetMine(c)
 }
 
 func (h *Handler) SetLocation(c *gin.Context) {
@@ -74,7 +70,7 @@ func (h *Handler) SetLocation(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.respondMine(c)
+	h.GetMine(c)
 }
 
 func (h *Handler) ClearLocation(c *gin.Context) {
@@ -82,7 +78,7 @@ func (h *Handler) ClearLocation(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.respondMine(c)
+	h.GetMine(c)
 }
 
 func (h *Handler) SetVisibility(c *gin.Context) {
@@ -94,7 +90,7 @@ func (h *Handler) SetVisibility(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.respondMine(c)
+	h.GetMine(c)
 }
 
 func (h *Handler) Catalog(c *gin.Context) {
