@@ -57,3 +57,4 @@ apps/mobile/.e2e/
 # Local photo uploads
 services/api/data/
 data/uploads/
+apps/mobile/e2e/.results/
