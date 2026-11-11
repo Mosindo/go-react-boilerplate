@@ -2,8 +2,10 @@ package chat
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc) {
-	r.GET("/chats", requireUser, handler.Chats)
-	r.GET("/chats/:userId/messages", requireUser, handler.ChatMessages)
-	r.POST("/chats/:userId/messages", requireUser, handler.SendChatMessage)
+func RegisterRoutes(r gin.IRouter, h *Handler, requireUser, sendLimit gin.HandlerFunc) {
+	r.GET("/conversations", requireUser, h.Conversations)
+	r.GET("/conversations/:matchId/messages", requireUser, h.Messages)
+	r.POST("/conversations/:matchId/messages", requireUser, sendLimit, h.Send)
+	r.POST("/conversations/:matchId/read", requireUser, h.MarkRead)
+	r.DELETE("/conversations/:matchId", requireUser, h.Hide)
 }

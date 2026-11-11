@@ -15,7 +15,8 @@ func SecurityHeaders() gin.HandlerFunc {
 		headers.Set("Referrer-Policy", "no-referrer")
 		headers.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
 		headers.Set("Cross-Origin-Opener-Policy", "same-origin")
-		headers.Set("Cross-Origin-Resource-Policy", "same-site")
+		headers.Set("Cross-Origin-Resource-Policy", "cross-origin")
+		headers.Set("Cache-Control", "no-store")
 		if requestIsHTTPS(c) {
 			headers.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		}

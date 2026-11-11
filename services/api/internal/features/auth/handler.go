@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"example.com/api/internal/platform/logger"
+	"example.com/api/internal/platform/httpx"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,167 +18,119 @@ func NewHandler(service *Service) *Handler {
 
 func (h *Handler) Register(c *gin.Context) {
 	var req RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.register.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
-	tokens, user, err := h.service.Register(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
+	t, user, err := h.service.Register(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrEmailExists):
-			status = http.StatusConflict
-			c.JSON(status, gin.H{"error": "email already exists"})
-		default:
-			c.JSON(status, gin.H{"error": "could not create user"})
-		}
-		logger.LogHandlerError(c, "auth.register", status, err)
+		h.fail(c, err)
 		return
 	}
-
-	status := http.StatusCreated
-	c.Header("Cache-Control", "no-store")
-	c.JSON(status, AuthResponse{
-		Token:        tokens.AccessToken,
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		},
-	})
-	logger.LogHandlerEvent(c, "auth.register.success", status, map[string]string{"created_user_id": user.ID})
+	c.JSON(http.StatusCreated, AuthResponse{AccessToken: t.AccessToken, RefreshToken: t.RefreshToken, User: toMeResponse(user)})
 }
 
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.login.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
-	tokens, user, err := h.service.Login(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
+	t, user, err := h.service.Login(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrInvalidCredentials):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "invalid credentials"})
-		default:
-			c.JSON(status, gin.H{"error": "could not login"})
-		}
-		logger.LogHandlerError(c, "auth.login", status, err)
+		h.fail(c, err)
 		return
 	}
-
-	status := http.StatusOK
-	c.Header("Cache-Control", "no-store")
-	c.JSON(status, AuthResponse{
-		Token:        tokens.AccessToken,
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		},
-	})
-	logger.LogHandlerEvent(c, "auth.login.success", status, map[string]string{"authenticated_user_id": user.ID})
+	c.JSON(http.StatusOK, AuthResponse{AccessToken: t.AccessToken, RefreshToken: t.RefreshToken, User: toMeResponse(user)})
 }
 
 func (h *Handler) Refresh(c *gin.Context) {
 	var req RefreshRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.refresh.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
-	tokens, user, err := h.service.Refresh(c.Request.Context(), req.RefreshToken, c.Request.UserAgent(), c.ClientIP())
+	t, user, err := h.service.Refresh(c.Request.Context(), req.RefreshToken, c.Request.UserAgent(), c.ClientIP())
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrInvalidRefreshToken):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "invalid refresh token"})
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not refresh session"})
-		}
-		logger.LogHandlerError(c, "auth.refresh", status, err)
+		h.fail(c, err)
 		return
 	}
-
-	status := http.StatusOK
-	c.Header("Cache-Control", "no-store")
-	c.JSON(status, AuthResponse{
-		Token:        tokens.AccessToken,
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		User: MeResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		},
-	})
-	logger.LogHandlerEvent(c, "auth.refresh.success", status, map[string]string{"authenticated_user_id": user.ID})
+	c.JSON(http.StatusOK, AuthResponse{AccessToken: t.AccessToken, RefreshToken: t.RefreshToken, User: toMeResponse(user)})
 }
 
 func (h *Handler) Logout(c *gin.Context) {
-	var req LogoutRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "auth.logout.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+	var req RefreshRequest
+	if !httpx.BindJSON(c, &req) {
 		return
 	}
-
 	if err := h.service.Logout(c.Request.Context(), req.RefreshToken); err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrInvalidRefreshToken):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "invalid refresh token"})
-		default:
-			c.JSON(status, gin.H{"error": "could not logout"})
-		}
-		logger.LogHandlerError(c, "auth.logout", status, err)
+		h.fail(c, err)
 		return
 	}
-
-	c.Header("Cache-Control", "no-store")
 	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) Me(c *gin.Context) {
-	userID := c.GetString("userID")
-	user, err := h.service.Me(c.Request.Context(), userID)
+	user, err := h.service.Me(c.Request.Context(), httpx.UserID(c))
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusUnauthorized
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not fetch user"})
-		}
-		logger.LogHandlerError(c, "auth.me", status, err)
+		h.fail(c, err)
 		return
 	}
+	c.JSON(http.StatusOK, toMeResponse(user))
+}
 
-	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, MeResponse{
-		ID:             user.ID,
-		Email:          user.Email,
-		OrganizationID: user.OrganizationID,
-		CreatedAt:      user.CreatedAt,
-	})
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	if err := h.service.RequestPasswordReset(c.Request.Context(), req.Email); err != nil {
+		httpx.Internal(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"status": "sent"})
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	if err := h.service.ResetPassword(c.Request.Context(), req.Email, req.Code, req.NewPassword); err != nil {
+		h.fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	var req DeleteAccountRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+	if err := h.service.DeleteAccount(c.Request.Context(), httpx.UserID(c), req.Password); err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			httpx.Fail(c, http.StatusForbidden, "invalid_password", "Mot de passe incorrect.", nil)
+			return
+		}
+		h.fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) fail(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, ErrEmailExists):
+		httpx.Fail(c, http.StatusConflict, "email_taken", "Un compte existe déjà avec cet e-mail.", nil)
+	case errors.Is(err, ErrInvalidEmail):
+		httpx.BadRequest(c, "invalid_email", "Adresse e-mail invalide.")
+	case errors.Is(err, ErrWeakPassword):
+		httpx.BadRequest(c, "weak_password", "Le mot de passe doit contenir 8 à 72 caractères, dont au moins une lettre et un chiffre.")
+	case errors.Is(err, ErrInvalidCredentials):
+		httpx.Fail(c, http.StatusUnauthorized, "invalid_credentials", "E-mail ou mot de passe incorrect.", nil)
+	case errors.Is(err, ErrInvalidRefreshToken), errors.Is(err, ErrUserNotFound):
+		httpx.Fail(c, http.StatusUnauthorized, "invalid_session", "Session expirée, reconnecte-toi.", nil)
+	case errors.Is(err, ErrInvalidResetCode):
+		httpx.BadRequest(c, "invalid_code", "Code invalide ou expiré.")
+	default:
+		httpx.Internal(c, err)
+	}
 }

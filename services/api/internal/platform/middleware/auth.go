@@ -1,64 +1,46 @@
 package middleware
 
 import (
-	"errors"
+	"context"
 	"net/http"
 	"strings"
 
+	"example.com/api/internal/platform/httpx"
+	"example.com/api/internal/platform/tokens"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker confirms that the session behind an access token is still
+// active (not revoked, not expired, user not deleted). This makes logout,
+// password reset and account deletion effective immediately.
+type SessionChecker interface {
+	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+func RequireUser(tm *tokens.Manager, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tokenString := bearerToken(c.GetHeader("Authorization"))
-		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+		raw := bearerToken(c.GetHeader("Authorization"))
+		if raw == "" {
+			httpx.Fail(c, http.StatusUnauthorized, "missing_token", "Authentification requise.", nil)
+			return
+		}
+		claims, err := tm.Parse(raw, tokens.TypeAccess)
+		if err != nil {
+			httpx.Fail(c, http.StatusUnauthorized, "invalid_token", "Session invalide ou expirée.", nil)
+			return
+		}
+		active, err := sessions.IsSessionActive(c.Request.Context(), claims.SessionID, claims.UserID)
+		if err != nil {
+			httpx.Internal(c, err)
+			return
+		}
+		if !active {
+			httpx.Fail(c, http.StatusUnauthorized, "invalid_token", "Session invalide ou expirée.", nil)
 			return
 		}
 
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, errors.New("unexpected signing method")
-			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method type")
-			}
-			return secret, nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		userID, ok := stringClaim(claims, "uid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		sessionID, ok := stringClaim(claims, "sid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
-		c.Set("sessionID", sessionID)
+		c.Set(httpx.ContextUserID, claims.UserID)
+		c.Set(httpx.ContextSessionID, claims.SessionID)
 		c.Next()
 	}
 }
@@ -71,10 +53,17 @@ func bearerToken(header string) string {
 	return strings.TrimSpace(parts[1])
 }
 
-func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
-	value, ok := claims[key].(string)
-	if !ok || strings.TrimSpace(value) == "" {
-		return "", false
+// BodyLimit caps request bodies: multipart uploads get uploadMax bytes, every
+// other request jsonMax bytes.
+func BodyLimit(jsonMax, uploadMax int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body != nil {
+			limit := jsonMax
+			if strings.HasPrefix(c.ContentType(), "multipart/") {
+				limit = uploadMax
+			}
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		}
+		c.Next()
 	}
-	return value, true
 }
