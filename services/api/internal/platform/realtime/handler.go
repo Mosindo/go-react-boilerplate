@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net/url"
 	"time"
 
 	"example.com/api/internal/platform/middleware"
@@ -27,7 +28,7 @@ type authMessage struct {
 // deliberately not accepted in the URL so they never end up in access logs.
 func Handler(hub *Hub, verifier *middleware.TokenVerifier, allowedOrigins []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		opts := &websocket.AcceptOptions{OriginPatterns: allowedOrigins}
+		opts := &websocket.AcceptOptions{OriginPatterns: originHosts(allowedOrigins)}
 		if len(allowedOrigins) == 0 {
 			// Native mobile clients do not send an Origin; browsers in local
 			// development do. Without an explicit allow-list, accept any origin:
@@ -75,6 +76,11 @@ func Handler(hub *Hub, verifier *middleware.TokenVerifier, allowedOrigins []stri
 					return
 				}
 			case <-ticker.C:
+				// Logout, password reset or account deletion end the socket too.
+				if !verifier.StillActive(readCtx, identity) {
+					_ = conn.Close(websocket.StatusPolicyViolation, "session revoked")
+					return
+				}
 				pingCtx, cancel := context.WithTimeout(readCtx, writeTimeout)
 				err := conn.Ping(pingCtx)
 				cancel()
@@ -113,4 +119,18 @@ func writeJSON(ctx context.Context, conn *websocket.Conn, event Event) error {
 	writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
 	return conn.Write(writeCtx, websocket.MessageText, payload)
+}
+
+// originHosts converts configured origins ("https://app.example.com") into the
+// host patterns expected by the websocket library ("app.example.com").
+func originHosts(origins []string) []string {
+	hosts := make([]string, 0, len(origins))
+	for _, o := range origins {
+		if u, err := url.Parse(o); err == nil && u.Host != "" {
+			hosts = append(hosts, u.Host)
+		} else if o != "" {
+			hosts = append(hosts, o)
+		}
+	}
+	return hosts
 }

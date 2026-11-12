@@ -48,7 +48,7 @@ type RateLimits struct {
 func DefaultRateLimits() RateLimits {
 	return RateLimits{
 		Global:   ratelimit.NewMemory(600, time.Minute),
-		Auth:     ratelimit.NewMemory(20, time.Minute),
+		Auth:     ratelimit.NewMemory(30, time.Minute),
 		Swipes:   ratelimit.NewMemory(120, time.Minute),
 		Messages: ratelimit.NewMemory(60, time.Minute),
 		Uploads:  ratelimit.NewMemory(30, time.Hour),

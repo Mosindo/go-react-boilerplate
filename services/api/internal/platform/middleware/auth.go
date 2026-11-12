@@ -84,6 +84,16 @@ func (v *TokenVerifier) Verify(ctx context.Context, tokenString string) (Identit
 	return identity, nil
 }
 
+// StillActive re-checks the session behind an identity (used by long-lived
+// connections such as WebSockets, whose access token may have expired since).
+func (v *TokenVerifier) StillActive(ctx context.Context, identity Identity) bool {
+	if v.checkSession == nil {
+		return true
+	}
+	active, err := v.checkSession(ctx, identity.SessionID, identity.UserID)
+	return err == nil && active
+}
+
 // RequireUser authenticates the request with a Bearer access token.
 func RequireUser(verifier *TokenVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {

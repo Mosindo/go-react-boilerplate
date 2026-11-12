@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 export type AuthTokens = {
@@ -5,60 +6,63 @@ export type AuthTokens = {
   refreshToken: string;
 };
 
-const TOKENS_KEY = "boilerplate.auth.tokens";
+const TOKENS_KEY = "lueur.auth.tokens";
 let memoryTokens: AuthTokens | null = null;
+let loaded = false;
+
+// Native: Keychain / Keystore via SecureStore. Web (dev/E2E only): memory + sessionStorage.
+const webStorage = Platform.OS === "web" && typeof sessionStorage !== "undefined" ? sessionStorage : null;
+
+async function readPersisted(): Promise<string | null> {
+  if (webStorage) {
+    return webStorage.getItem(TOKENS_KEY);
+  }
+  return SecureStore.getItemAsync(TOKENS_KEY);
+}
 
 export async function saveTokens(tokens: AuthTokens): Promise<void> {
   memoryTokens = tokens;
+  loaded = true;
   try {
-    await SecureStore.setItemAsync(TOKENS_KEY, JSON.stringify(tokens));
+    if (webStorage) {
+      webStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+    } else {
+      await SecureStore.setItemAsync(TOKENS_KEY, JSON.stringify(tokens));
+    }
   } catch {
-    // Fallback keeps the session in memory when secure storage is unavailable.
+    // Secure storage unavailable: the session survives in memory only.
   }
 }
 
 export async function getTokens(): Promise<AuthTokens | null> {
+  if (loaded) {
+    return memoryTokens;
+  }
   try {
-    const serializedTokens = await SecureStore.getItemAsync(TOKENS_KEY);
-    if (serializedTokens) {
-      const parsedTokens = JSON.parse(serializedTokens) as Partial<AuthTokens>;
-      if (parsedTokens.accessToken && typeof parsedTokens.refreshToken === "string") {
-        memoryTokens = {
-          accessToken: parsedTokens.accessToken,
-          refreshToken: parsedTokens.refreshToken
-        };
-        return memoryTokens;
+    const raw = await readPersisted();
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AuthTokens>;
+      if (typeof parsed.accessToken === "string" && typeof parsed.refreshToken === "string") {
+        memoryTokens = { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken };
       }
     }
   } catch {
-    // Ignore and fallback to memory.
+    memoryTokens = null;
   }
+  loaded = true;
   return memoryTokens;
-}
-
-export async function getAccessToken(): Promise<string | null> {
-  const tokens = await getTokens();
-  return tokens?.accessToken ?? null;
 }
 
 export async function clearTokens(): Promise<void> {
   memoryTokens = null;
+  loaded = true;
   try {
-    await SecureStore.deleteItemAsync(TOKENS_KEY);
+    if (webStorage) {
+      webStorage.removeItem(TOKENS_KEY);
+    } else {
+      await SecureStore.deleteItemAsync(TOKENS_KEY);
+    }
   } catch {
-    // Ignore cleanup errors on unsupported platforms.
+    // Nothing else to clean.
   }
-}
-
-// Backward-compatible helpers for older call sites that still expect token-only storage.
-export async function saveToken(token: string): Promise<void> {
-  await saveTokens({ accessToken: token, refreshToken: "" });
-}
-
-export async function getToken(): Promise<string | null> {
-  return getAccessToken();
-}
-
-export async function clearToken(): Promise<void> {
-  await clearTokens();
 }

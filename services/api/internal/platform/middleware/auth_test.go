@@ -63,3 +63,19 @@ func TestVerifierChecksSession(t *testing.T) {
 		t.Fatalf("revoked session must be rejected, got %v", err)
 	}
 }
+
+func TestStillActive(t *testing.T) {
+	active := true
+	v := NewTokenVerifier(secret, func(context.Context, string, string) (bool, error) { return active, nil })
+	id := Identity{UserID: "u1", SessionID: "s1"}
+	if !v.StillActive(context.Background(), id) {
+		t.Fatal("expected active session")
+	}
+	active = false
+	if v.StillActive(context.Background(), id) {
+		t.Fatal("expected revoked session")
+	}
+	if !NewTokenVerifier(secret, nil).StillActive(context.Background(), id) {
+		t.Fatal("no checker means no revocation source")
+	}
+}

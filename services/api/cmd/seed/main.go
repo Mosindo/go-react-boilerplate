@@ -211,7 +211,7 @@ func portrait(hue float64, variant int) []byte {
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			t := float64(y) / h
-			c := hsl(math.Mod(hue+t*40, 360), 0.45, 0.55-0.25*t)
+			c := hsl(math.Mod(hue+t*40, 360), 0.32, 0.58-0.22*t)
 			dx, dy := float64(x-w/2), float64(y-int(float64(h)*0.38))
 			head := dx*dx+dy*dy < 85*85
 			bx, by := float64(x-w/2), float64(y-h)
