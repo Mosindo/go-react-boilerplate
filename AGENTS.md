@@ -1,30 +1,17 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur (built on go-react-saas)
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository hosts **Lueur**, a 100% free dating app, built on the `go-react-saas` fullstack boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Lueur is a dating app that is entirely free for its members: no subscription, paywall,
+paid boost, artificial like quota or mandatory ads. Never introduce one.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
-- notifications
-- files
+Dating modules: auth, profiles, photos, matching, chat, safety, notifications.
+Generic boilerplate modules kept domain-agnostic: users, posts, comments, files.
 
 ---
 
@@ -143,20 +130,25 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
+- `gofmt -l .` (no output)
+- `go vet ./...`
+- `go test -p 1 ./...` (with `DATABASE_URL_TEST` so integration tests run)
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/password/*`, `/me`)
+- Profiles & photos (`/profile`, `/profile/photos`)
+- Matching (`/discover`, `/swipes`, `/matches`)
+- Chat (`/chats`, `/chats/:userId/messages`, `/ws`)
+- Safety (`/blocks`, `/reports`)
 - Notifications (`/notifications`)
+- Users (`/users`), Posts (`/posts`)
+
+Run everything with `./scripts/qa.sh`.
 
 ---
 
@@ -168,20 +160,20 @@ Mandatory rules to avoid recurring environment issues:
 - Use `EXPO_PUBLIC_API_URL=http://<LAN_IP>:<PORT_HOST_API>`.
 - Verify no local service is hijacking the API port before calling the app "ready":
   - `docker compose ps`
-  - `netstat -ano | findstr :<PORT_HOST_API>`
+  - `netstat -ano | findstr :<PORT_HOST_API>` (Windows) or `lsof -i :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+  - onboarding (profile, preferences, photo)
+  - discover, like, match
+  - chat send/read (realtime)
   - notifications read flow
+  (`npm run e2e:web` automates this journey)
 
 ---
 

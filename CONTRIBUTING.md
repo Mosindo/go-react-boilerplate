@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Lueur (built on `go-react-saas`).
 
 ## Ground Rules
 
@@ -35,7 +35,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/qa-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -84,13 +84,14 @@ go build ./cmd/api
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm run typecheck && npm run lint && npm run format:check && npm test
 ```
 
-If the change touches integrated flows, also run:
+Or run the whole gate (same as CI) from the repository root:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+DATABASE_URL_TEST=postgres://postgres:postgres@localhost:5432/app_test?sslmode=disable ./scripts/qa.sh
+API_URL=http://localhost:18080 ./scripts/qa.sh   # also smoke-tests a running API
 ```
 
 ## Documentation Expectations
