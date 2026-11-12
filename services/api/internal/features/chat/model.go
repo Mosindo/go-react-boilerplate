@@ -1,59 +1,79 @@
 package chat
 
-import "time"
+import (
+	"errors"
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
-}
+	"example.com/api/internal/features/profiles"
+)
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
-}
+const maxMessageRunes = 2000
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
-}
-
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
-}
+var (
+	ErrNotMatched           = errors.New("you can only chat with your matches")
+	ErrMessageContentNeeded = errors.New("message content required")
+	ErrMessageTooLong       = errors.New("message is too long (2000 characters max)")
+	ErrInvalidCursor        = errors.New("invalid cursor")
+)
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Content string `json:"content" binding:"required,max=8000"`
 }
 
-type ChatMessageResponse struct {
+type Message struct {
 	ID              string    `json:"id"`
+	ConversationID  string    `json:"conversationId"`
 	SenderUserID    string    `json:"senderUserId"`
 	RecipientUserID string    `json:"recipientUserId"`
 	Content         string    `json:"content"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+type MessagePreview struct {
+	ID           string    `json:"id"`
+	SenderUserID string    `json:"senderUserId"`
+	Content      string    `json:"content"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type ChatSummary struct {
+	MatchID        string                 `json:"matchId"`
+	ConversationID string                 `json:"conversationId"`
+	User           profiles.PublicProfile `json:"user"`
+	LastMessage    *MessagePreview        `json:"lastMessage,omitempty"`
+	UnreadCount    int                    `json:"unreadCount"`
+	MatchedAt      time.Time              `json:"matchedAt"`
+}
+
+type ChatsResponse struct {
+	Chats []ChatSummary `json:"chats"`
+}
+
+type MessagesResponse struct {
+	Messages []Message `json:"messages"`
+	// OtherLastReadAt lets the client render "seen" on its own messages.
+	OtherLastReadAt *time.Time `json:"otherLastReadAt,omitempty"`
+	HasMore         bool       `json:"hasMore"`
+}
+
+type ReadResponse struct {
+	ReadAt time.Time `json:"readAt"`
+}
+
+type UnreadResponse struct {
+	UnreadConversations int `json:"unreadConversations"`
+}
+
+type conversationRef struct {
+	ConversationID string
+	MatchID        string
+}
+
+type storedSummary struct {
+	MatchID        string
+	ConversationID string
+	OtherUserID    string
+	LastMessage    *MessagePreview
+	UnreadCount    int
+	MatchedAt      time.Time
 }

@@ -3,9 +3,8 @@ package users
 import (
 	"errors"
 	"net/http"
-	"strconv"
-	"strings"
 
+	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -19,118 +18,30 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "users.list.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing organization"})
-		return
-	}
-
-	limit := parseBoundedLimit(c.Query("limit"), 20, 100)
-	offset := parseNonNegativeInt(c.Query("offset"), 0)
-	users, err := h.service.ListWithPagination(c.Request.Context(), organizationID, limit, offset)
+	list, err := h.service.List(c.Request.Context(), httpx.OrganizationID(c), httpx.UserID(c), httpx.Limit(c.Query("limit"), 20, 100), httpx.Offset(c.Query("offset"), 10000))
 	if err != nil {
 		logger.LogHandlerError(c, "users.list", http.StatusInternalServerError, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch users"})
+		httpx.Fail(c, http.StatusInternalServerError, "could not fetch users")
 		return
 	}
-
-	payload := make([]UserResponse, 0, len(users))
-	for _, user := range users {
-		payload = append(payload, UserResponse{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		})
-	}
-
-	c.JSON(http.StatusOK, UsersResponse{Users: payload})
+	c.JSON(http.StatusOK, UsersResponse{Users: list})
 }
 
 func (h *Handler) GetByID(c *gin.Context) {
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "users.get.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing organization"})
+	id := c.Param("userId")
+	if !httpx.IsUUID(id) {
+		httpx.Fail(c, http.StatusBadRequest, "invalid user id")
 		return
 	}
-
-	userID := strings.TrimSpace(c.Param("userId"))
-	if !isUUIDLike(userID) {
-		logger.LogHandlerError(c, "users.get.validate_user_id", http.StatusBadRequest, errors.New("invalid user id"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
-
-	user, err := h.service.GetByID(c.Request.Context(), organizationID, userID)
+	u, err := h.service.Get(c.Request.Context(), httpx.OrganizationID(c), httpx.UserID(c), id)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusNotFound
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not fetch user"})
+		if errors.Is(err, ErrUserNotFound) {
+			httpx.Fail(c, http.StatusNotFound, "user not found")
+			return
 		}
-		logger.LogHandlerError(c, "users.get", status, err)
+		logger.LogHandlerError(c, "users.get", http.StatusInternalServerError, err)
+		httpx.Fail(c, http.StatusInternalServerError, "could not fetch user")
 		return
 	}
-
-	c.JSON(http.StatusOK, UserResponse{
-		ID:             user.ID,
-		Email:          user.Email,
-		OrganizationID: user.OrganizationID,
-		CreatedAt:      user.CreatedAt,
-	})
-}
-
-func parsePositiveInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
-	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed <= 0 {
-		return fallback
-	}
-	return parsed
-}
-
-func isUUIDLike(v string) bool {
-	if len(v) != 36 {
-		return false
-	}
-	hyphenPos := map[int]struct{}{8: {}, 13: {}, 18: {}, 23: {}}
-	for i := 0; i < len(v); i++ {
-		ch := v[i]
-		if _, ok := hyphenPos[i]; ok {
-			if ch != '-' {
-				return false
-			}
-			continue
-		}
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
-			return false
-		}
-	}
-	return true
-}
-
-func parseBoundedLimit(raw string, fallback, max int) int {
-	parsed := parsePositiveInt(raw, fallback)
-	if parsed > max {
-		return max
-	}
-	return parsed
-}
-
-func parseNonNegativeInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
-	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed < 0 {
-		return fallback
-	}
-	return parsed
+	c.JSON(http.StatusOK, u)
 }

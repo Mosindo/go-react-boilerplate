@@ -3,73 +3,69 @@ package users
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type StoredUser struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
-}
-
 type Repository interface {
-	ListUsers(ctx context.Context, organizationID string, limit, offset int) ([]StoredUser, error)
-	GetUserByID(ctx context.Context, organizationID, userID string) (StoredUser, error)
+	List(ctx context.Context, organizationID, viewerID string, limit, offset int) ([]User, error)
+	Get(ctx context.Context, organizationID, viewerID, userID string) (User, error)
 }
 
 type PGRepository struct {
-	dbPool *pgxpool.Pool
+	db *pgxpool.Pool
 }
 
-func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
-	return &PGRepository{dbPool: dbPool}
+func NewPGRepository(db *pgxpool.Pool) *PGRepository {
+	return &PGRepository{db: db}
 }
 
-func (r *PGRepository) ListUsers(ctx context.Context, organizationID string, limit, offset int) ([]StoredUser, error) {
-	rows, err := r.dbPool.Query(ctx, `
-		SELECT u.id, u.email, u.organization_id, u.created_at
+// visibleSQL restricts the directory to members with a discoverable profile
+// (or the viewer) and hides anyone involved in a block with the viewer.
+const visibleSQL = `
+	u.organization_id = $1
+	AND (u.id = $2 OR p.discoverable)
+	AND NOT EXISTS (
+		SELECT 1 FROM blocks b
+		WHERE (b.blocker_user_id = $2 AND b.blocked_user_id = u.id)
+		   OR (b.blocker_user_id = u.id AND b.blocked_user_id = $2)
+	)`
+
+func scanUser(row pgx.CollectableRow) (User, error) {
+	var u User
+	err := row.Scan(&u.ID, &u.FirstName, &u.CreatedAt)
+	return u, err
+}
+
+func (r *PGRepository) List(ctx context.Context, organizationID, viewerID string, limit, offset int) ([]User, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id, p.first_name, u.created_at
 		FROM users u
-		WHERE u.organization_id = $1
+		JOIN profiles p ON p.user_id = u.id
+		WHERE `+visibleSQL+`
 		ORDER BY u.created_at DESC, u.id DESC
-		LIMIT $2 OFFSET $3
-	`, organizationID, limit, offset)
+		LIMIT $3 OFFSET $4
+	`, organizationID, viewerID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	users := make([]StoredUser, 0)
-	for rows.Next() {
-		var user StoredUser
-		if err := rows.Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt); err != nil {
-			return nil, err
-		}
-		users = append(users, user)
-	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return users, nil
+	return pgx.CollectRows(rows, scanUser)
 }
 
-func (r *PGRepository) GetUserByID(ctx context.Context, organizationID, userID string) (StoredUser, error) {
-	var user StoredUser
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, created_at
-		FROM users
-		WHERE organization_id = $1
-		  AND id = $2
-	`, organizationID, userID).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+func (r *PGRepository) Get(ctx context.Context, organizationID, viewerID, userID string) (User, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id, p.first_name, u.created_at
+		FROM users u
+		JOIN profiles p ON p.user_id = u.id
+		WHERE `+visibleSQL+` AND u.id = $3
+	`, organizationID, viewerID, userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return StoredUser{}, ErrUserNotFound
-		}
-		return StoredUser{}, err
+		return User{}, err
 	}
-	return user, nil
+	u, err := pgx.CollectExactlyOneRow(rows, scanUser)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrUserNotFound
+	}
+	return u, err
 }
