@@ -35,6 +35,7 @@ const (
 	refreshTokenTTL      = 30 * 24 * time.Hour
 	passwordResetTTL     = 15 * time.Minute
 	maxResetCodeAttempts = 5
+	maxResetCodesPerHour = 3
 )
 
 // dummyPasswordHash is compared against when an e-mail is unknown so login
@@ -136,6 +137,9 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	session, err := s.repo.GetActiveSessionByTokenHash(ctx, tokenHash)
 	if err != nil {
 		if errors.Is(err, ErrRepositorySessionGone) {
+			if userID, revokeErr := s.repo.RevokeSessionByPreviousTokenHash(ctx, tokenHash); revokeErr == nil && s.disconnector != nil {
+				s.disconnector.Disconnect(userID)
+			}
 			return Tokens{}, User{}, ErrInvalidRefreshToken
 		}
 		return Tokens{}, User{}, err
@@ -157,6 +161,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	rotatedSession, err := s.repo.RotateSessionToken(
 		ctx,
 		session.ID,
+		tokenHash,
 		hashRefreshToken(refreshSecret),
 		userAgent,
 		ipAddress,
@@ -165,6 +170,12 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	)
 	if err != nil {
 		if errors.Is(err, ErrRepositorySessionGone) {
+			// The token was already redeemed (replay or race): treat it as
+			// stolen and end the whole session.
+			_ = s.repo.RevokeSession(ctx, session.ID)
+			if s.disconnector != nil {
+				s.disconnector.Disconnect(session.UserID)
+			}
 			return Tokens{}, User{}, ErrInvalidRefreshToken
 		}
 		return Tokens{}, User{}, err
@@ -188,9 +199,17 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return ErrInvalidRefreshToken
 	}
 
-	err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash, time.Now())
-	if err != nil && !errors.Is(err, ErrRepositorySessionGone) {
+	userID, err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash, time.Now())
+	if err != nil {
+		if errors.Is(err, ErrRepositorySessionGone) {
+			return nil
+		}
 		return err
+	}
+	// Close realtime sockets so a logged-out device stops receiving events;
+	// other devices reconnect automatically with their own valid session.
+	if s.disconnector != nil {
+		s.disconnector.Disconnect(userID)
 	}
 	return nil
 }
@@ -253,6 +272,15 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		return err
 	}
 
+	// Per-account cap: at most 3 codes per hour, whatever the source IPs.
+	recent, err := s.repo.CountRecentPasswordResets(ctx, stored.User.ID, time.Now().Add(-time.Hour))
+	if err != nil {
+		return err
+	}
+	if recent >= maxResetCodesPerHour {
+		return nil
+	}
+
 	code, err := generateResetCode()
 	if err != nil {
 		return err
@@ -281,14 +309,15 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		}
 		return err
 	}
-	if reset.Attempts >= maxResetCodeAttempts {
+	allowed, err := s.repo.ConsumePasswordResetAttempt(ctx, reset.ID, maxResetCodeAttempts)
+	if err != nil {
+		return err
+	}
+	if !allowed {
 		return ErrInvalidResetCode
 	}
 	expected := s.hashResetCode(stored.User.ID, strings.TrimSpace(code))
 	if subtle.ConstantTimeCompare([]byte(expected), []byte(reset.CodeHash)) != 1 {
-		if err := s.repo.IncrementPasswordResetAttempts(ctx, reset.ID); err != nil {
-			return err
-		}
 		return ErrInvalidResetCode
 	}
 

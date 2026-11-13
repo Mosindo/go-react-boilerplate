@@ -84,7 +84,7 @@ func ValidateReport(reason, details string) (string, string, error) {
 }
 
 // Report always blocks the reported member for the reporter (safest default)
-// and hides an allegedly underage profile from discovery right away.
+// and hides the profile pending review once enough distinct members report it.
 func (s *Service) Report(ctx context.Context, reporterID, reportedID, reason, details string) error {
 	r, d, err := ValidateReport(reason, details)
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *Service) Report(ctx context.Context, reporterID, reportedID, reason, de
 	if err := s.ensureTarget(ctx, reporterID, reportedID); err != nil {
 		return err
 	}
-	if err := s.repo.Report(ctx, reporterID, reportedID, r, d, r == "underage", AutoHideReportThreshold); err != nil {
+	if err := s.repo.Report(ctx, reporterID, reportedID, r, d, AutoHideReportThreshold, UnderageHideThreshold); err != nil {
 		return err
 	}
 	s.notifyRemoval(reporterID, reportedID)

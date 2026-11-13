@@ -15,7 +15,7 @@ type Repository interface {
 	Block(ctx context.Context, blockerID, blockedID string) (hadMatch bool, err error)
 	Unblock(ctx context.Context, blockerID, blockedID string) error
 	ListBlocked(ctx context.Context, blockerID string, limit, offset int) ([]BlockedUser, error)
-	Report(ctx context.Context, reporterID, reportedID, reason, details string, hideImmediately bool, threshold int) error
+	Report(ctx context.Context, reporterID, reportedID, reason, details string, threshold, underageThreshold int) error
 }
 
 type PGRepository struct {
@@ -98,7 +98,7 @@ func (r *PGRepository) ListBlocked(ctx context.Context, blockerID string, limit,
 
 // Report files the report, blocks the reported member for the reporter and
 // applies the automatic moderation rules, atomically.
-func (r *PGRepository) Report(ctx context.Context, reporterID, reportedID, reason, details string, hideImmediately bool, threshold int) error {
+func (r *PGRepository) Report(ctx context.Context, reporterID, reportedID, reason, details string, threshold, underageThreshold int) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -119,11 +119,14 @@ func (r *PGRepository) Report(ctx context.Context, reporterID, reportedID, reaso
 		UPDATE profiles SET moderation_hidden = TRUE, updated_at = NOW()
 		WHERE user_id = $1
 		  AND NOT moderation_hidden
-		  AND ($2 OR (
-			SELECT COUNT(DISTINCT reporter_user_id) FROM reports
-			WHERE reported_user_id = $1 AND status = 'open'
-		  ) >= $3)
-	`, reportedID, hideImmediately, threshold); err != nil {
+		  AND (
+			(SELECT COUNT(DISTINCT reporter_user_id) FROM reports
+			 WHERE reported_user_id = $1 AND status = 'open') >= $2
+			OR
+			(SELECT COUNT(DISTINCT reporter_user_id) FROM reports
+			 WHERE reported_user_id = $1 AND status = 'open' AND reason = 'underage') >= $3
+		  )
+	`, reportedID, threshold, underageThreshold); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

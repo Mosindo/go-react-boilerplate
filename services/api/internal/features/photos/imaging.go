@@ -24,10 +24,14 @@ var (
 const (
 	MaxUploadBytes    = 10 << 20
 	minDimension      = 320
-	maxSourcePixels   = 40_000_000 // reject decompression bombs before decoding
+	maxSourcePixels   = 16_000_000 // reject decompression bombs before decoding
 	maxOutputEdge     = 1600
 	outputJPEGQuality = 82
 )
+
+// decodeSlots bounds how many images are decoded at once so a burst of
+// uploads cannot exhaust memory (each decode can take ~100 MB).
+var decodeSlots = make(chan struct{}, 2)
 
 // ProcessedImage is a sanitized JPEG ready to be stored.
 type ProcessedImage struct {
@@ -84,6 +88,9 @@ func ProcessUpload(r io.Reader) (ProcessedImage, error) {
 	if cfg.Width*cfg.Height > maxSourcePixels {
 		return ProcessedImage{}, ErrImageTooLarge
 	}
+
+	decodeSlots <- struct{}{}
+	defer func() { <-decodeSlots }()
 
 	src, err := decode(bytes.NewReader(data))
 	if err != nil {

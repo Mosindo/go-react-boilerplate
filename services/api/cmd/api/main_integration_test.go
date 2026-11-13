@@ -351,9 +351,46 @@ func TestAuthLifecycle(t *testing.T) {
 	env.expect(res, http.StatusOK, "refresh")
 	var refreshed authResponse
 	res.decode(t, &refreshed)
-	env.expect(env.do(http.MethodPost, "/auth/refresh", map[string]string{"refreshToken": auth.RefreshToken}, ""), http.StatusUnauthorized, "old refresh token")
+	env.expect(env.do(http.MethodGet, "/me", nil, refreshed.AccessToken), http.StatusOK, "me after refresh")
 	env.expect(env.do(http.MethodPost, "/auth/logout", map[string]string{"refreshToken": refreshed.RefreshToken}, ""), http.StatusNoContent, "logout")
 	env.expect(env.do(http.MethodGet, "/me", nil, refreshed.AccessToken), http.StatusUnauthorized, "access token after logout")
+
+	// Replaying a rotated refresh token is treated as theft: the whole
+	// session is revoked, including the tokens issued by the rotation.
+	res = env.do(http.MethodPost, "/auth/login", map[string]string{"email": normalized, "password": testPassword}, "")
+	env.expect(res, http.StatusOK, "login before replay")
+	var victim authResponse
+	res.decode(t, &victim)
+	res = env.do(http.MethodPost, "/auth/refresh", map[string]string{"refreshToken": victim.RefreshToken}, "")
+	env.expect(res, http.StatusOK, "first refresh")
+	var rotated authResponse
+	res.decode(t, &rotated)
+	env.expect(env.do(http.MethodPost, "/auth/refresh", map[string]string{"refreshToken": victim.RefreshToken}, ""), http.StatusUnauthorized, "replayed refresh token")
+	env.expect(env.do(http.MethodGet, "/me", nil, rotated.AccessToken), http.StatusUnauthorized, "session revoked after replay")
+	env.expect(env.do(http.MethodPost, "/auth/refresh", map[string]string{"refreshToken": rotated.RefreshToken}, ""), http.StatusUnauthorized, "rotated token revoked after replay")
+
+	// Concurrent redemption of one refresh token yields at most one session.
+	res = env.do(http.MethodPost, "/auth/login", map[string]string{"email": normalized, "password": testPassword}, "")
+	var racer authResponse
+	res.decode(t, &racer)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	successes := 0
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if env.do(http.MethodPost, "/auth/refresh", map[string]string{"refreshToken": racer.RefreshToken}, "").Status == http.StatusOK {
+				mu.Lock()
+				successes++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if successes > 1 {
+		t.Fatalf("a refresh token must be redeemable once, got %d successes", successes)
+	}
 
 	// Password recovery.
 	res = env.do(http.MethodPost, "/auth/login", map[string]string{"email": normalized, "password": testPassword}, "")
@@ -372,6 +409,29 @@ func TestAuthLifecycle(t *testing.T) {
 		wrong = "111111"
 	}
 	env.expect(env.do(http.MethodPost, "/auth/password/reset", map[string]string{"email": normalized, "code": wrong, "newPassword": "NewPassword456"}, ""), http.StatusBadRequest, "wrong code")
+
+	// The attempt budget holds under concurrency: after a burst of wrong
+	// guesses the stored counter never exceeds 5.
+	var guesses sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		guesses.Add(1)
+		go func() {
+			defer guesses.Done()
+			env.do(http.MethodPost, "/auth/password/reset", map[string]string{"email": normalized, "code": wrong, "newPassword": "NewPassword456"}, "")
+		}()
+	}
+	guesses.Wait()
+	var attempts int
+	if err := env.pool.QueryRow(context.Background(), `
+		SELECT attempts FROM password_resets WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1
+	`, auth.User.ID).Scan(&attempts); err != nil || attempts > 5 {
+		t.Fatalf("reset attempts must be capped at 5, got %d (%v)", attempts, err)
+	}
+	env.expect(env.do(http.MethodPost, "/auth/password/reset", map[string]string{"email": normalized, "code": code, "newPassword": "NewPassword456"}, ""), http.StatusBadRequest, "correct code after budget exhausted")
+
+	// A fresh code restores the budget (per-account cap: 3 codes per hour).
+	env.expect(env.do(http.MethodPost, "/auth/password/forgot", map[string]string{"email": normalized}, ""), http.StatusAccepted, "forgot again")
+	code = env.mailer.codeFor(normalized)
 	env.expect(env.do(http.MethodPost, "/auth/password/reset", map[string]string{"email": normalized, "code": code, "newPassword": "NewPassword456"}, ""), http.StatusNoContent, "reset")
 	env.expect(env.do(http.MethodPost, "/auth/password/reset", map[string]string{"email": normalized, "code": code, "newPassword": "Another789xx"}, ""), http.StatusBadRequest, "code reuse")
 	env.expect(env.do(http.MethodGet, "/me", nil, session.AccessToken), http.StatusUnauthorized, "sessions revoked after reset")
@@ -465,8 +525,20 @@ func TestProfileOnboardingAndPhotos(t *testing.T) {
 		t.Fatalf("expected last photo to become the main one")
 	}
 	env.expect(env.do(http.MethodPut, "/me/photos/order", map[string]any{"photoIds": order[:2]}, m.Token), http.StatusBadRequest, "partial order")
+	huge := map[string]any{"photoIds": order, "padding": strings.Repeat("x", 200<<10)}
+	if res := env.do(http.MethodPut, "/me/photos/order", huge, m.Token); res.Status == http.StatusOK {
+		t.Fatal("JSON photo routes must keep the global body size limit")
+	}
 
-	env.expect(env.upload(http.MethodPut, "/me/photos/"+photos[1].ID, m.Token, pngBytes(t, 500, 400, 200)), http.StatusOK, "replace")
+	res = env.upload(http.MethodPut, "/me/photos/"+photos[1].ID, m.Token, pngBytes(t, 500, 400, 200))
+	env.expect(res, http.StatusOK, "replace")
+	var replaced photoResponse
+	res.decode(t, &replaced)
+	if replaced.ID == photos[1].ID || replaced.Position != 2 {
+		t.Fatalf("replace must issue a new id at the same position: %+v", replaced)
+	}
+	env.expect(env.do(http.MethodGet, photos[1].URL, nil, ""), http.StatusNotFound, "old signed link to a replaced photo")
+	env.expect(env.do(http.MethodGet, replaced.URL, nil, ""), http.StatusOK, "new photo served")
 	env.expect(env.do(http.MethodDelete, "/me/photos/"+photos[5].ID, nil, m.Token), http.StatusNoContent, "delete photo")
 
 	res = env.do(http.MethodGet, "/me/photos", nil, m.Token)
@@ -706,15 +778,35 @@ func TestBlockAndReport(t *testing.T) {
 	if containsProfile(env.discover(eve), gus.ID) {
 		t.Fatal("reported profile must disappear for the reporter")
 	}
-	var hidden bool
-	if err := env.pool.QueryRow(context.Background(), `SELECT moderation_hidden FROM profiles WHERE user_id = $1`, gus.ID).Scan(&hidden); err != nil || !hidden {
-		t.Fatalf("underage report must hide the profile pending review (hidden=%v err=%v)", hidden, err)
+	hiddenState := func() bool {
+		var hidden bool
+		if err := env.pool.QueryRow(context.Background(), `SELECT moderation_hidden FROM profiles WHERE user_id = $1`, gus.ID).Scan(&hidden); err != nil {
+			t.Fatal(err)
+		}
+		return hidden
+	}
+	if hiddenState() {
+		t.Fatal("a single report must not be enough to hide someone")
 	}
 	var reports int
 	_ = env.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM reports WHERE reported_user_id = $1`, gus.ID).Scan(&reports)
 	if reports != 1 {
 		t.Fatalf("expected one open report, got %d", reports)
 	}
+
+	// A second, distinct underage report hides the profile pending review;
+	// a hidden member can no longer browse, match or chat.
+	ivy := env.register("ivy")
+	env.expect(env.do(http.MethodPost, "/reports", map[string]string{"userId": gus.ID, "reason": "underage"}, ivy.Token), http.StatusCreated, "second report")
+	if !hiddenState() {
+		t.Fatal("two distinct underage reports must hide the profile")
+	}
+	res = env.do(http.MethodGet, "/discovery", nil, gus.Token)
+	env.expect(res, http.StatusForbidden, "hidden member discovery")
+	if !strings.Contains(string(res.Body), "profile_in_review") {
+		t.Fatalf("expected profile_in_review code: %s", res.Body)
+	}
+	env.swipe(gus, fred.ID, "like", http.StatusForbidden)
 }
 
 func TestIncompleteProfileCannotDiscoverOrSwipe(t *testing.T) {
@@ -840,6 +932,11 @@ func TestPausedProfileIsHiddenAndNotificationsReadAll(t *testing.T) {
 		t.Fatal("leo should discover kim")
 	}
 	env.expect(env.do(http.MethodPatch, "/me/profile", map[string]any{"isPaused": true}, kim.Token), http.StatusOK, "pause")
+	res := env.do(http.MethodGet, "/discovery", nil, kim.Token)
+	env.expect(res, http.StatusConflict, "paused member discovery")
+	if !strings.Contains(string(res.Body), "profile_paused") {
+		t.Fatalf("expected profile_paused code: %s", res.Body)
+	}
 	if containsProfile(env.discover(leo), kim.ID) {
 		t.Fatal("a paused profile must not be shown in discovery")
 	}
@@ -857,7 +954,7 @@ func TestPausedProfileIsHiddenAndNotificationsReadAll(t *testing.T) {
 	env.swipe(leo, kim.ID, "like", http.StatusOK)
 	env.swipe(kim, leo.ID, "like", http.StatusOK)
 	env.expect(env.do(http.MethodPost, "/notifications/read-all", nil, kim.Token), http.StatusNoContent, "read all")
-	res := env.do(http.MethodGet, "/notifications", nil, kim.Token)
+	res = env.do(http.MethodGet, "/notifications", nil, kim.Token)
 	var n struct {
 		UnreadCount int `json:"unreadCount"`
 	}

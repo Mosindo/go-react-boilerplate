@@ -15,7 +15,7 @@ var (
 )
 
 type Repository interface {
-	IsDiscoverable(ctx context.Context, userID string) (bool, error)
+	ProfileStatus(ctx context.Context, userID string) (ProfileStatus, error)
 	CandidatePool(ctx context.Context, userID, organizationID string, limit int) ([]Candidate, error)
 	CanSwipe(ctx context.Context, swiperID, targetID string) (bool, error)
 	Swipe(ctx context.Context, swiperID, targetID, action string) (swipeOutcome, error)
@@ -31,12 +31,17 @@ func NewPGRepository(db *pgxpool.Pool) *PGRepository {
 	return &PGRepository{db: db}
 }
 
-// IsDiscoverable reports whether the user's own profile is complete enough
-// to browse (members must show themselves to see others).
-func (r *PGRepository) IsDiscoverable(ctx context.Context, userID string) (bool, error) {
-	var ok bool
-	err := r.db.QueryRow(ctx, `SELECT COALESCE((SELECT is_complete FROM profiles WHERE user_id = $1), FALSE)`, userID).Scan(&ok)
-	return ok, err
+// ProfileStatus returns the flags that decide whether a member may browse
+// and swipe: members must be visible themselves to see others.
+func (r *PGRepository) ProfileStatus(ctx context.Context, userID string) (ProfileStatus, error) {
+	var st ProfileStatus
+	err := r.db.QueryRow(ctx, `
+		SELECT is_complete, is_paused, moderation_hidden FROM profiles WHERE user_id = $1
+	`, userID).Scan(&st.Complete, &st.Paused, &st.Hidden)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProfileStatus{}, nil
+	}
+	return st, err
 }
 
 // CandidatePool applies every hard filter in SQL: mutual gender preference,
@@ -123,6 +128,8 @@ func (r *PGRepository) CanSwipe(ctx context.Context, swiperID, targetID string) 
 				WHERE (b.blocker_user_id = $1 AND b.blocked_user_id = $2)
 				   OR (b.blocker_user_id = $2 AND b.blocked_user_id = $1)
 			  )
+			  AND (SELECT organization_id FROM users WHERE id = $1) =
+			      (SELECT organization_id FROM users WHERE id = $2)
 		)
 	`, swiperID, targetID).Scan(&ok)
 	return ok, err

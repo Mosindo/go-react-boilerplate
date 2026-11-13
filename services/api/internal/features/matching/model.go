@@ -47,6 +47,12 @@ type Candidate struct {
 	SharedInterests int
 }
 
+type ProfileStatus struct {
+	Complete bool
+	Paused   bool
+	Hidden   bool
+}
+
 type swipeOutcome struct {
 	Matched   bool
 	MatchID   string

@@ -41,8 +41,8 @@ Le dépôt contient l'API Go (`services/api`) et l'application Expo / React Nati
 | Chat | Conversations après match, temps réel (WebSocket), heure d'envoi, accusés de lecture (« Vu »), compteurs non lus, pagination, envoi optimiste, effacement local de la conversation |
 | Notifications | Notifications in-app (match, nouveaux messages regroupés par conversation) poussées en temps réel, badges, « tout marquer comme lu » |
 | Préférences | Genres recherchés, tranche d'âge, distance maximale |
-| Confidentialité | Mise en pause du profil, masquage de la distance, position arrondie à ~1 km, jamais d'e-mail / date de naissance / coordonnées exposés |
-| Sécurité | Blocage / déblocage, signalement (bloque automatiquement), masquage immédiat d'un profil signalé « mineur », masquage automatique après 3 signalements distincts |
+| Confidentialité | Mise en pause du profil (invisible et sans nouveaux matchs, conversations conservées), masquage de la distance, position arrondie à ~1 km, jamais d'e-mail / date de naissance / coordonnées exposés |
+| Sécurité | Blocage / déblocage, signalement (bloque automatiquement), masquage en attente de vérification après 2 signalements « mineur » distincts ou 3 signalements distincts ; un profil masqué ne peut plus découvrir, matcher ni écrire |
 | UI | Identité visuelle originale (terracotta, crème, prune), mode sombre automatique, états de chargement / vide / erreur, toasts, accessibilité (labels, rôles, réduction des animations) |
 
 ## Stack technique
@@ -269,12 +269,12 @@ Toutes les routes (sauf mention) exigent `Authorization: Bearer <accessToken>`. 
 
 ## Sécurité et vie privée
 
-- **Authentification** : JWT HS256 vérifiés strictement (algorithme, expiration obligatoire, claims), session contrôlée à chaque requête (un logout, un reset ou une suppression invalide immédiatement les tokens), refresh tokens opaques stockés en SHA-256 et tournants, bcrypt, comparaison factice pour éviter l'énumération d'e-mails par le temps de réponse.
+- **Authentification** : JWT HS256 vérifiés strictement (algorithme, expiration obligatoire, claims), session contrôlée à chaque requête (un logout, un reset ou une suppression invalide immédiatement les tokens et ferme les WebSockets), refresh tokens opaques stockés en SHA-256, à usage unique (rotation atomique ; rejouer un ancien token révoque toute la session), bcrypt, comparaison factice pour éviter l'énumération d'e-mails par le temps de réponse.
 - **Autorisation côté serveur** : chat uniquement entre membres ayant un match actif et sans blocage ; profils visibles seulement s'ils sont découvrables ou matchés ; une ressource d'autrui renvoie 404 sans divulguer son existence.
 - **Validation** : toutes les entrées sont normalisées et bornées (e-mail, prénom, âge ≥ 18, longueurs, enums, pagination, UUID) ; corps JSON limités à 64 Ko.
-- **Photos** : type détecté par signature binaire (le nom et le Content-Type client sont ignorés), dimensions et taille bornées (anti « decompression bomb »), ré-encodage JPEG qui supprime toutes les métadonnées (dont la position GPS), noms de fichiers aléatoires, accès uniquement par URLs HMAC expirant en 1 à 2 h, en-têtes `nosniff` + CSP `sandbox`.
+- **Photos** : type détecté par signature binaire (le nom et le Content-Type client sont ignorés), dimensions et taille bornées (anti « decompression bomb »), ré-encodage JPEG qui supprime toutes les métadonnées (dont la position GPS), noms de fichiers aléatoires, accès uniquement par URLs HMAC expirant en 1 à 2 h (un remplacement de photo change son identifiant et invalide les anciens liens), en-têtes `nosniff` + CSP `sandbox`.
 - **Localisation** : demandée seulement quand le membre appuie sur le bouton, coordonnées arrondies à ~1 km avant stockage, distance affichée arrondie (par paliers de 5 km au-delà de 10 km), masquable.
-- **Abus** : rate limiting (inscription, connexion, récupération, swipes, messages, uploads, signalements), proxies de confiance explicites, codes de récupération HMAC limités à 5 essais et 15 minutes.
+- **Abus** : rate limiting (inscription, connexion, récupération, swipes, messages, uploads, signalements), proxies de confiance explicites, codes de récupération HMAC limités à 5 essais (compteur atomique), 15 minutes et 3 codes par heure et par compte ; décodage d'images limité à 16 Mpx et 2 en parallèle.
 - **Données** : la suppression du compte efface profil, photos (fichiers compris), swipes, matchs, messages, blocages, notifications et sessions ; les signalements déposés sont conservés anonymement pour la modération.
 - **Mobile** : tokens dans le trousseau / keystore (`expo-secure-store`) ; sur le web, en mémoire uniquement (jamais en `localStorage`).
 
@@ -286,7 +286,7 @@ Toutes les routes (sauf mention) exigent `Authorization: Bearer <accessToken>`. 
 - **Temps réel par WebSocket** : authentification par premier message (le token n'apparaît jamais dans les URLs / logs), fermeture à l'expiration du token, reconnexion avec backoff côté client. Les actions passent toujours par REST pour partager validation, autorisation et rate limiting.
 - **Stockage local derrière une interface** : `storage.Store` permet de brancher S3 / GCS sans modifier les features.
 - **Notifications in-app** : stockées et poussées en temps réel ; les notifications push natives ne sont pas activées (voir ci-dessous).
-- **Signalement = blocage** : option la plus sûre par défaut ; un signalement « mineur » masque le profil immédiatement en attente de revue.
+- **Signalement = blocage** : option la plus sûre par défaut. Un signalement isolé ne masque personne (anti-abus) ; deux signalements « mineur » distincts, ou trois signalements quelconques, masquent le profil en attente de revue.
 - **Langue** : interface en français ; les messages d'erreur de l'API (anglais, stables) sont traduits côté client.
 
 ## Limites connues et évolutions

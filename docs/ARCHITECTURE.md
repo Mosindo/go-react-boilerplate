@@ -72,14 +72,14 @@ La fonction SQL `refresh_profile_completeness(user_id)` recalcule `profiles.is_c
 
 ## 4. Flux de matching
 
-1. `GET /discovery` : le service vérifie que le profil du demandeur est complet, puis le repository applique tous les filtres durs en une requête (préférences et âges **mutuels**, distance ≤ min des deux rayons via une bande de latitude indexée + haversine, profils visibles, pas de swipe déjà fait, pas de « pass » reçu, pas de blocage) sur un pool de 200.
+1. `GET /discovery` : le service vérifie que le profil du demandeur est complet, non mis en pause et non masqué par la modération (sinon 409 `profile_incomplete` / `profile_paused` ou 403 `profile_in_review`), puis le repository applique tous les filtres durs en une requête (préférences et âges **mutuels**, distance ≤ min des deux rayons via une bande de latitude indexée + haversine, profils visibles, pas de swipe déjà fait, pas de « pass » reçu, pas de blocage) sur un pool de 200.
 2. Le `Ranker` (pondération récence / proximité / intérêts communs) trie le pool ; seule la page retournée est hydratée (3 requêtes groupées : cartes, photos, intérêts).
 3. `POST /swipes` : transaction avec `pg_advisory_xact_lock` sur la paire → insertion du swipe (unique) → si like réciproque, insertion du match (unique). Rejouer la même action est idempotent ; changer d'avis renvoie 409.
 4. Nouveau match : notification + événement `match.created` pour les deux membres.
 
 ## 5. Chat et temps réel
 
-- Autorisation unique `CanChat` : match actif **et** aucun blocage. Sinon 404, quelle que soit la raison.
+- Autorisation unique `CanChat` : match actif, aucun blocage **et** aucun des deux profils masqué par la modération. Sinon 404, quelle que soit la raison.
 - Messages paginés par curseur (`before=<id>`), ordre chronologique dans la page.
 - Lecture : `last_read_at` par participant ; `peerLastReadAt` permet d'afficher « Vu ». Effacement local : `cleared_at` par participant.
 - Le hub (`platform/realtime`) garde les connexions par utilisateur ; les services publient `message.created`, `conversation.read`, `match.created`, `match.removed`, `notification.created`. Les clients lents sont déconnectés plutôt que de bloquer l'émetteur.

@@ -44,14 +44,17 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (StoredUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
-	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
-	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
+	RevokeSession(ctx context.Context, sessionID string) error
+	RevokeSessionByPreviousTokenHash(ctx context.Context, tokenHash string) (string, error)
+	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) (string, error)
+	CountRecentPasswordResets(ctx context.Context, userID string, since time.Time) (int, error)
+	ConsumePasswordResetAttempt(ctx context.Context, resetID string, maxAttempts int) (bool, error)
 	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
 	GetPasswordHashByUserID(ctx context.Context, userID string) (string, error)
 	DeleteUser(ctx context.Context, userID string) error
 	CreatePasswordReset(ctx context.Context, userID, codeHash string, expiresAt time.Time) (string, error)
 	GetActivePasswordReset(ctx context.Context, userID string) (StoredPasswordReset, error)
-	IncrementPasswordResetAttempts(ctx context.Context, resetID string) error
 	CompletePasswordReset(ctx context.Context, resetID, userID, passwordHash string) error
 }
 
@@ -197,19 +200,23 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 	return session, nil
 }
 
-func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
+// RotateSessionToken swaps the refresh token only if the presented one is
+// still current, so a token can never be redeemed twice (even concurrently).
+func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
 	var session StoredSession
 	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
-		SET token_hash = $2,
+		SET previous_token_hash = token_hash,
+		    token_hash = $2,
 		    user_agent = COALESCE($3, user_agent),
 		    ip_address = COALESCE($4, ip_address),
 		    expires_at = $5,
 		    last_used_at = $6
 		WHERE id = $1
+		  AND token_hash = $7
 		  AND revoked_at IS NULL
 		RETURNING id, user_id, expires_at, created_at, last_used_at
-	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt).Scan(
+	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt, currentTokenHash).Scan(
 		&session.ID,
 		&session.UserID,
 		&session.ExpiresAt,
@@ -231,21 +238,65 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 	return session, nil
 }
 
-func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error {
-	tag, err := r.dbPool.Exec(ctx, `
+func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) (string, error) {
+	var userID string
+	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
 		SET revoked_at = $2,
 		    last_used_at = $2
 		WHERE token_hash = $1
 		  AND revoked_at IS NULL
-	`, tokenHash, revokedAt)
+		RETURNING user_id
+	`, tokenHash, revokedAt).Scan(&userID)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrRepositorySessionGone
+		}
+		return "", err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrRepositorySessionGone
+	return userID, nil
+}
+
+func (r *PGRepository) RevokeSession(ctx context.Context, sessionID string) error {
+	_, err := r.dbPool.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL`, sessionID)
+	return err
+}
+
+// RevokeSessionByPreviousTokenHash ends the session whose last rotated-out
+// refresh token is presented again (token theft / replay).
+func (r *PGRepository) RevokeSessionByPreviousTokenHash(ctx context.Context, tokenHash string) (string, error) {
+	var userID string
+	err := r.dbPool.QueryRow(ctx, `
+		UPDATE sessions SET revoked_at = NOW()
+		WHERE previous_token_hash = $1 AND revoked_at IS NULL
+		RETURNING user_id
+	`, tokenHash).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrRepositorySessionGone
+		}
+		return "", err
 	}
-	return nil
+	return userID, nil
+}
+
+func (r *PGRepository) CountRecentPasswordResets(ctx context.Context, userID string, since time.Time) (int, error) {
+	var n int
+	err := r.dbPool.QueryRow(ctx, `SELECT COUNT(*) FROM password_resets WHERE user_id = $1 AND created_at > $2`, userID, since).Scan(&n)
+	return n, err
+}
+
+// ConsumePasswordResetAttempt atomically books one guess; it returns false
+// once the attempt budget is exhausted, whatever the concurrency.
+func (r *PGRepository) ConsumePasswordResetAttempt(ctx context.Context, resetID string, maxAttempts int) (bool, error) {
+	tag, err := r.dbPool.Exec(ctx, `
+		UPDATE password_resets SET attempts = attempts + 1
+		WHERE id = $1 AND attempts < $2 AND used_at IS NULL
+	`, resetID, maxAttempts)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 func (r *PGRepository) IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
@@ -341,11 +392,6 @@ func (r *PGRepository) GetActivePasswordReset(ctx context.Context, userID string
 		return StoredPasswordReset{}, err
 	}
 	return reset, nil
-}
-
-func (r *PGRepository) IncrementPasswordResetAttempts(ctx context.Context, resetID string) error {
-	_, err := r.dbPool.Exec(ctx, `UPDATE password_resets SET attempts = attempts + 1 WHERE id = $1`, resetID)
-	return err
 }
 
 // CompletePasswordReset consumes the code, stores the new hash and revokes

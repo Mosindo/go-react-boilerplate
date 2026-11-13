@@ -203,6 +203,8 @@ func (r *PGRepository) CanView(ctx context.Context, viewerID, targetID string) (
 			  )
 			  AND p.birthdate IS NOT NULL
 			  AND p.gender IS NOT NULL
+			  AND (SELECT organization_id FROM users WHERE id = $1) =
+			      (SELECT organization_id FROM users WHERE id = $2)
 			  AND (
 				EXISTS (
 					SELECT 1 FROM matches m

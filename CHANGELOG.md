@@ -18,6 +18,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - New Expo app (French UI, light/dark themes), onboarding wizard, swipe deck, chat, settings.
 - Demo seed command, Go unit/integration tests, API smoke test, Playwright E2E, CI pipeline.
 
+### Security
+- Refresh tokens are single-use (atomic rotation) and replaying a rotated token revokes the session; logout closes realtime sockets.
+- Password reset attempts are counted atomically; at most 3 codes per account per hour.
+- Paused or moderation-hidden members cannot browse, swipe or chat; one report alone can no longer hide a profile.
+- JSON photo routes keep the global body limit; image decoding capped at 16 MP with bounded concurrency; replacing a photo invalidates old signed links.
+
 ### Removed
 - Stripe billing, posts, comments, votes, metadata-only files and the `/users` directory (exposed e-mails), plus the unused Tamagui setup and PowerShell QA scripts.
 

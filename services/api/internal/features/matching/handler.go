@@ -20,6 +20,10 @@ func (h *Handler) fail(c *gin.Context, operation string, err error) {
 	switch {
 	case errors.Is(err, ErrProfileIncomplete):
 		httpx.FailCode(c, operation, http.StatusConflict, "profile_incomplete", err.Error(), err)
+	case errors.Is(err, ErrProfilePaused):
+		httpx.FailCode(c, operation, http.StatusConflict, "profile_paused", err.Error(), err)
+	case errors.Is(err, ErrProfileInReview):
+		httpx.FailCode(c, operation, http.StatusForbidden, "profile_in_review", err.Error(), err)
 	case errors.Is(err, ErrAlreadySwiped):
 		httpx.FailCode(c, operation, http.StatusConflict, "already_swiped", err.Error(), err)
 	case errors.Is(err, ErrSelfSwipe):

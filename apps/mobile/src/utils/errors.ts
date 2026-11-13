@@ -30,7 +30,9 @@ const translations: Record<string, string> = {
   "profile not available": "Ce profil n'est plus disponible.",
   "profile not found": "Ce profil n'est plus disponible.",
   "complete your profile to discover people": "Complétez votre profil pour découvrir des personnes.",
-  "too many requests, please slow down": "Trop de tentatives. Patientez quelques instants."
+  "too many requests, please slow down": "Trop de tentatives. Patientez quelques instants.",
+  "your profile is paused": "Votre profil est en pause.",
+  "your profile is under review": "Votre profil est en cours de vérification."
 };
 
 export function describeError(error: unknown, fallback = "Une erreur est survenue. Réessayez."): string {

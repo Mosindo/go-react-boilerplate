@@ -73,13 +73,11 @@ func requestIsHTTPS(c *gin.Context) bool {
 
 // MaxBodyBytes caps request bodies so a client cannot exhaust memory with an
 // oversized JSON payload. Upload routes apply their own, larger limit.
-func MaxBodyBytes(limit int64, exemptPrefixes ...string) gin.HandlerFunc {
+func MaxBodyBytes(limit int64, exempt func(*http.Request) bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		for _, prefix := range exemptPrefixes {
-			if strings.HasPrefix(c.Request.URL.Path, prefix) {
-				c.Next()
-				return
-			}
+		if exempt != nil && exempt(c.Request) {
+			c.Next()
+			return
 		}
 		if c.Request.Body != nil {
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)

@@ -124,7 +124,7 @@ func (r *PGRepository) Replace(ctx context.Context, userID, photoID, storageKey 
 	var position int16
 	err = tx.QueryRow(ctx, `
 		UPDATE photos
-		SET storage_key = $3, width = $4, height = $5, size_bytes = $6, updated_at = NOW()
+		SET id = gen_random_uuid(), storage_key = $3, width = $4, height = $5, size_bytes = $6, updated_at = NOW()
 		WHERE id = $1 AND user_id = $2
 		RETURNING id, user_id, storage_key, position, width, height, created_at
 	`, photoID, userID, storageKey, width, height, size).Scan(&p.ID, &p.UserID, &p.StorageKey, &position, &p.Width, &p.Height, &p.CreatedAt)

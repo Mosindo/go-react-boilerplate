@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -105,6 +106,20 @@ func main() {
 	}
 }
 
+// isPhotoUpload matches the multipart routes (POST /me/photos and
+// PUT /me/photos/:id), which enforce their own 10 MB cap. JSON routes such as
+// PUT /me/photos/order keep the global limit.
+func isPhotoUpload(r *http.Request) bool {
+	path := r.URL.Path
+	switch r.Method {
+	case http.MethodPost:
+		return path == "/me/photos"
+	case http.MethodPut:
+		return strings.HasPrefix(path, "/me/photos/") && path != "/me/photos/order"
+	}
+	return false
+}
+
 func setupRouter(a *app) (*gin.Engine, error) {
 	r := gin.New()
 	// Only trust X-Forwarded-For from explicitly configured proxies so rate
@@ -119,7 +134,7 @@ func setupRouter(a *app) (*gin.Engine, error) {
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
-	r.Use(middleware.MaxBodyBytes(maxJSONBodyBytes, "/me/photos"))
+	r.Use(middleware.MaxBodyBytes(maxJSONBodyBytes, isPhotoUpload))
 
 	secret := []byte(a.cfg.JWTSecret)
 	signer := media.NewSigner(secret, time.Hour)

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, PanResponder, StyleSheet, View, useWindowDimensions } from "react-native";
+import { ApiError } from "../../api/client";
 import { discoveryApi } from "../../api/discovery";
 import type { MatchInfo, PublicProfile, SwipeAction } from "../../api/types";
 import type { TabScreenProps } from "../../navigation/types";
@@ -15,7 +16,7 @@ import { SwipeCard } from "./SwipeCard";
 
 const SWIPE_THRESHOLD = 110;
 
-type LoadState = "loading" | "ready" | "error" | "incomplete";
+type LoadState = "loading" | "ready" | "error" | "incomplete" | "paused" | "review";
 
 export default function DiscoverScreen({ navigation }: TabScreenProps<"Discover">) {
   const { colors, spacing } = useTheme();
@@ -55,7 +56,12 @@ export default function DiscoverScreen({ navigation }: TabScreenProps<"Discover"
       setQueue((q) => (reset ? fresh : [...q, ...fresh]));
       setState("ready");
     } catch (e) {
-      if (isApiError(e, 409)) {
+      const code = e instanceof ApiError ? e.code : undefined;
+      if (code === "profile_paused") {
+        setState("paused");
+      } else if (code === "profile_in_review") {
+        setState("review");
+      } else if (isApiError(e, 409)) {
         setState("incomplete");
       } else {
         setError(describeError(e));
@@ -79,7 +85,7 @@ export default function DiscoverScreen({ navigation }: TabScreenProps<"Discover"
 
   // Reload the deck when search criteria, location or completeness change.
   const criteria = me.data
-    ? JSON.stringify([me.data.preferences, me.data.hasLocation, me.data.isComplete, me.data.gender])
+    ? JSON.stringify([me.data.preferences, me.data.hasLocation, me.data.isComplete, me.data.gender, me.data.isPaused])
     : null;
   const lastCriteria = useRef<string | null>(null);
   useEffect(() => {
@@ -199,6 +205,26 @@ export default function DiscoverScreen({ navigation }: TabScreenProps<"Discover"
         testID="discover-incomplete"
       />
     );
+  } else if (state === "paused") {
+    body = (
+      <EmptyState
+        icon="pause-circle-outline"
+        title="Votre profil est en pause"
+        message="Réactivez-le pour découvrir des personnes. Vos conversations restent accessibles."
+        actionLabel="Gérer ma visibilité"
+        onAction={() => navigation.navigate("Settings")}
+        testID="discover-paused"
+      />
+    );
+  } else if (state === "review") {
+    body = (
+      <EmptyState
+        icon="shield-outline"
+        title="Profil en cours de vérification"
+        message="Suite à des signalements, votre profil est temporairement masqué le temps d’une vérification."
+        testID="discover-review"
+      />
+    );
   } else if (state === "error") {
     body = <ErrorState message={error ?? ""} onAction={() => void load(true)} />;
   } else if (queue.length === 0) {
@@ -280,13 +306,6 @@ export default function DiscoverScreen({ navigation }: TabScreenProps<"Discover"
   return (
     <Screen edges={["top"]} testID="discover-screen">
       {header}
-      {me.data?.isPaused ? (
-        <View style={[styles.banner, { backgroundColor: colors.accentSoft }]}>
-          <Text variant="label" tone="accent">
-            Votre profil est en pause : personne ne vous voit pour le moment.
-          </Text>
-        </View>
-      ) : null}
       {body}
       <MatchModal
         match={match}

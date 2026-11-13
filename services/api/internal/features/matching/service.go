@@ -12,6 +12,8 @@ import (
 
 var (
 	ErrProfileIncomplete = errors.New("complete your profile to discover people")
+	ErrProfilePaused     = errors.New("your profile is paused")
+	ErrProfileInReview   = errors.New("your profile is under review")
 	ErrSelfSwipe         = errors.New("you cannot swipe on yourself")
 )
 
@@ -54,12 +56,8 @@ func (s *Service) Discover(ctx context.Context, userID, organizationID string, l
 	if limit <= 0 || limit > maxDiscoveryLimit {
 		limit = defaultDiscoveryLimit
 	}
-	ok, err := s.repo.IsDiscoverable(ctx, userID)
-	if err != nil {
+	if err := s.ensureCanBrowse(ctx, userID); err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, ErrProfileIncomplete
 	}
 	_ = s.repo.TouchActivity(ctx, userID)
 
@@ -85,12 +83,8 @@ func (s *Service) Swipe(ctx context.Context, swiperID, targetID, action string) 
 	if action != ActionLike && action != ActionPass {
 		return SwipeResult{}, errors.New("invalid action")
 	}
-	ok, err := s.repo.IsDiscoverable(ctx, swiperID)
-	if err != nil {
+	if err := s.ensureCanBrowse(ctx, swiperID); err != nil {
 		return SwipeResult{}, err
-	}
-	if !ok {
-		return SwipeResult{}, ErrProfileIncomplete
 	}
 	canSwipe, err := s.repo.CanSwipe(ctx, swiperID, targetID)
 	if err != nil {
@@ -120,6 +114,25 @@ func (s *Service) Swipe(ctx context.Context, swiperID, targetID, action string) 
 		s.announceMatch(ctx, outcome, swiperID, targetID)
 	}
 	return result, nil
+}
+
+// ensureCanBrowse: incomplete, paused or moderation-hidden members can
+// neither browse nor create new matches (a hidden profile must not keep
+// collecting contacts while it is reviewed).
+func (s *Service) ensureCanBrowse(ctx context.Context, userID string) error {
+	st, err := s.repo.ProfileStatus(ctx, userID)
+	if err != nil {
+		return err
+	}
+	switch {
+	case st.Hidden:
+		return ErrProfileInReview
+	case !st.Complete:
+		return ErrProfileIncomplete
+	case st.Paused:
+		return ErrProfilePaused
+	}
+	return nil
 }
 
 // announceMatch notifies both members; each receives the other's card.

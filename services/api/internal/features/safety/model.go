@@ -9,6 +9,9 @@ const (
 	// AutoHideReportThreshold hides a profile from discovery, pending manual
 	// review, once this many distinct members have reported it.
 	AutoHideReportThreshold = 3
+	// UnderageHideThreshold is lower: two distinct "underage" reports hide
+	// the profile pending review. A single report cannot hide anyone.
+	UnderageHideThreshold = 2
 )
 
 type BlockRequest struct {

@@ -51,6 +51,9 @@ func (r *PGRepository) CanChat(ctx context.Context, userID, otherUserID string) 
 			SELECT 1 FROM blocks b
 			WHERE (b.blocker_user_id = $1 AND b.blocked_user_id = $2)
 			   OR (b.blocker_user_id = $2 AND b.blocked_user_id = $1)
+		) AND NOT EXISTS (
+			SELECT 1 FROM profiles p
+			WHERE p.user_id IN ($1, $2) AND p.moderation_hidden
 		)
 	`, userID, otherUserID).Scan(&ok)
 	return ok, err
