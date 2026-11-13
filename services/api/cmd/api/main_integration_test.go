@@ -828,3 +828,47 @@ func TestRealtimeMessageDelivery(t *testing.T) {
 		t.Fatalf("expected match and message events, got %v", seen)
 	}
 }
+
+func TestPausedProfileIsHiddenAndNotificationsReadAll(t *testing.T) {
+	env := setupEnv(t)
+	kim := env.register("kim")
+	leo := env.register("leo")
+	env.completeProfile(kim, "Kim", "woman", []string{"man"}, "1991-11-11", 0)
+	env.completeProfile(leo, "Léo", "man", []string{"woman"}, "1992-12-12", 0.01)
+
+	if !containsProfile(env.discover(leo), kim.ID) {
+		t.Fatal("leo should discover kim")
+	}
+	env.expect(env.do(http.MethodPatch, "/me/profile", map[string]any{"isPaused": true}, kim.Token), http.StatusOK, "pause")
+	if containsProfile(env.discover(leo), kim.ID) {
+		t.Fatal("a paused profile must not be shown in discovery")
+	}
+	env.expect(env.do(http.MethodGet, "/profiles/"+kim.ID, nil, leo.Token), http.StatusNotFound, "paused profile view")
+	env.swipe(leo, kim.ID, "like", http.StatusNotFound)
+
+	// Hidden distance: the card keeps the city but drops the distance.
+	env.expect(env.do(http.MethodPatch, "/me/profile", map[string]any{"isPaused": false, "showDistance": false}, kim.Token), http.StatusOK, "unpause")
+	for _, p := range env.discover(leo) {
+		if p.UserID == kim.ID && p.DistanceKm != nil {
+			t.Fatal("distance must be hidden when showDistance is false")
+		}
+	}
+
+	env.swipe(leo, kim.ID, "like", http.StatusOK)
+	env.swipe(kim, leo.ID, "like", http.StatusOK)
+	env.expect(env.do(http.MethodPost, "/notifications/read-all", nil, kim.Token), http.StatusNoContent, "read all")
+	res := env.do(http.MethodGet, "/notifications", nil, kim.Token)
+	var n struct {
+		UnreadCount int `json:"unreadCount"`
+	}
+	res.decode(t, &n)
+	if n.UnreadCount != 0 {
+		t.Fatalf("expected no unread notification, got %d", n.UnreadCount)
+	}
+
+	res = env.do(http.MethodGet, "/interests", nil, kim.Token)
+	env.expect(res, http.StatusOK, "interests")
+	if !strings.Contains(string(res.Body), `"slug":"hiking"`) {
+		t.Fatalf("interest catalog should be seeded: %s", res.Body)
+	}
+}

@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Aimant Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,8 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-13
+
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Free dating product "Aimant": profiles, preferences, interests, location (rounded), photos with server-side sanitizing and signed URLs.
+- Discovery with mutual filters and a pluggable ranker; swipes; race-free mutual-like matches; unmatch.
+- Match-gated realtime chat (WebSocket) with read receipts, pagination and local clearing.
+- In-app notifications pushed in realtime; blocks, reports and automatic moderation hiding.
+- Password recovery by e-mailed code, account deletion, session-checked access tokens, rate limiting, tracked migrations.
+- New Expo app (French UI, light/dark themes), onboarding wizard, swipe deck, chat, settings.
+- Demo seed command, Go unit/integration tests, API smoke test, Playwright E2E, CI pipeline.
+
+### Removed
+- Stripe billing, posts, comments, votes, metadata-only files and the `/users` directory (exposed e-mails), plus the unused Tamagui setup and PowerShell QA scripts.
 
 ## [0.1.0] - 2026-03-17
 

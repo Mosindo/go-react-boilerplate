@@ -32,8 +32,8 @@ import (
 
 type persona struct {
 	name, gender, job, bio string
-	interested           []string
-	interests            []string
+	interested             []string
+	interests              []string
 }
 
 var personas = []persona{

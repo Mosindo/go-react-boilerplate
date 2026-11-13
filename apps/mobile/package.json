@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" App.tsx \"e2e/*.mjs\" \"scripts/*.js\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" App.tsx \"e2e/*.mjs\" \"scripts/*.js\"",
-    "build:web": "expo export --platform web --output-dir dist",
+    "build:web": "expo export --clear --platform web --output-dir dist",
     "serve:web": "expo serve --port 8081",
     "test:e2e:api": "node e2e/api-smoke.mjs",
     "test:e2e:web": "node e2e/critical-flow.mjs",
