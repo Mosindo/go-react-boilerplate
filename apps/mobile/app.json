@@ -1,12 +1,40 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Aimant",
+    "slug": "aimant",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "scheme": "aimant",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.aimant.mobile",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "app.aimant.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION"],
+      "blockedPermissions": ["ACCESS_BACKGROUND_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Aimant utilise votre position, arrondie à environ 1 km, pour vous proposer des personnes proches. Elle n'est jamais montrée aux autres membres."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aimant a besoin d'accéder à vos photos pour que vous puissiez les ajouter à votre profil.",
+          "cameraPermission": false
+        }
+      ]
     ]
   }
 }
