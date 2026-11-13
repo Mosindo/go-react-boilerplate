@@ -221,6 +221,8 @@ export default function DiscoverScreen({ navigation }: TabScreenProps<"Discover"
             <Animated.View
               style={[StyleSheet.absoluteFill, { transform: [{ scale: nextScale }] }]}
               pointerEvents="none"
+              aria-hidden
+              importantForAccessibility="no-hide-descendants"
             >
               <SwipeCard profile={next} onOpen={() => undefined} />
             </Animated.View>
