@@ -4,105 +4,150 @@ on:
   push:
   pull_request:
 
-jobs:
-  ci:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+env:
+  # CI-only throwaway value (never used outside the ephemeral runners).
+  JWT_SECRET: ci-only-jwt-signing-key-0f3a9c2e7b1d4f6a8c0e
+  NODE_VERSION: 20.19.4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+jobs:
+  api:
+    name: API (gofmt, vet, tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lueur_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lueur_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: services/api/go.mod
-          cache: true
           cache-dependency-path: services/api/go.sum
-
-      - name: Install Go dependencies
-        working-directory: services/api
-        run: go mod download
-
-      - name: Run Go tests
-        working-directory: services/api
-        run: go test ./...
-
-      - name: Run Go vet static checks
-        working-directory: services/api
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
         run: go vet ./...
+      - name: Unit + integration tests
+        env:
+          DATABASE_URL_TEST: postgres://postgres:postgres@localhost:5432/lueur_test?sslmode=disable
+        run: go test -race -count=1 ./...
+      - name: Build
+        run: go build ./cmd/api && go build ./cmd/seed
 
-      - name: Build the backend
-        working-directory: services/api
-        run: go build ./cmd/api
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+  mobile:
+    name: Mobile (typecheck, lint, web build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20.19.4
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Web build
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18080
+        run: npm run build:web
 
-      - name: Install frontend dependencies
+  e2e:
+    name: End-to-end critical flow (web)
+    needs: [api, mobile]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lueur
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lueur"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - name: Start API
+        working-directory: services/api
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/lueur?sslmode=disable
+          PORT: "18080"
+          UPLOAD_DIR: ${{ runner.temp }}/uploads
+          ALLOWED_ORIGINS: http://localhost:8081
+        run: |
+          go build -o "$RUNNER_TEMP/lueur-api" ./cmd/api
+          nohup "$RUNNER_TEMP/lueur-api" > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://localhost:18080/health && break; sleep 1; done
+      - name: Build and serve the web app
         working-directory: apps/mobile
-        run: npm ci
-
-      - name: Verify TypeScript
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18080
+        run: |
+          npm ci
+          npm run build:web
+          nohup python3 -m http.server 8081 --directory dist > "$RUNNER_TEMP/web.log" 2>&1 &
+          npx playwright install --with-deps chromium
+      - name: Run critical flow
         working-directory: apps/mobile
-        run: npx tsc --noEmit
+        run: npm run e2e:web
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            apps/mobile/e2e/.artifacts
+            ${{ runner.temp }}/api.log
 
-      - name: Build Docker image
-        run: docker build -t api-test ./services/api
-
-      - name: Verify Docker runtime (/health=200)
+  docker:
+    name: Docker image (/health = 200)
+    needs: [api]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t lueur-api ./services/api
+      - name: Run container against Postgres
         shell: bash
         run: |
           set -euo pipefail
-
-          cleanup() {
-            docker rm -f api-test-run postgres-test >/dev/null 2>&1 || true
-            docker network rm api-test-network >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker network create api-test-network >/dev/null
-
-          echo "Starting Postgres for container health verification..."
-          docker run -d --name postgres-test \
-            --network api-test-network \
-            --network-alias postgres \
-            -e POSTGRES_USER=postgres \
-            -e POSTGRES_PASSWORD=postgres \
-            -e POSTGRES_DB=app \
-            postgres:15-alpine >/dev/null
-
-          echo "Waiting for Postgres readiness..."
-          for i in {1..30}; do
-            if docker exec postgres-test pg_isready -U postgres -d app >/dev/null 2>&1; then
-              break
-            fi
+          trap 'docker logs lueur-api-run || true; docker rm -f lueur-api-run lueur-pg >/dev/null 2>&1 || true; docker network rm lueur-net >/dev/null 2>&1 || true' EXIT
+          docker network create lueur-net >/dev/null
+          docker run -d --name lueur-pg --network lueur-net --network-alias postgres \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=lueur postgres:16-alpine >/dev/null
+          for i in $(seq 1 30); do docker exec lueur-pg pg_isready -U postgres -d lueur >/dev/null 2>&1 && break; sleep 1; done
+          docker run -d --name lueur-api-run --network lueur-net -p 18081:8080 \
+            -e DATABASE_URL="postgres://postgres:postgres@postgres:5432/lueur?sslmode=disable" \
+            -e JWT_SECRET="$JWT_SECRET" lueur-api >/dev/null
+          for i in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18081/health || true)" = "200" ]; then echo "Health OK"; exit 0; fi
             sleep 1
           done
-
-          echo "Starting API container..."
-          docker run -d --name api-test-run \
-            --network api-test-network \
-            -p 18081:8080 \
-            -e DATABASE_URL="postgres://postgres:postgres@postgres:5432/app?sslmode=disable" \
-            -e JWT_SECRET="ci-jwt-secret-32-chars-minimum-value" \
-            -e PORT="8080" \
-            api-test >/dev/null
-
-          echo "Waiting for /health=200..."
-          for i in {1..30}; do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18081/health || true)"
-            if [ "$code" = "200" ]; then
-              echo "Health OK."
-              exit 0
-            fi
-            sleep 1
-          done
-
-          echo "Container logs (api-test-run):"
-          docker logs api-test-run || true
           exit 1
-

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { onSessionExpired } from "../api/client";
+import { ApiError, onSessionExpired } from "../api/client";
 import { authApi } from "../api/endpoints";
 import { clearTokens, currentTokens, loadTokens, saveTokens } from "../api/session";
 import type { AuthSession, AuthUser } from "../api/types";
@@ -7,8 +7,10 @@ import { realtime } from "../realtime/socket";
 import { queryClient } from "./queryClient";
 
 type AuthState = {
-  status: "booting" | "signedOut" | "signedIn";
+  /** "unreachable": tokens exist but the API could not be reached at start. */
+  status: "booting" | "signedOut" | "signedIn" | "unreachable";
   user: AuthUser | null;
+  retry: () => void;
   signIn: (session: AuthSession) => Promise<void>;
   signOut: () => Promise<void>;
   /** Local cleanup only (account deleted, session revoked). */
@@ -46,6 +48,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => onSessionExpired(() => void forgetSession()), [forgetSession]);
 
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setStatus("booting");
+    setAttempt((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -60,16 +68,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(me);
           setStatus("signedIn");
         }
-      } catch {
-        if (active) await forgetSession();
+      } catch (error) {
+        if (!active) return;
+        // Only a rejected session signs the user out; a network failure at
+        // start-up must not wipe a valid session.
+        if (error instanceof ApiError && error.status === 401) {
+          await forgetSession();
+        } else {
+          setStatus("unreachable");
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, [forgetSession]);
+  }, [forgetSession, attempt]);
 
-  const value = useMemo(() => ({ status, user, signIn, signOut, forgetSession }), [status, user, signIn, signOut, forgetSession]);
+  const value = useMemo(
+    () => ({ status, user, retry, signIn, signOut, forgetSession }),
+    [status, user, retry, signIn, signOut, forgetSession]
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

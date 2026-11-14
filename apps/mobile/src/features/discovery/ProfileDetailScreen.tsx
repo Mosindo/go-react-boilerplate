@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { MainStackParamList } from "../../navigation/types";
+import { useAuth } from "../../state/AuthProvider";
 import { usePublicProfile } from "../../state/queries";
 import { radii, spacing } from "../../theme/palette";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -20,6 +21,8 @@ export function ProfileDetailScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const { userId, matchId } = route.params;
+  const { user: me } = useAuth();
+  const isSelf = me?.id === userId;
   const query = usePublicProfile(userId);
   const profile = query.data ?? route.params.profile;
   const [menu, setMenu] = useState(false);
@@ -90,7 +93,7 @@ export function ProfileDetailScreen({ navigation, route }: Props) {
       </ScrollView>
       <View style={styles.topBar} pointerEvents="box-none">
         <IconButton icon="chevron-down" label="Fermer" onPress={navigation.goBack} tone="scrim" />
-        <IconButton icon="ellipsis-horizontal" label="Plus d'options" onPress={() => setMenu(true)} tone="scrim" />
+        {isSelf ? null : <IconButton icon="ellipsis-horizontal" label="Plus d'options" onPress={() => setMenu(true)} tone="scrim" />}
       </View>
       {fromDeck ? (
         <View style={styles.actions}>

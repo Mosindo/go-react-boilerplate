@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { View } from "react-native";
 import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -73,6 +74,12 @@ function MainTabs() {
   );
 }
 
+/** Themed full-screen container for states rendered outside a Screen. */
+function Backdrop({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
+  return <View style={{ flex: 1, backgroundColor: colors.background }}>{children}</View>;
+}
+
 function SignedIn() {
   const { data, isError, error, refetch } = useMyProfile();
   // Decided once from the server state, then only ended by the wizard, so
@@ -82,8 +89,20 @@ function SignedIn() {
     if (data && onboarding === null) setOnboarding(!data.complete);
   }, [data, onboarding]);
 
-  if (isError && !data) return <ErrorState message={errorMessage(error)} onRetry={refetch} />;
-  if (onboarding === null) return <LoadingState />;
+  if (isError && !data) {
+    return (
+      <Backdrop>
+        <ErrorState message={errorMessage(error)} onRetry={refetch} />
+      </Backdrop>
+    );
+  }
+  if (onboarding === null) {
+    return (
+      <Backdrop>
+        <LoadingState />
+      </Backdrop>
+    );
+  }
   if (onboarding) return <OnboardingScreen onFinished={() => setOnboarding(false)} />;
 
   return (
@@ -114,7 +133,7 @@ function SignedOut() {
 }
 
 export function RootNavigator() {
-  const { status, user } = useAuth();
+  const { status, user, retry } = useAuth();
   const { colors, scheme } = useTheme();
   const navTheme = useMemo<Theme>(() => {
     const base = scheme === "dark" ? DarkTheme : DefaultTheme;
@@ -126,7 +145,19 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer ref={navigationRef} theme={navTheme} documentTitle={{ formatter: () => "Lueur" }}>
-      {status === "booting" ? <LoadingState /> : status === "signedIn" ? <SignedIn key={user?.id} /> : <SignedOut />}
+      {status === "booting" ? (
+        <Backdrop>
+          <LoadingState />
+        </Backdrop>
+      ) : status === "unreachable" ? (
+        <Backdrop>
+          <ErrorState message="Impossible de joindre Lueur. Vérifiez votre connexion." onRetry={retry} />
+        </Backdrop>
+      ) : status === "signedIn" ? (
+        <SignedIn key={user?.id} />
+      ) : (
+        <SignedOut />
+      )}
     </NavigationContainer>
   );
 }

@@ -9,7 +9,7 @@ import { Text } from "./Text";
 export function LoadingState({ label }: { label?: string }) {
   const { colors } = useTheme();
   return (
-    <View accessibilityLabel={label ?? "Chargement"} accessibilityRole="progressbar" style={styles.center}>
+    <View accessibilityLabel={label ?? "Chargement"} accessibilityRole="progressbar" style={[styles.center, { backgroundColor: colors.background }]}>
       <ActivityIndicator color={colors.primary} size="large" />
       {label ? (
         <Text tone="muted" variant="caption">
@@ -31,7 +31,7 @@ type EmptyProps = {
 export function EmptyState({ icon, title, body, actionLabel, onAction }: EmptyProps) {
   const { colors } = useTheme();
   return (
-    <View style={styles.center}>
+    <View style={[styles.center, { backgroundColor: colors.background }]}>
       <View style={[styles.halo, { backgroundColor: colors.primarySoft }]}>
         <Icon color={colors.primary} name={icon} size={30} />
       </View>

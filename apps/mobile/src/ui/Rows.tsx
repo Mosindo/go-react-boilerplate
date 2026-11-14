@@ -89,6 +89,8 @@ export function SwitchRow({ title, subtitle, value, onChange, disabled }: Switch
         ) : null}
       </View>
       <Switch
+        // react-native-web colours the active thumb separately.
+        {...({ activeThumbColor: colors.surface } as object)}
         accessibilityLabel={title}
         disabled={disabled}
         onValueChange={onChange}
