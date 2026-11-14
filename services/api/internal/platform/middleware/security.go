@@ -13,7 +13,7 @@ func SecurityHeaders() gin.HandlerFunc {
 		headers.Set("X-Content-Type-Options", "nosniff")
 		headers.Set("X-Frame-Options", "DENY")
 		headers.Set("Referrer-Policy", "no-referrer")
-		headers.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+		headers.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), interest-cohort=()")
 		headers.Set("Cross-Origin-Opener-Policy", "same-origin")
 		headers.Set("Cross-Origin-Resource-Policy", "same-site")
 		if requestIsHTTPS(c) {

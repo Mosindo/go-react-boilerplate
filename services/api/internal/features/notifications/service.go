@@ -2,118 +2,73 @@ package notifications
 
 import (
 	"context"
-	"errors"
-	"strings"
+	"encoding/json"
+	"log"
 	"unicode/utf8"
-)
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
+	"example.com/api/internal/platform/realtime"
 )
 
 type Service struct {
 	repo Repository
+	pub  realtime.Publisher
 }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, pub realtime.Publisher) *Service {
+	return &Service{repo: repo, pub: pub}
 }
 
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
+func (s *Service) List(ctx context.Context, userID string, limit, offset int) (ListResponse, error) {
+	items, err := s.repo.List(ctx, userID, limit, offset)
 	if err != nil {
-		return nil, err
+		return ListResponse{}, err
 	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
-	}
-	return payload, nil
-}
-
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
+	unread, err := s.repo.UnreadCount(ctx, userID)
 	if err != nil {
-		return Notification{}, err
+		return ListResponse{}, err
 	}
-	return mapStoredNotification(notification), nil
+	return ListResponse{Notifications: items, UnreadCount: unread}, nil
 }
 
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
+func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
+	return s.repo.MarkRead(ctx, userID, id)
+}
+
+func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
+	return s.repo.MarkAllRead(ctx, userID)
+}
+
+func (s *Service) MarkConversationRead(ctx context.Context, userID, matchID string) error {
+	return s.repo.MarkConversationRead(ctx, userID, matchID)
+}
+
+func (s *Service) publish(userID string, n Notification) {
+	if s.pub != nil {
+		s.pub.Publish(userID, realtime.Event{Type: "notification.created", Data: n})
+	}
+}
+
+// NotifyMatch records a "new match" notification. Failures are logged, not
+// returned: a notification must never roll back the match itself.
+func (s *Service) NotifyMatch(ctx context.Context, userID, matchID, otherUserID, otherFirstName string) {
+	data, _ := json.Marshal(map[string]string{"matchId": matchID, "userId": otherUserID})
+	n, err := s.repo.Create(ctx, userID, TypeMatch, "Nouveau match", "Vous et "+otherFirstName+" vous plaisez mutuellement. Dites bonjour !", data)
 	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
-		}
-		return Notification{}, err
+		log.Printf(`{"event":"notification_failed","type":"match","error":%q}`, err.Error())
+		return
 	}
-	return mapStoredNotification(notification), nil
+	s.publish(userID, n)
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
+func (s *Service) NotifyMessage(ctx context.Context, userID, matchID, senderFirstName, preview string) {
+	if utf8.RuneCountInString(preview) > 80 {
+		preview = string([]rune(preview)[:80]) + "…"
 	}
-}
-
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
+	data, _ := json.Marshal(map[string]string{"matchId": matchID})
+	n, err := s.repo.UpsertMessage(ctx, userID, matchID, "Message de "+senderFirstName, preview, data)
+	if err != nil {
+		log.Printf(`{"event":"notification_failed","type":"message","error":%q}`, err.Error())
+		return
 	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
-	}
-	return limit
-}
-
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+	s.publish(userID, n)
 }
