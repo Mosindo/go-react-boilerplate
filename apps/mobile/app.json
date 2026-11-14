@@ -1,12 +1,45 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lueur",
+    "slug": "lueur",
+    "scheme": "lueur",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#FAF6F1",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.lueur.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Lueur utilise votre position approximative (environ 1 km) pour vous proposer des profils proches. Votre position exacte n'est jamais partagée.",
+        "NSPhotoLibraryUsageDescription": "Lueur a besoin d'accéder à vos photos pour les ajouter à votre profil.",
+        "NSCameraUsageDescription": "Lueur peut utiliser l'appareil photo pour ajouter une photo à votre profil."
+      }
+    },
+    "android": {
+      "package": "app.lueur.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION"],
+      "blockedPermissions": ["ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lueur utilise votre position approximative (environ 1 km) pour vous proposer des profils proches. Votre position exacte n'est jamais partagée."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lueur a besoin d'accéder à vos photos pour les ajouter à votre profil.",
+          "cameraPermission": "Lueur peut utiliser l'appareil photo pour ajouter une photo à votre profil."
+        }
+      ]
     ]
   }
 }
