@@ -2,169 +2,201 @@ package chat
 
 import (
 	"context"
-	"errors"
-	"strings"
+	"time"
+
+	"example.com/api/internal/features/notifications"
+	"example.com/api/internal/features/profiles"
+	"example.com/api/internal/platform/apperr"
+	"example.com/api/internal/platform/httpx"
+	"example.com/api/internal/platform/realtime"
+	"example.com/api/internal/platform/textx"
 )
 
 var (
-	ErrUserNotFound         = errors.New("user not found")
-	ErrValidateChatTarget   = errors.New("could not validate chat target")
-	ErrMessageContentNeeded = errors.New("message content required")
+	ErrConversationNotFound = apperr.NotFound("conversation_not_found", "conversation not found")
+	ErrEmptyMessage         = apperr.BadRequest("empty_message", "message cannot be empty")
+	ErrMessageTooLong       = apperr.BadRequest("message_too_long", "message must be at most 2000 characters")
 )
 
 type Service struct {
-	repo Repository
+	repo          Repository
+	cards         *profiles.Service
+	notifications *notifications.Service
+	publisher     realtime.Publisher
 }
 
-const (
-	defaultChatsLimit        = 20
-	maxChatsLimit            = 100
-	defaultChatMessagesLimit = 200
-	maxChatMessagesLimit     = 500
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, cards *profiles.Service, notifier *notifications.Service, publisher realtime.Publisher) *Service {
+	return &Service{repo: repo, cards: cards, notifications: notifier, publisher: publisher}
 }
 
-func (s *Service) ListChats(ctx context.Context, organizationID, userID string) ([]ChatSummary, error) {
-	chats, err := s.repo.ListChats(ctx, organizationID, userID)
+func (s *Service) ListConversations(ctx context.Context, userID string, cursor *httpx.Cursor, limit int) (ConversationsResponse, error) {
+	rows, err := s.repo.ListConversations(ctx, userID, cursor, limit+1, "")
+	if err != nil {
+		return ConversationsResponse{}, err
+	}
+	var next *string
+	if len(rows) > limit {
+		rows = rows[:limit]
+		last := rows[limit-1]
+		encoded := httpx.EncodeCursor(last.SortAt, last.ID)
+		next = &encoded
+	}
+	items, err := s.decorate(ctx, userID, rows)
+	if err != nil {
+		return ConversationsResponse{}, err
+	}
+	return ConversationsResponse{Conversations: items, NextCursor: next}, nil
+}
+
+func (s *Service) GetConversation(ctx context.Context, userID, conversationID string) (ConversationResponse, error) {
+	if _, err := s.repo.Membership(ctx, userID, conversationID); err != nil {
+		return ConversationResponse{}, err
+	}
+	rows, err := s.repo.ListConversations(ctx, userID, nil, 1, conversationID)
+	if err != nil {
+		return ConversationResponse{}, err
+	}
+	items, err := s.decorate(ctx, userID, rows)
+	if err != nil {
+		return ConversationResponse{}, err
+	}
+	if len(items) == 0 {
+		// Cleared locally and no new message: still reachable directly.
+		m, err := s.repo.Membership(ctx, userID, conversationID)
+		if err != nil {
+			return ConversationResponse{}, err
+		}
+		cards, err := s.cards.LoadCards(ctx, userID, []string{m.OtherUserID})
+		if err != nil {
+			return ConversationResponse{}, err
+		}
+		return ConversationResponse{ID: conversationID, User: cards[m.OtherUserID], OtherLastReadAt: m.OtherLastReadAt}, nil
+	}
+	return items[0], nil
+}
+
+func (s *Service) decorate(ctx context.Context, userID string, rows []ConversationRow) ([]ConversationResponse, error) {
+	ids := make([]string, len(rows))
+	for i, r := range rows {
+		ids[i] = r.OtherUserID
+	}
+	cards, err := s.cards.LoadCards(ctx, userID, ids)
 	if err != nil {
 		return nil, err
 	}
-
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
-		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
-		}
-		payload = append(payload, item)
-	}
-
-	return payload, nil
-}
-
-func (s *Service) ListChatsWithPagination(ctx context.Context, organizationID, userID string, limit, offset int) ([]ChatSummary, error) {
-	normalizedLimit := normalizeChatsLimit(limit)
-	normalizedOffset := normalizeChatsOffset(offset)
-	chats, err := s.repo.ListChatsWithPagination(ctx, organizationID, userID, normalizedLimit, normalizedOffset)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
-		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
-		}
-		payload = append(payload, item)
-	}
-
-	return payload, nil
-}
-
-func (s *Service) ListMessages(ctx context.Context, organizationID, userID, otherUserID string) ([]ChatMessage, error) {
-	return s.ListMessagesWithLimit(ctx, organizationID, userID, otherUserID, defaultChatMessagesLimit)
-}
-
-func (s *Service) ListMessagesWithLimit(ctx context.Context, organizationID, userID, otherUserID string, limit int) ([]ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return nil, err
-	}
-
-	normalizedLimit := normalizeChatMessagesLimit(limit)
-	messages, err := s.repo.ListMessages(ctx, userID, otherUserID, normalizedLimit)
-	if err != nil {
-		return nil, err
-	}
-	payload := make([]ChatMessage, 0, len(messages))
-	for _, message := range messages {
-		payload = append(payload, ChatMessage{
-			ID:              message.ID,
-			SenderUserID:    message.SenderUserID,
-			RecipientUserID: message.RecipientUserID,
-			Content:         message.Content,
-			CreatedAt:       message.CreatedAt,
+	out := make([]ConversationResponse, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ConversationResponse{
+			ID:              r.ID,
+			MatchID:         r.MatchID,
+			MatchedAt:       r.MatchedAt,
+			User:            cards[r.OtherUserID],
+			LastMessage:     r.LastMessage,
+			UnreadCount:     r.UnreadCount,
+			OtherLastReadAt: r.OtherLastReadAt,
 		})
 	}
-	return payload, nil
+	return out, nil
 }
 
-func (s *Service) SendMessage(ctx context.Context, organizationID, userID, otherUserID, content string) (ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return ChatMessage{}, err
-	}
-
-	normalizedContent := strings.TrimSpace(content)
-	if normalizedContent == "" {
-		return ChatMessage{}, ErrMessageContentNeeded
-	}
-
-	message, err := s.repo.CreateMessage(ctx, userID, otherUserID, normalizedContent)
+func (s *Service) ListMessages(ctx context.Context, userID, conversationID string, cursor *httpx.Cursor, limit int) (MessagesResponse, error) {
+	m, err := s.repo.Membership(ctx, userID, conversationID)
 	if err != nil {
-		return ChatMessage{}, err
+		return MessagesResponse{}, err
 	}
-
-	return ChatMessage{
-		ID:              message.ID,
-		SenderUserID:    message.SenderUserID,
-		RecipientUserID: message.RecipientUserID,
-		Content:         message.Content,
-		CreatedAt:       message.CreatedAt,
-	}, nil
+	msgs, err := s.repo.ListMessages(ctx, conversationID, m.ClearedAt, cursor, limit+1)
+	if err != nil {
+		return MessagesResponse{}, err
+	}
+	var next *string
+	if len(msgs) > limit {
+		msgs = msgs[:limit]
+		last := msgs[limit-1]
+		encoded := httpx.EncodeCursor(last.CreatedAt, last.ID)
+		next = &encoded
+	}
+	return MessagesResponse{Messages: msgs, NextCursor: next, OtherLastReadAt: m.OtherLastReadAt}, nil
 }
 
-func (s *Service) ensureCanChat(ctx context.Context, organizationID, userID, otherUserID string) error {
-	exists, err := s.repo.UserExists(ctx, organizationID, otherUserID)
-	if err != nil {
-		return ErrValidateChatTarget
+// ValidateMessage normalises a message body.
+func ValidateMessage(body string) (string, error) {
+	cleaned := textx.Clean(body, true)
+	if cleaned == "" {
+		return "", ErrEmptyMessage
 	}
-	if !exists {
-		return ErrUserNotFound
+	if textx.Len(cleaned) > MaxMessageRunes {
+		return "", ErrMessageTooLong
+	}
+	return cleaned, nil
+}
+
+func (s *Service) Send(ctx context.Context, userID, conversationID, body string) (Message, error) {
+	cleaned, err := ValidateMessage(body)
+	if err != nil {
+		return Message{}, err
+	}
+	m, err := s.repo.Membership(ctx, userID, conversationID)
+	if err != nil {
+		return Message{}, err
+	}
+	msg, err := s.repo.CreateMessage(ctx, userID, conversationID, cleaned)
+	if err != nil {
+		return Message{}, err
 	}
 
+	if s.publisher != nil {
+		event := realtime.Event{Type: "message.new", Data: msg}
+		s.publisher.Publish(m.OtherUserID, event)
+		s.publisher.Publish(userID, event)
+	}
+
+	senderName := "Nouveau message"
+	if cards, err := s.cards.LoadCards(ctx, m.OtherUserID, []string{userID}); err == nil {
+		if card, ok := cards[userID]; ok && card.FirstName != "" {
+			senderName = card.FirstName
+		}
+	}
+	s.notifications.Notify(ctx, notifications.Input{
+		UserID:   m.OtherUserID,
+		Type:     notifications.TypeMessage,
+		Title:    senderName,
+		Body:     preview(cleaned),
+		Data:     map[string]string{"conversationId": conversationID, "userId": userID},
+		GroupKey: "conversation:" + conversationID,
+	})
+	return msg, nil
+}
+
+func (s *Service) MarkRead(ctx context.Context, userID, conversationID string) (time.Time, error) {
+	m, err := s.repo.Membership(ctx, userID, conversationID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	at, err := s.repo.MarkRead(ctx, userID, conversationID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	s.notifications.MarkGroupRead(ctx, userID, "conversation:"+conversationID)
+	if s.publisher != nil {
+		s.publisher.Publish(m.OtherUserID, realtime.Event{Type: "conversation.read", Data: map[string]any{
+			"conversationId": conversationID, "userId": userID, "readAt": at,
+		}})
+	}
+	return at, nil
+}
+
+func (s *Service) Clear(ctx context.Context, userID, conversationID string) error {
+	if err := s.repo.Clear(ctx, userID, conversationID); err != nil {
+		return err
+	}
+	s.notifications.MarkGroupRead(ctx, userID, "conversation:"+conversationID)
 	return nil
 }
 
-func normalizeChatMessagesLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatMessagesLimit
+func preview(body string) string {
+	runes := []rune(body)
+	if len(runes) > 120 {
+		return string(runes[:117]) + "…"
 	}
-	if limit > maxChatMessagesLimit {
-		return maxChatMessagesLimit
-	}
-	return limit
-}
-
-func normalizeChatsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatsLimit
-	}
-	if limit > maxChatsLimit {
-		return maxChatsLimit
-	}
-	return limit
-}
-
-func normalizeChatsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+	return body
 }
