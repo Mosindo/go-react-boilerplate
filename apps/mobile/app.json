@@ -1,12 +1,48 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lueur",
+    "slug": "lueur",
+    "scheme": "lueur",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#14100E",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.lueur.dating",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Lueur accède à vos photos uniquement pour celles que vous choisissez d'ajouter à votre profil.",
+        "NSLocationWhenInUseUsageDescription": "Lueur utilise votre position approximative pour vous montrer des personnes proches. Votre position exacte n'est jamais partagée."
+      }
+    },
+    "android": {
+      "package": "app.lueur.dating",
+      "permissions": ["ACCESS_COARSE_LOCATION"],
+      "blockedPermissions": ["ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION", "RECORD_AUDIO"]
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "Lueur",
+      "backgroundColor": "#14100E",
+      "themeColor": "#F2915F"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lueur accède à vos photos uniquement pour celles que vous choisissez d'ajouter à votre profil.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lueur utilise votre position approximative pour vous montrer des personnes proches. Votre position exacte n'est jamais partagée."
+        }
+      ],
+      "expo-secure-store"
     ]
   }
 }
