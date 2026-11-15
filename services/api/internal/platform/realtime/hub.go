@@ -36,7 +36,11 @@ func NewHub() *Hub {
 	return &Hub{clients: make(map[string]map[*client]struct{})}
 }
 
-func (h *Hub) register(c *client) {
+// MaxConnectionsPerUser bounds memory used by a single account (several
+// devices and tabs are fine; a script opening thousands of sockets is not).
+const MaxConnectionsPerUser = 10
+
+func (h *Hub) register(c *client) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	set, ok := h.clients[c.userID]
@@ -44,7 +48,11 @@ func (h *Hub) register(c *client) {
 		set = make(map[*client]struct{})
 		h.clients[c.userID] = set
 	}
+	if len(set) >= MaxConnectionsPerUser {
+		return false
+	}
 	set[c] = struct{}{}
+	return true
 }
 
 func (h *Hub) unregister(c *client) {

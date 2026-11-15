@@ -2,7 +2,8 @@
  * Browser E2E of the critical journey on the web build:
  * register → onboarding (name, birthdate, gender, seeking, photo, bio,
  * location) → likes received → like back → match → realtime chat → read
- * receipt → notifications → settings → account deletion.
+ * receipt → notifications → swipes → preferences → profile edit → report →
+ * settings → account deletion.
  *
  * Requires a running API (E2E_API_URL, default http://localhost:18080) with
  * ALLOWED_ORIGINS containing the web origin, and the exported web build served
@@ -134,6 +135,44 @@ async function main() {
     await tid("notification-row").first().waitFor();
     await shot(page, "08-notifications");
     await page.getByRole("button", { name: "Retour" }).click();
+
+    step("swipe in discovery (when other profiles exist), preferences");
+    await tid("tab-discover").click();
+    await tid("discovery-screen").waitFor();
+    await page.waitForTimeout(800);
+    if (await tid("swipe-pass").isVisible()) {
+      await tid("swipe-pass").click();
+      await page.waitForTimeout(600);
+      if (await tid("swipe-like").isVisible()) await tid("swipe-like").click();
+      await page.waitForTimeout(600);
+    }
+    await tid("open-preferences").click();
+    await tid("preferences-screen").waitFor();
+    await page.getByRole("button", { name: "Augmenter Âge maximum" }).click();
+    await tid("preferences-save").click();
+    await tid("discovery-screen").waitFor();
+
+    step("edit profile");
+    await tid("tab-me").click();
+    await tid("open-edit-profile").click();
+    await tid("edit-bio").fill("Nouvelle bio écrite pendant le test de bout en bout.");
+    await tid("edit-profile-save").click();
+    await page.getByText("Nouvelle bio écrite pendant le test de bout en bout.").waitFor();
+
+    step("report from the conversation");
+    await tid("tab-messages").click();
+    await tid("conversation-row").first().click();
+    await tid("chat-menu").click();
+    await tid("chat-report").click();
+    await tid("report-harassment").click();
+    await tid("report-submit").click();
+    await tid("conversations-screen").waitFor();
+    await page.getByText("Aucun match pour l'instant").waitFor({ timeout: 8000 });
+    expectStatus(
+      await request("GET", `/conversations/${conversation.id}/messages`, { token: romain.token }),
+      404,
+      "conversation removed after report"
+    );
 
     step("profile, settings, delete account");
     await tid("tab-me").click();

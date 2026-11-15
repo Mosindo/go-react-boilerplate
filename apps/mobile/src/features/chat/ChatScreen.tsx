@@ -37,6 +37,14 @@ export function ChatScreen({ route, navigation }: Props) {
   const [reporting, setReporting] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  // Several paths can end this screen at once (our own unmatch/block/report
+  // and the matching realtime "match.removed" event): leave exactly once.
+  const left = useRef(false);
+  const leave = useCallback(() => {
+    if (left.current) return;
+    left.current = true;
+    navigation.goBack();
+  }, [navigation]);
 
   const conversation = useQuery({ queryKey: queryKeys.conversation(conversationId), queryFn: () => chatApi.conversation(conversationId) });
   const messages = useInfiniteQuery({
@@ -68,9 +76,9 @@ export function ChatScreen({ route, navigation }: Props) {
     if (event.type === "message.new" && event.data.conversationId === conversationId && event.data.senderId !== user?.id) {
       markReadRef.current();
     }
-    if (event.type === "match.removed" && conversation.data && event.data.matchId === conversation.data.matchId) {
+    if (event.type === "match.removed" && conversation.data && event.data.matchId === conversation.data.matchId && !left.current) {
       toast("Cette conversation n'est plus disponible.");
-      navigation.goBack();
+      leave();
     }
   });
 
@@ -150,7 +158,7 @@ export function ChatScreen({ route, navigation }: Props) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
       toast("Match annulé.");
-      navigation.goBack();
+      leave();
     },
     onError: (e) => toast(errorMessage(e), "error")
   });
@@ -161,7 +169,7 @@ export function ChatScreen({ route, navigation }: Props) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
       setConfirm(null);
       toast("Conversation effacée de votre côté.");
-      navigation.goBack();
+      leave();
     },
     onError: (e) => toast(errorMessage(e), "error")
   });
@@ -343,7 +351,7 @@ export function ChatScreen({ route, navigation }: Props) {
         onClose={() => setReporting(false)}
         onDone={() => {
           setReporting(false);
-          navigation.goBack();
+          leave();
         }}
       />
       <BlockConfirm
@@ -353,7 +361,7 @@ export function ChatScreen({ route, navigation }: Props) {
         onClose={() => setBlocking(false)}
         onDone={() => {
           setBlocking(false);
-          navigation.goBack();
+          leave();
         }}
       />
     </Screen>

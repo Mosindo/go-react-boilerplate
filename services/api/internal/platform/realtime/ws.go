@@ -60,7 +60,10 @@ func (h *Hub) Handler(authenticate Authenticator) gin.HandlerFunc {
 		}
 
 		cl := &client{userID: userID, send: make(chan []byte, sendBuffer)}
-		h.register(cl)
+		if !h.register(cl) {
+			closeWith(conn, websocket.CloseTryAgainLater, "too many connections")
+			return
+		}
 
 		ready, _ := json.Marshal(Event{Type: "ready", Data: gin.H{"userId": userID}})
 		cl.send <- ready
