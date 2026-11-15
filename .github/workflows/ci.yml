@@ -150,4 +150,4 @@ jobs:
           exit 1
       - name: Shutdown
         if: always()
-        run: docker compose down -v
+        run: JWT_SECRET=shutdown-only-value docker compose down -v
