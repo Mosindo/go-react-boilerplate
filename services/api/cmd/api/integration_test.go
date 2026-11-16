@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"example.com/api/internal/platform/ratelimit"
 	"github.com/gorilla/websocket"
 )
 
@@ -634,10 +635,13 @@ func TestRealtimeDelivery(t *testing.T) {
 
 func TestRateLimitOnLogin(t *testing.T) {
 	env := newTestEnv(t)
-	cfg := testConfig()
-	router := buildRouter(cfg, Deps{Pool: env.pool, Storage: env.storage, Mailer: env.mailer})
+	strict := ratelimit.New(1, time.Hour, 3)
+	relaxed := ratelimit.New(10_000, time.Second, 10_000)
+	router := buildRouterWithLimits(testConfig(), Deps{Pool: env.pool, Storage: env.storage, Mailer: env.mailer}, RateLimits{
+		Auth: strict, Swipes: relaxed, Messages: relaxed, Uploads: relaxed, Reports: relaxed,
+	})
 	limited := 0
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest("POST", "/auth/login", strings.NewReader(`{"email":"x@it.test","password":"Password1"}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -649,7 +653,7 @@ func TestRateLimitOnLogin(t *testing.T) {
 			}
 		}
 	}
-	if limited == 0 {
-		t.Fatal("expected brute-force logins to be rate limited")
+	if limited != 2 {
+		t.Fatalf("expected the 4th and 5th attempts to be rate limited, got %d limited", limited)
 	}
 }

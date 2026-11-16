@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -9,6 +9,7 @@ import { discoveryApi } from "../../api/social";
 import type { Match, ProfileCard, SwipeAction } from "../../api/types";
 import { MatchCelebration } from "../../components/MatchCelebration";
 import { SwipeDeck, type SwipeDeckHandle } from "../../components/SwipeDeck";
+import { onDeckDecision } from "../../hooks/deckEvents";
 import { keys, useMyProfile } from "../../hooks/queries";
 import type { AppStackParamList } from "../../navigation/types";
 import { colors, spacing } from "../../theme/tokens";
@@ -28,10 +29,12 @@ export default function DiscoverScreen() {
   const decided = useRef(new Set<string>());
   const [celebrate, setCelebrate] = useState<Match | null>(null);
 
-  const deck = useQuery({ queryKey: keys.deck, queryFn: () => discoveryApi.deck(10), staleTime: 0 });
+  const deck = useQuery({ queryKey: keys.deck, queryFn: () => discoveryApi.deck(10), staleTime: 60_000 });
 
   useEffect(() => {
     if (!deck.data) {
+      // The deck query was reset (e.g. new preferences): start over.
+      setQueue([]);
       return;
     }
     setQueue((current) => {
@@ -41,13 +44,14 @@ export default function DiscoverScreen() {
     });
   }, [deck.data]);
 
-  // Coming back to the tab after editing preferences: rebuild the deck.
-  useFocusEffect(
-    useCallback(() => {
-      if (deck.isStale) {
-        void deck.refetch();
-      }
-    }, [deck])
+  // A profile answered from the detail screen leaves the deck too.
+  useEffect(
+    () =>
+      onDeckDecision((userId) => {
+        decided.current.add(userId);
+        setQueue((q) => q.filter((c) => c.userId !== userId));
+      }),
+    []
   );
 
   const swipe = useMutation({

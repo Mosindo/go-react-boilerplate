@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { discoveryApi } from "../../api/social";
 import { PhotoCarousel } from "../../components/PhotoCarousel";
 import { SafetySheet } from "../../components/SafetySheet";
+import { emitDeckDecision } from "../../hooks/deckEvents";
 import { keys, useProfileCard } from "../../hooks/queries";
 import type { AppScreenProps } from "../../navigation/types";
 import { colors, radii, spacing } from "../../theme/tokens";
@@ -28,7 +29,7 @@ export default function ProfileDetailScreen({ navigation, route }: AppScreenProp
     setBusy(true);
     try {
       const res = await discoveryApi.swipe(card.userId, action);
-      await qc.invalidateQueries({ queryKey: keys.deck });
+      emitDeckDecision(card.userId);
       if (res.matched && res.match) {
         showToast(`C'est réciproque avec ${card.firstName} !`, "success");
         void qc.invalidateQueries({ queryKey: keys.matches });
@@ -108,7 +109,7 @@ export default function ProfileDetailScreen({ navigation, route }: AppScreenProp
         matchId={matchId}
         onClose={() => setSafetyOpen(false)}
         onDone={() => {
-          void qc.invalidateQueries({ queryKey: keys.deck });
+          emitDeckDecision(card.userId);
           navigation.navigate("Tabs", { screen: fromDeck ? "Discover" : "Matches" });
         }}
       />

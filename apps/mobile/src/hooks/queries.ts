@@ -44,7 +44,8 @@ export function useSavePreferences() {
     mutationFn: (prefs: Preferences) => profileApi.savePreferences(prefs),
     onSuccess: (me) => {
       setMe(me);
-      void qc.invalidateQueries({ queryKey: keys.deck });
+      // New criteria: drop the current deck entirely and fetch a fresh one.
+      void qc.resetQueries({ queryKey: keys.deck });
     }
   });
 }
