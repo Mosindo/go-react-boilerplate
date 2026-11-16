@@ -13,6 +13,7 @@ import (
 	safetyfeature "example.com/api/internal/features/safety"
 	"example.com/api/internal/platform/config"
 	platformhandlers "example.com/api/internal/platform/handlers"
+	"example.com/api/internal/platform/imaging"
 	"example.com/api/internal/platform/mailer"
 	"example.com/api/internal/platform/media"
 	"example.com/api/internal/platform/middleware"
@@ -38,6 +39,9 @@ type RateLimits struct {
 	Messages *ratelimit.Limiter
 	Uploads  *ratelimit.Limiter
 	Reports  *ratelimit.Limiter
+	// Location changes are throttled to make distance trilateration impractical.
+	Location *ratelimit.Limiter
+	Realtime *ratelimit.Limiter
 }
 
 func defaultRateLimits() RateLimits {
@@ -45,8 +49,10 @@ func defaultRateLimits() RateLimits {
 		Auth:     ratelimit.New(10, time.Minute, 10),
 		Swipes:   ratelimit.New(120, time.Minute, 60),
 		Messages: ratelimit.New(60, time.Minute, 30),
-		Uploads:  ratelimit.New(20, time.Minute, 10),
+		Uploads:  ratelimit.New(20, time.Minute, 5),
 		Reports:  ratelimit.New(10, time.Hour, 5),
+		Location: ratelimit.New(10, time.Hour, 5),
+		Realtime: ratelimit.New(30, time.Minute, 10),
 	}
 }
 
@@ -60,6 +66,13 @@ func buildRouterWithLimits(cfg config.Config, deps Deps, limits RateLimits) *gin
 	}
 	if deps.Hub == nil {
 		deps.Hub = realtime.NewHub()
+	}
+	relaxedDefault := ratelimit.New(10_000, time.Second, 10_000)
+	if limits.Location == nil {
+		limits.Location = relaxedDefault
+	}
+	if limits.Realtime == nil {
+		limits.Realtime = relaxedDefault
 	}
 
 	r := gin.New()
@@ -75,7 +88,7 @@ func buildRouterWithLimits(cfg config.Config, deps Deps, limits RateLimits) *gin
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
-	r.Use(middleware.BodyLimit(1 << 20))
+	r.Use(middleware.BodyLimit(1<<20, imaging.MaxUploadBytes+(1<<20)))
 
 	secret := []byte(cfg.JWTSecret)
 	signer := media.NewSigner(secret, time.Hour)
@@ -90,7 +103,7 @@ func buildRouterWithLimits(cfg config.Config, deps Deps, limits RateLimits) *gin
 	matchingService := matchingfeature.NewService(matchingfeature.NewPGRepository(deps.Pool), profilesService, profilesService, notificationsService, deps.Hub)
 	chatService := chatfeature.NewService(chatfeature.NewPGRepository(deps.Pool), notificationsService, deps.Hub)
 	safetyService := safetyfeature.NewService(safetyfeature.NewPGRepository(deps.Pool), deps.Hub)
-	realtimeHandler := realtime.NewHandler(deps.Hub, cfg.AllowedOrigins)
+	realtimeHandler := realtime.NewHandler(deps.Hub, cfg.AllowedOrigins, authService.IsSessionActive)
 
 	byIP := func(l *ratelimit.Limiter, scope string) gin.HandlerFunc {
 		return ratelimit.Middleware(l, scope, ratelimit.ByIP)
@@ -101,14 +114,14 @@ func buildRouterWithLimits(cfg config.Config, deps Deps, limits RateLimits) *gin
 
 	r.GET("/health", platformhandlers.NewHealthHandler(deps.Pool))
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, byIP(limits.Auth, "auth"))
-	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser, byUser(limits.Location, "location"))
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser, byUser(limits.Uploads, "uploads"))
 	discoveryfeature.RegisterRoutes(r, discoveryfeature.NewHandler(discoveryService), requireUser)
 	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, byUser(limits.Swipes, "swipes"))
 	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser, byUser(limits.Messages, "messages"))
 	safetyfeature.RegisterRoutes(r, safetyfeature.NewHandler(safetyService), requireUser, byUser(limits.Reports, "reports"))
 	notificationsfeature.RegisterRoutes(r, notificationsfeature.NewHandler(notificationsService), requireUser)
-	r.POST("/realtime/ticket", requireUser, realtimeHandler.Ticket)
+	r.POST("/realtime/ticket", requireUser, byUser(limits.Realtime, "realtime"), realtimeHandler.Ticket)
 	r.GET("/realtime", realtimeHandler.Connect)
 	return r
 }

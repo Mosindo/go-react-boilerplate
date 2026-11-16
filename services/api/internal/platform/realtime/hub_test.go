@@ -10,20 +10,20 @@ func TestTicketsAreSingleUseAndExpire(t *testing.T) {
 	now := time.Unix(0, 0)
 	h.now = func() time.Time { return now }
 
-	tk, err := h.IssueTicket("u1")
+	tk, err := h.IssueTicket("u1", "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uid, ok := h.RedeemTicket(tk); !ok || uid != "u1" {
-		t.Fatalf("expected ticket to redeem for u1, got %q %v", uid, ok)
+	if uid, sid, ok := h.RedeemTicket(tk); !ok || uid != "u1" || sid != "s1" {
+		t.Fatalf("expected ticket to redeem for u1/s1, got %q %q %v", uid, sid, ok)
 	}
-	if _, ok := h.RedeemTicket(tk); ok {
+	if _, _, ok := h.RedeemTicket(tk); ok {
 		t.Fatal("ticket must be single-use")
 	}
 
-	tk2, _ := h.IssueTicket("u2")
+	tk2, _ := h.IssueTicket("u2", "s2")
 	now = now.Add(time.Minute)
-	if _, ok := h.RedeemTicket(tk2); ok {
+	if _, _, ok := h.RedeemTicket(tk2); ok {
 		t.Fatal("expired ticket must be rejected")
 	}
 }

@@ -52,8 +52,7 @@ type Repository interface {
 
 	CreatePasswordReset(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
 	CountRecentPasswordResets(ctx context.Context, userID string, since time.Time) (int, error)
-	GetActivePasswordReset(ctx context.Context, userID string) (StoredReset, error)
-	IncrementResetAttempts(ctx context.Context, resetID string) error
+	ReserveResetAttempt(ctx context.Context, userID string, maxAttempts int) (StoredReset, error)
 	ConsumePasswordReset(ctx context.Context, resetID string) (bool, error)
 }
 
@@ -223,22 +222,24 @@ func (r *PGRepository) CountRecentPasswordResets(ctx context.Context, userID str
 	return n, err
 }
 
-func (r *PGRepository) GetActivePasswordReset(ctx context.Context, userID string) (StoredReset, error) {
+// ReserveResetAttempt atomically consumes one attempt on the latest active
+// reset code and returns it; ErrRepositoryNotFound when none is usable.
+func (r *PGRepository) ReserveResetAttempt(ctx context.Context, userID string, maxAttempts int) (StoredReset, error) {
 	var s StoredReset
 	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, code_hash, attempts FROM password_resets
-		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
-		ORDER BY created_at DESC LIMIT 1
-	`, userID).Scan(&s.ID, &s.UserID, &s.CodeHash, &s.Attempts)
+		UPDATE password_resets SET attempts = attempts + 1
+		WHERE id = (
+			SELECT id FROM password_resets
+			WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+			ORDER BY created_at DESC LIMIT 1
+		)
+		  AND attempts < $2 AND used_at IS NULL AND expires_at > NOW()
+		RETURNING id, user_id, code_hash, attempts
+	`, userID, maxAttempts).Scan(&s.ID, &s.UserID, &s.CodeHash, &s.Attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return StoredReset{}, ErrRepositoryNotFound
 	}
 	return s, err
-}
-
-func (r *PGRepository) IncrementResetAttempts(ctx context.Context, resetID string) error {
-	_, err := r.db.Exec(ctx, `UPDATE password_resets SET attempts = attempts + 1 WHERE id = $1`, resetID)
-	return err
 }
 
 func (r *PGRepository) ConsumePasswordReset(ctx context.Context, resetID string) (bool, error) {

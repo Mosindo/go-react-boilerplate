@@ -21,7 +21,7 @@ const (
 	MaxUploadBytes = 10 << 20
 	MinDimension   = 200
 	MaxDimension   = 8000
-	MaxPixels      = 40_000_000
+	MaxPixels      = 24_000_000 // ~96 MB decoded RGBA worst case
 	OutputMaxSide  = 1600
 	jpegQuality    = 85
 )

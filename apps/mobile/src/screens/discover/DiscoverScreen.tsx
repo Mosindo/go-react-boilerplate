@@ -113,7 +113,7 @@ export default function DiscoverScreen() {
             testID="deck-pass"
           />
           <IconButton
-            icon="information"
+            icon="information-circle"
             label={`Voir le profil de ${queue[0].firstName}`}
             size={48}
             color={colors.plum}

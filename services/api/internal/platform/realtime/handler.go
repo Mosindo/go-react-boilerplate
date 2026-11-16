@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -16,20 +17,28 @@ const (
 	sendBuffer = 64
 )
 
+// SessionChecker reports whether a session is still active.
+type SessionChecker func(ctx context.Context, sessionID, userID string) (bool, error)
+
 type Handler struct {
-	hub      *Hub
-	upgrader websocket.Upgrader
+	hub          *Hub
+	upgrader     websocket.Upgrader
+	checkSession SessionChecker
 }
 
 // NewHandler builds the WebSocket handlers. Native apps send no Origin header;
 // browsers must come from ALLOWED_ORIGINS when that list is configured.
-func NewHandler(hub *Hub, allowedOrigins []string) *Handler {
+//
+// Every open socket re-validates its session on each ping (25 s), so logout,
+// password change or account deletion also closes realtime delivery.
+func NewHandler(hub *Hub, allowedOrigins []string, checkSession SessionChecker) *Handler {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
 		allowed[strings.TrimSpace(o)] = struct{}{}
 	}
 	return &Handler{
-		hub: hub,
+		hub:          hub,
+		checkSession: checkSession,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 4096,
@@ -47,7 +56,7 @@ func NewHandler(hub *Hub, allowedOrigins []string) *Handler {
 
 // Ticket issues a one-time WebSocket ticket for the authenticated user.
 func (h *Handler) Ticket(c *gin.Context) {
-	value, err := h.hub.IssueTicket(c.GetString("userID"))
+	value, err := h.hub.IssueTicket(c.GetString("userID"), c.GetString("sessionID"))
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "could not issue ticket", "code": "internal"})
 		return
@@ -58,7 +67,7 @@ func (h *Handler) Ticket(c *gin.Context) {
 
 // Connect upgrades the connection after redeeming the ticket.
 func (h *Handler) Connect(c *gin.Context) {
-	userID, ok := h.hub.RedeemTicket(c.Query("ticket"))
+	userID, sessionID, ok := h.hub.RedeemTicket(c.Query("ticket"))
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid ticket", "code": "unauthorized"})
 		return
@@ -67,10 +76,10 @@ func (h *Handler) Connect(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	cl := &client{userID: userID, send: make(chan []byte, sendBuffer)}
+	cl := &client{userID: userID, sessionID: sessionID, send: make(chan []byte, sendBuffer)}
 	h.hub.register(cl)
 
-	go writePump(conn, cl)
+	go h.writePump(conn, cl)
 	readPump(conn, h.hub, cl)
 }
 
@@ -93,7 +102,18 @@ func readPump(conn *websocket.Conn, hub *Hub, cl *client) {
 	}
 }
 
-func writePump(conn *websocket.Conn, cl *client) {
+func (h *Handler) sessionActive(cl *client) bool {
+	if h.checkSession == nil {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	active, err := h.checkSession(ctx, cl.sessionID, cl.userID)
+	// On a transient DB error keep the socket; the next tick re-checks.
+	return active || err != nil
+}
+
+func (h *Handler) writePump(conn *websocket.Conn, cl *client) {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -111,6 +131,10 @@ func writePump(conn *websocket.Conn, cl *client) {
 				return
 			}
 		case <-ticker.C:
+			if !h.sessionActive(cl) {
+				_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "session ended"))
+				return
+			}
 			_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return

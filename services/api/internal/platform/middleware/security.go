@@ -72,12 +72,17 @@ func requestIsHTTPS(c *gin.Context) bool {
 	return strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")), "https")
 }
 
-// BodyLimit caps request bodies. Multipart uploads are skipped here because
-// the upload handlers enforce their own, larger, limit.
-func BodyLimit(maxBytes int64) gin.HandlerFunc {
+// BodyLimit caps every request body. Multipart requests get the larger
+// uploadMax ceiling (upload handlers apply their own exact cap on top); a
+// multipart Content-Type therefore never disables the limit.
+func BodyLimit(maxBytes, uploadMax int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.Body != nil && !strings.HasPrefix(c.ContentType(), "multipart/") {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		if c.Request.Body != nil {
+			limit := maxBytes
+			if strings.HasPrefix(c.ContentType(), "multipart/") {
+				limit = uploadMax
+			}
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
 		}
 		c.Next()
 	}

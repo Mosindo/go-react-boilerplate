@@ -92,7 +92,20 @@ func (r *PGRepository) Insert(ctx context.Context, matchID, senderID, body strin
 	var msg Message
 	created := false
 	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-		var err error
+		// Lock the match row so an unmatch/block racing this send either
+		// commits first (and the send fails) or waits for the message.
+		var locked string
+		err := tx.QueryRow(ctx, `
+			SELECT id FROM matches
+			WHERE id = $1 AND unmatched_at IS NULL AND ($2 = user_a_id OR $2 = user_b_id)
+			FOR SHARE
+		`, matchID, senderID).Scan(&locked)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrConversationNotFound
+		}
+		if err != nil {
+			return err
+		}
 		msg, err = scan(tx.QueryRow(ctx, `
 			INSERT INTO messages (match_id, sender_id, body, client_message_id)
 			VALUES ($1, $2, $3, $4)

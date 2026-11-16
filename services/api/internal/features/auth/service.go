@@ -259,20 +259,16 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		}
 		return err
 	}
-	reset, err := s.repo.GetActivePasswordReset(ctx, stored.ID)
+	// The attempt is reserved atomically before comparing, so parallel
+	// guesses can never exceed resetMaxAttempts.
+	reset, err := s.repo.ReserveResetAttempt(ctx, stored.ID, resetMaxAttempts)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
 			return ErrInvalidResetCode
 		}
 		return err
 	}
-	if reset.Attempts >= resetMaxAttempts {
-		return ErrInvalidResetCode
-	}
 	if !hmac.Equal([]byte(reset.CodeHash), []byte(s.hashResetCode(stored.ID, code))) {
-		if err := s.repo.IncrementResetAttempts(ctx, reset.ID); err != nil {
-			return err
-		}
 		return ErrInvalidResetCode
 	}
 	consumed, err := s.repo.ConsumePasswordReset(ctx, reset.ID)
@@ -307,7 +303,13 @@ func (s *Service) setPassword(ctx context.Context, userID, password string) erro
 	if err := s.repo.UpdatePassword(ctx, userID, string(hash)); err != nil {
 		return err
 	}
-	return s.repo.RevokeAllSessions(ctx, userID)
+	if err := s.repo.RevokeAllSessions(ctx, userID); err != nil {
+		return err
+	}
+	if s.observer != nil {
+		s.observer.DisconnectUser(userID)
+	}
+	return nil
 }
 
 // DeleteAccount permanently deletes the user and all associated data, after

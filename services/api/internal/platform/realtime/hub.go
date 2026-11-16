@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"sync"
 	"time"
@@ -27,8 +28,9 @@ type Publisher interface {
 }
 
 type client struct {
-	userID string
-	send   chan []byte
+	userID    string
+	sessionID string
+	send      chan []byte
 }
 
 type Hub struct {
@@ -42,6 +44,7 @@ type Hub struct {
 
 type ticket struct {
 	userID    string
+	sessionID string
 	expiresAt time.Time
 }
 
@@ -55,8 +58,12 @@ func NewHub() *Hub {
 	}
 }
 
-// IssueTicket returns a one-time ticket valid for 30 seconds.
-func (h *Hub) IssueTicket(userID string) (string, error) {
+// maxTickets bounds pending tickets so the map cannot grow without limit.
+const maxTickets = 50_000
+
+// IssueTicket returns a one-time ticket valid for 30 seconds, bound to the
+// session that requested it.
+func (h *Hub) IssueTicket(userID, sessionID string) (string, error) {
 	buf := make([]byte, 24)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
@@ -66,28 +73,35 @@ func (h *Hub) IssueTicket(userID string) (string, error) {
 	h.ticketsMu.Lock()
 	defer h.ticketsMu.Unlock()
 	now := h.now()
-	for k, t := range h.tickets {
-		if now.After(t.expiresAt) {
-			delete(h.tickets, k)
+	if len(h.tickets) >= maxTickets/2 {
+		for k, t := range h.tickets {
+			if now.After(t.expiresAt) {
+				delete(h.tickets, k)
+			}
 		}
 	}
-	h.tickets[value] = ticket{userID: userID, expiresAt: now.Add(ticketTTL)}
+	if len(h.tickets) >= maxTickets {
+		return "", errTooManyTickets
+	}
+	h.tickets[value] = ticket{userID: userID, sessionID: sessionID, expiresAt: now.Add(ticketTTL)}
 	return value, nil
 }
 
-// RedeemTicket consumes a ticket and returns its user.
-func (h *Hub) RedeemTicket(value string) (string, bool) {
+var errTooManyTickets = errors.New("too many pending realtime tickets")
+
+// RedeemTicket consumes a ticket and returns its user and session.
+func (h *Hub) RedeemTicket(value string) (string, string, bool) {
 	h.ticketsMu.Lock()
 	defer h.ticketsMu.Unlock()
 	t, ok := h.tickets[value]
 	if !ok {
-		return "", false
+		return "", "", false
 	}
 	delete(h.tickets, value)
 	if h.now().After(t.expiresAt) {
-		return "", false
+		return "", "", false
 	}
-	return t.userID, true
+	return t.userID, t.sessionID, true
 }
 
 func (h *Hub) register(c *client) {

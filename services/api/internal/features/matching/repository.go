@@ -62,6 +62,20 @@ func (r *PGRepository) RecordSwipe(ctx context.Context, swiperID, targetID, acti
 		`, swiperID, targetID); err != nil {
 			return err
 		}
+		// Re-checked under the pair lock (safety.Block takes the same lock), so
+		// a block racing a like can never leave a match between the pair.
+		var blocked bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM blocks
+				WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)
+			)
+		`, swiperID, targetID).Scan(&blocked); err != nil {
+			return err
+		}
+		if blocked {
+			return ErrTargetUnavailable
+		}
 
 		var inserted bool
 		err := tx.QueryRow(ctx, `
@@ -136,6 +150,15 @@ const matchSelect = `
 	) lm ON TRUE
 `
 
+// notBlocked is appended to every match query as defense in depth.
+const notBlocked = `
+	AND NOT EXISTS (
+		SELECT 1 FROM blocks b
+		WHERE (b.blocker_id = m.user_a_id AND b.blocked_id = m.user_b_id)
+		   OR (b.blocker_id = m.user_b_id AND b.blocked_id = m.user_a_id)
+	)
+`
+
 func scanMatch(row pgx.Row) (storedMatch, error) {
 	var m storedMatch
 	var body, sender *string
@@ -153,7 +176,7 @@ func scanMatch(row pgx.Row) (storedMatch, error) {
 func (r *PGRepository) GetMatch(ctx context.Context, userID, matchID string) (storedMatch, error) {
 	m, err := scanMatch(r.db.QueryRow(ctx, matchSelect+`
 		WHERE m.id = $2 AND m.unmatched_at IS NULL AND (m.user_a_id = $1 OR m.user_b_id = $1)
-	`, userID, matchID))
+	`+notBlocked, userID, matchID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return storedMatch{}, ErrMatchNotFound
 	}
@@ -163,6 +186,7 @@ func (r *PGRepository) GetMatch(ctx context.Context, userID, matchID string) (st
 func (r *PGRepository) ListMatches(ctx context.Context, userID string, limit, offset int) ([]storedMatch, error) {
 	rows, err := r.db.Query(ctx, matchSelect+`
 		WHERE (m.user_a_id = $1 OR m.user_b_id = $1) AND m.unmatched_at IS NULL
+	`+notBlocked+`
 		ORDER BY COALESCE(m.last_message_at, m.created_at) DESC, m.id DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)

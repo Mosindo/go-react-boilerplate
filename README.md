@@ -348,11 +348,26 @@ Les routes marquées 🔒 exigent `Authorization: Bearer <accessToken>`.
   décodage (anti « decompression bomb »), image ré-encodée en JPEG (supprime EXIF/GPS et tout
   contenu caché), clés de stockage générées côté serveur (aucun chemin fourni par le client),
   accès uniquement via URL signée HMAC qui expire.
+- **Concurrence** : un blocage et un like simultanés sont sérialisés par le même verrou de paire
+  (jamais de match entre personnes bloquées) ; un message envoyé pendant une annulation de match
+  est refusé ; les essais de code de réinitialisation sont réservés atomiquement.
+- **Temps réel** : chaque WebSocket est liée à une session et revalidée toutes les 25 s ; un
+  changement de mot de passe ou une suppression de compte ferme immédiatement les connexions.
 - **Abus** : rate limiting par IP (auth) et par utilisateur (swipes, messages, uploads,
-  signalements), limite de taille des corps de requête, en-têtes de sécurité (CSP, nosniff,
+  signalements, changements de position — contre la trilatération —, tickets temps réel), limite
+  de taille de tous les corps de requête (y compris annoncés multipart), en-têtes de sécurité (CSP, nosniff,
   frame-ancestors, HSTS), CORS par liste blanche, IP client fiable uniquement via proxies déclarés.
 - **Tokens côté app** : trousseau sécurisé de l'OS (expo-secure-store) ; sur le web,
   `sessionStorage` seulement.
+
+### Limites connues
+
+- Une URL de photo signée reste valide jusqu'à ~75 min, y compris après un blocage.
+- La distance affichée (paliers de 1 km sous 10 km) combinée à de nombreux changements de
+  position reste une source théorique de trilatération ; elle est freinée par le rate limit
+  (10 changements/heure) et l'arrondi à ~1 km du stockage.
+- Sans position partagée, le filtre de distance n'est pas appliqué (ni le sien, ni celui des autres).
+- Pas de détection de réutilisation d'un refresh token déjà tourné (il est simplement refusé).
 
 ---
 
