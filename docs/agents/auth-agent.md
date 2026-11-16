@@ -3,7 +3,7 @@
 ## Responsibility
 
 - Implement and maintain backend authentication
-- Add JWT access token and refresh token flows
+- Maintain JWT access tokens, rotating refresh tokens, password reset and account deletion
 - Keep sessions persisted in PostgreSQL
 - Own auth middleware and auth endpoint behavior
 
@@ -19,7 +19,7 @@
 
 - Modify `services/api/internal/features/auth/**`
 - Add or update auth-related migrations under `services/api/internal/platform/db/migrations`
-- Update backend wiring in `services/api/cmd/api/main.go` when required for auth
+- Update backend wiring in `services/api/cmd/api/router.go` when required for auth
 - Add or update auth integration tests
 
 ## Forbidden Actions

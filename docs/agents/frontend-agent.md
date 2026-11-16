@@ -2,26 +2,24 @@
 
 ## Responsibility
 
-- Integrate React Query into the mobile frontend
-- Implement auth hooks such as `useAuth`, `useLogin`, `useRegister`, and `useCurrentUser`
-- Connect hooks through the existing API client abstraction
-- Handle loading, error, and session state coherently
+- Maintain the Expo app in `apps/mobile` (iOS, Android, web)
+- Keep server state in React Query (`src/hooks/queries.ts`) and realtime updates in `useRealtime`
+- Keep the Lueur design system (`src/theme`, `src/ui`) consistent and accessible
 
 ## Constraints
 
-- Must use the existing API client layer
-- No direct `fetch` calls from screens or components
-- Shared logic belongs in reusable hooks/modules, not screens
-- Must preserve existing navigation and working chat behavior
+- All network access goes through `src/api` (`apiRequest` is the only `fetch` caller)
+- Screens orchestrate; reusable logic lives in hooks, components or utils
+- Never embed secrets: `EXPO_PUBLIC_*` values ship in the bundle
+- Keep `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run e2e:web` green
 
 ## Allowed Actions
 
 - Modify files under `apps/mobile/**`
-- Add frontend dependencies only when clearly justified by this scope
-- Update frontend smoke coverage when needed for the new auth flow
+- Add dependencies only when clearly justified (prefer Expo SDK packages via `npx expo install`)
+- Extend the Playwright E2E when changing a critical flow
 
 ## Forbidden Actions
 
-- No backend schema or API changes owned by other agents
-- No direct network access from UI screens
-- No breaking changes to the existing API client contract without coordination
+- No paywall, paid feature or artificial limit
+- No display of other users' private data (email, birthdate, exact location)

@@ -1,30 +1,25 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Lueur**, a free dating application built on the former `go-react-saas`
+boilerplate (product pivot requested by the founder).
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+A modern dating app that is **100% free**: no subscription, no paywall, no paid boost, no
+artificial like limits, no mandatory ads. Never add a feature that locks essentials behind payment.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
+Core modules:
+- auth (accounts, sessions, password reset, account deletion)
+- profiles (profile, preferences, interests, approximate location)
+- photos
+- discovery
+- matching
 - chat
+- safety (blocks, reports)
 - notifications
-- files
 
 ---
 
@@ -62,14 +57,15 @@ Target structure:
   - `db/`
   - `middleware/`
   - `logger/`
-  - `errors/`
+  - `httpx/`, `ratelimit/`, `storage/`, `imaging/`, `media/`, `mailer/`, `realtime/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -111,12 +107,19 @@ User input:
 - Validate pagination, filters, and sort inputs
 - Validate file metadata and upload constraints
 
+Privacy:
+- Never expose email, birthdate or coordinates of other users
+- Store locations coarsened (~1 km); show only approximate distances
+- Photos are re-encoded server-side and served only through signed, expiring URLs
+- Every authorization rule (blocks, conversation membership, visibility) is enforced server-side
+
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
+- Expected environment variables (see `.env.example`):
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - optional: `APP_ENV`, `UPLOAD_DIR`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*`
 
 ---
 
@@ -129,34 +132,32 @@ Secrets:
 - Keep common API paths O(n) over page size
 
 Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
-- `messages (conversation_id, created_at)`
+- `users.email` (unique)
+- `swipes (swiper_id, target_id)` (PK) and `swipes (target_id, action, swiper_id)`
+- `matches (user_a_id, user_b_id)` (unique) and per-user activity indexes
+- `messages (match_id, created_at, id)` and unread partial index
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` (unique, deferred)
+- `profiles` discovery and location partial indexes
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any delivery run `./scripts/qa.sh` (with `DATABASE_URL_TEST` set), i.e.:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` empty, `go vet ./...`, `go test ./...`, `go build ./cmd/api`
+- `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` in `apps/mobile`
+- For user-facing flows: `npm run e2e:smoke` and `npm run e2e:web` against a running API
 
-If tests fail: fix them before continuing.
+If tests fail: fix them before continuing. Never disable tests or lint to get a green build.
 
-Integration tests to keep healthy:
-- Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+Integration tests to keep healthy (`services/api/cmd/api/integration_test.go`):
+- Health, auth lifecycle, password reset
+- Profile onboarding, photos, discovery filters
+- Like / match / no duplicates / concurrent mutual likes
+- Chat permissions, read receipts, notifications
+- Block, report, account deletion, realtime, rate limiting
 
 ---
 
@@ -171,17 +172,15 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
-  - mobile API fallback
-  - startup scripts
+  - `docker-compose.yml`
+  - mobile API fallback (`apps/mobile/src/api/client.ts`)
+  - `apps/mobile/scripts/start-phone.js`
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
-  - notifications read flow
+  - register, onboarding (photo upload)
+  - discover, like, match
+  - chat send/read in real time
+  - notifications, block/report, account deletion
 
 ---
 
@@ -207,7 +206,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Adding paid features, paywalls, like limits or mandatory ads
+- Exposing private user data (email, birthdate, coordinates) to other users
 
 ---
 

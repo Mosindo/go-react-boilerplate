@@ -1,12 +1,13 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Lueur.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Lueur is and stays free: no paid features, paywalls, like limits or mandatory ads.
+- Privacy first: never expose email, birthdate or coordinates of other users; enforce every rule server-side.
 - Prefer incremental changes over broad refactors.
+- Run `./scripts/qa.sh` before opening a pull request.
 - Update documentation when behavior, architecture, or setup changes.
 
 ## Commit Message Conventions
@@ -35,7 +36,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -84,13 +85,15 @@ go build ./cmd/api
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm run typecheck && npm run lint && npm run format:check
 ```
 
-If the change touches integrated flows, also run:
+If the change touches integrated flows, also run (API on :18080):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+cd apps/mobile
+npm run e2e:smoke
+npm run build:web && npm run e2e:web
 ```
 
 ## Documentation Expectations
