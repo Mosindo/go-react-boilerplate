@@ -1,29 +1,14 @@
-/* eslint-disable no-console */
-const API_BASE_URL = process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080";
+/**
+ * API smoke test of the critical dating flow against a running API:
+ * register -> profile -> preferences -> photo -> discover -> like -> match
+ * -> chat -> read receipt -> notifications -> block.
+ *
+ *   MOBILE_E2E_API_URL=http://localhost:18080 npm run e2e:smoke
+ */
+const { gradientPng: png } = require("./lib/png");
+
+const API = (process.env.MOBILE_E2E_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://localhost:18080").replace(/\/+$/, "");
 const PASSWORD = "Password123";
-
-function uniqueEmail(prefix) {
-  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 100000)}@boilerplate.test`;
-}
-
-async function request(path, init = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {})
-    }
-  });
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  return { status: response.status, ok: response.ok, payload };
-}
 
 function assert(condition, message) {
   if (!condition) {
@@ -31,102 +16,100 @@ function assert(condition, message) {
   }
 }
 
-async function register(email) {
-  const res = await request("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password: PASSWORD })
-  });
-  assert(res.status === 201, `register failed for ${email}: ${res.status} ${JSON.stringify(res.payload)}`);
-  return res.payload;
+async function call(method, path, token, body) {
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let payload;
+  if (body instanceof FormData) {
+    payload = body;
+  } else if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    payload = JSON.stringify(body);
+  }
+  const res = await fetch(`${API}${path}`, { method, headers, body: payload });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  return { status: res.status, data };
+}
+
+async function expectStatus(promise, status, label) {
+  const res = await promise;
+  assert(res.status === status, `${label}: expected ${status}, got ${res.status} ${JSON.stringify(res.data)}`);
+  return res.data;
+}
+
+async function createMember(name, gender, interestedIn, rgb) {
+  const email = `smoke.${name.toLowerCase()}.${Date.now()}.${Math.floor(Math.random() * 1e6)}@smoke.test`;
+  const auth = await expectStatus(call("POST", "/auth/register", null, { email, password: PASSWORD }), 201, `register ${name}`);
+  const token = auth.accessToken;
+  await expectStatus(
+    call("PUT", "/me/profile", token, {
+      firstName: name,
+      birthdate: "1993-04-12",
+      gender,
+      bio: `Smoke test ${name}`,
+      lookingFor: "relationship",
+      interestIds: [1, 2]
+    }),
+    200,
+    `profile ${name}`
+  );
+  await expectStatus(call("PUT", "/me/preferences", token, { interestedIn, ageMin: 18, ageMax: 99, maxDistanceKm: 100 }), 200, `preferences ${name}`);
+  await expectStatus(call("PUT", "/me/location", token, { latitude: 48.85, longitude: 2.35 }), 204, `location ${name}`);
+  const form = new FormData();
+  form.append("photo", new Blob([png(320, 400, rgb)], { type: "image/png" }), "photo.png");
+  await expectStatus(call("POST", "/me/photos", token, form), 201, `photo ${name}`);
+  return { name, email, token, id: auth.user.id };
 }
 
 async function main() {
-  console.log(`[e2e-smoke] API: ${API_BASE_URL}`);
+  console.log(`[smoke] API ${API}`);
+  await expectStatus(call("GET", "/health"), 200, "health");
 
-  const email1 = uniqueEmail("mobile_e2e_a");
-  const email2 = uniqueEmail("mobile_e2e_b");
+  const a = await createMember("Alice", "woman", ["man"], [240, 138, 93]);
+  const b = await createMember("Bruno", "man", ["woman"], [120, 92, 150]);
+  console.log("[smoke] members created");
 
-  const auth1 = await register(email1);
-  const auth2 = await register(email2);
-  assert(auth1?.token && auth2?.token, "expected tokens after register");
+  const deck = await expectStatus(call("GET", "/discover?limit=30", a.token), 200, "discover");
+  assert(
+    deck.profiles.some((p) => p.userId === b.id),
+    "Bruno should appear in Alice's deck"
+  );
+  assert(!JSON.stringify(deck).includes("latitude"), "deck must not leak coordinates");
 
-  const login1 = await request("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email: email1, password: PASSWORD })
-  });
-  assert(login1.status === 200, `login failed: ${login1.status} ${JSON.stringify(login1.payload)}`);
-  assert(login1.payload?.user?.id === auth1.user.id, "login user mismatch");
+  const first = await expectStatus(call("POST", "/swipes", a.token, { targetUserId: b.id, action: "like" }), 200, "like A->B");
+  assert(!first.matched, "one-sided like must not match");
+  const second = await expectStatus(call("POST", "/swipes", b.token, { targetUserId: a.id, action: "like" }), 200, "like B->A");
+  assert(second.matched && second.match, "mutual like must match");
+  const matchId = second.match.id;
+  console.log(`[smoke] match ${matchId}`);
 
-  const users = await request("/users", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(users.status === 200, `users failed: ${users.status}`);
-  const seesUser2 = Array.isArray(users.payload?.users) && users.payload.users.some((u) => u.id === auth2.user.id);
-  assert(seesUser2, "users list should include second user");
+  await expectStatus(call("POST", `/matches/${matchId}/messages`, a.token, { body: "Salut Bruno !" }), 201, "send");
+  const page = await expectStatus(call("GET", `/matches/${matchId}/messages`, b.token), 200, "read messages");
+  assert(page.messages[0].body === "Salut Bruno !", "message must be delivered");
+  await expectStatus(call("POST", `/matches/${matchId}/read`, b.token), 204, "mark read");
 
-  const createPost = await request("/posts", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({ title: "Smoke post", body: "Validating the generic post feed." })
-  });
-  assert(createPost.status === 201, `create post failed: ${createPost.status}`);
+  const notifs = await expectStatus(call("GET", "/notifications", b.token), 200, "notifications");
+  assert(
+    notifs.notifications.some((n) => n.type === "match"),
+    "match notification expected"
+  );
 
-  const listPosts = await request("/posts", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listPosts.status === 200, `list posts failed: ${listPosts.status}`);
-  const seesNewPost =
-    Array.isArray(listPosts.payload?.posts) && listPosts.payload.posts.some((post) => post.id === createPost.payload?.id);
-  assert(seesNewPost, "posts list should include created post");
+  await expectStatus(call("POST", "/blocks", a.token, { userId: b.id }), 204, "block");
+  await expectStatus(call("GET", `/matches/${matchId}/messages`, b.token), 404, "blocked chat");
 
-  const send = await request(`/chats/${auth2.user.id}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({ content: "hello from mobile e2e smoke" })
-  });
-  assert(send.status === 201, `send message failed: ${send.status}`);
-
-  const listMessages = await request(`/chats/${auth2.user.id}/messages`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listMessages.status === 200, `list messages failed: ${listMessages.status}`);
-  assert(Array.isArray(listMessages.payload?.messages) && listMessages.payload.messages.length > 0, "messages should not be empty");
-
-  const createNotification = await request("/notifications", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` },
-    body: JSON.stringify({
-      type: "system",
-      title: "Smoke notification",
-      body: "Validating the generic notification flow."
-    })
-  });
-  assert(createNotification.status === 201, `create notification failed: ${createNotification.status}`);
-
-  const listNotifications = await request("/notifications", {
-    method: "GET",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(listNotifications.status === 200, `list notifications failed: ${listNotifications.status}`);
-  const seesNotification =
-    Array.isArray(listNotifications.payload?.notifications) &&
-    listNotifications.payload.notifications.some((item) => item.id === createNotification.payload?.id);
-  assert(seesNotification, "notifications list should include created notification");
-
-  const markRead = await request(`/notifications/${createNotification.payload.id}/read`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth1.token}` }
-  });
-  assert(markRead.status === 200, `mark notification read failed: ${markRead.status}`);
-  assert(markRead.payload?.isRead === true, "notification should be marked as read");
-
-  console.log("[e2e-smoke] PASS register/login/users/posts/chat/notifications");
+  for (const m of [a, b]) {
+    await expectStatus(call("DELETE", "/me", m.token, { password: PASSWORD }), 204, `delete ${m.name}`);
+  }
+  console.log("[smoke] OK");
 }
 
 main().catch((err) => {
-  console.error(`[e2e-smoke] FAIL ${err instanceof Error ? err.message : String(err)}`);
+  console.error(`[smoke] FAILED: ${err.message}`);
   process.exit(1);
 });
