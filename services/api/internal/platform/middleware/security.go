@@ -15,7 +15,8 @@ func SecurityHeaders() gin.HandlerFunc {
 		headers.Set("Referrer-Policy", "no-referrer")
 		headers.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
 		headers.Set("Cross-Origin-Opener-Policy", "same-origin")
-		headers.Set("Cross-Origin-Resource-Policy", "same-site")
+		headers.Set("Cross-Origin-Resource-Policy", "cross-origin")
+		headers.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 		if requestIsHTTPS(c) {
 			headers.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		}
@@ -69,4 +70,15 @@ func requestIsHTTPS(c *gin.Context) bool {
 		return true
 	}
 	return strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")), "https")
+}
+
+// BodyLimit caps request bodies. Multipart uploads are skipped here because
+// the upload handlers enforce their own, larger, limit.
+func BodyLimit(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body != nil && !strings.HasPrefix(c.ContentType(), "multipart/") {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		}
+		c.Next()
+	}
 }

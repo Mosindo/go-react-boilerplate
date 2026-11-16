@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,58 +10,70 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker confirms that the session referenced by an access token is
+// still active (not revoked by logout, password reset or account deletion).
+type SessionChecker func(ctx context.Context, sessionID, userID string) (bool, error)
+
+// AccessClaims are the claims carried by access tokens.
+type AccessClaims struct {
+	UserID    string `json:"uid"`
+	SessionID string `json:"sid"`
+	jwt.RegisteredClaims
+}
+
+// ParseAccessToken strictly validates an HS256 access token.
+func ParseAccessToken(secret []byte, tokenString string) (AccessClaims, error) {
+	claims := AccessClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, errors.New("unexpected signing method")
+		}
+		return secret, nil
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuedAt(),
+	)
+	if err != nil || !token.Valid {
+		return AccessClaims{}, errors.New("invalid token")
+	}
+	if strings.TrimSpace(claims.UserID) == "" || strings.TrimSpace(claims.SessionID) == "" {
+		return AccessClaims{}, errors.New("invalid token claims")
+	}
+	return claims, nil
+}
+
+func RequireUser(secret []byte, checkSession SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			unauthorized(c, "missing token")
 			return
 		}
-
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, errors.New("unexpected signing method")
+		claims, err := ParseAccessToken(secret, tokenString)
+		if err != nil {
+			unauthorized(c, "invalid token")
+			return
+		}
+		if checkSession != nil {
+			active, err := checkSession(c.Request.Context(), claims.SessionID, claims.UserID)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "could not verify session", "code": "session_check_failed"})
+				return
 			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method type")
+			if !active {
+				unauthorized(c, "session expired")
+				return
 			}
-			return secret, nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
 		}
-
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		userID, ok := stringClaim(claims, "uid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		sessionID, ok := stringClaim(claims, "sid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
-		c.Set("sessionID", sessionID)
+		c.Set("userID", claims.UserID)
+		c.Set("sessionID", claims.SessionID)
 		c.Next()
 	}
+}
+
+func unauthorized(c *gin.Context, message string) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": message, "code": "unauthorized"})
 }
 
 func bearerToken(header string) string {
@@ -69,12 +82,4 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
-}
-
-func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
-	value, ok := claims[key].(string)
-	if !ok || strings.TrimSpace(value) == "" {
-		return "", false
-	}
-	return value, true
 }
