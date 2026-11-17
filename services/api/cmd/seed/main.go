@@ -127,19 +127,24 @@ func main() {
 		if err != nil {
 			log.Fatalf("create %s: %v", email, err)
 		}
-		if userID == "" {
-			continue // already exists
+		if userID != "" {
+			created++
 		}
-		created++
-		if *likeEmail != "" {
-			if _, err := pool.Exec(ctx, `
-				INSERT INTO swipes (swiper_id, target_id, action)
-				SELECT $1, u.id, 'like' FROM users u WHERE u.email = lower(btrim($2)) AND u.is_demo = FALSE
-				ON CONFLICT DO NOTHING
-			`, userID, *likeEmail); err != nil {
-				log.Fatalf("like %s: %v", *likeEmail, err)
-			}
+	}
+
+	if *likeEmail != "" {
+		// Every demo account (new or existing) likes the given real account.
+		tag, err := pool.Exec(ctx, `
+			INSERT INTO swipes (swiper_id, target_id, action)
+			SELECT d.id, u.id, 'like'
+			FROM users d, users u
+			WHERE d.is_demo AND u.email = lower(btrim($1)) AND u.is_demo = FALSE
+			ON CONFLICT DO NOTHING
+		`, *likeEmail)
+		if err != nil {
+			log.Fatalf("like %s: %v", *likeEmail, err)
 		}
+		fmt.Printf("%d demo likes sent to %s.\n", tag.RowsAffected(), *likeEmail)
 	}
 
 	fmt.Printf("Created %d demo accounts (domain %s).\n", created, demoDomain)

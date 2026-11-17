@@ -217,11 +217,11 @@ function SlotAction({ icon, label, onPress }: { icon: React.ComponentProps<typeo
 export function LocationPicker({
   currentCity,
   hasLocation,
-  onSaved
+  successMessage = "Position mise à jour."
 }: {
   currentCity: string;
   hasLocation: boolean;
-  onSaved?: (p: MyProfile) => void;
+  successMessage?: string;
 }) {
   const queryClient = useQueryClient();
   const [showCities, setShowCities] = useState(false);
@@ -236,9 +236,8 @@ export function LocationPicker({
     onSuccess: (profile) => {
       queryClient.setQueryData(queryKeys.profile, profile);
       void queryClient.invalidateQueries({ queryKey: queryKeys.discover });
-      showToast("Position mise à jour.", "success");
+      showToast(successMessage, "success");
       setShowCities(false);
-      onSaved?.(profile);
     },
     onError: (error) => {
       showToast(errorMessage(error), "error");

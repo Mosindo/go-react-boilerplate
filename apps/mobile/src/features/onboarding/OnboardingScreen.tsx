@@ -183,7 +183,11 @@ function StepView({ step, index, profile, onNext, onBack }: StepProps) {
 
         {step === "location" ? (
           <>
-            <LocationPicker currentCity={profile.city} hasLocation={profile.hasLocation} />
+            <LocationPicker
+              currentCity={profile.city}
+              hasLocation={profile.hasLocation}
+              successMessage="Bienvenue sur Lueur ✨ Ton profil est prêt."
+            />
             {onBack ? <Button label="Retour" variant="ghost" onPress={onBack} /> : null}
           </>
         ) : null}

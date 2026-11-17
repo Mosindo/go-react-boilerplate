@@ -109,6 +109,7 @@ func setupRouter(a *app) (*gin.Engine, error) {
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.cfg.AllowedOrigins))
+	r.Use(middleware.BodyLimit(1 << 20))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())

@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Lueur.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Lueur is free for its members: never add paywalls, paid boosts or artificial limits.
+- Treat privacy and safety rules as non-negotiable (see `docs/ARCHITECTURE.md`).
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -35,9 +35,8 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cache`
 
-For automated agent work, use the `codex/` prefix.
 
 ## Pull Request Workflow
 
@@ -77,21 +76,18 @@ Run these checks before pushing changes:
 
 ```bash
 cd services/api
-gofmt -w .
-go test ./...
+gofmt -l .
+go vet ./...
+DATABASE_URL_TEST=postgres://... go test ./...
 go build ./cmd/api
 ```
 
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm run typecheck && npm run lint && npm run format:check && npm test
 ```
 
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
+If the change touches the critical journey, also run `./scripts/e2e.sh`.
 
 ## Documentation Expectations
 

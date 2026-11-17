@@ -85,6 +85,7 @@ export type Match = {
   conversationId: string;
   otherUserId: string;
   createdAt: string;
+  initiatedByMe: boolean;
   profile: PublicProfile;
 };
 

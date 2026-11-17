@@ -23,6 +23,9 @@ type Match struct {
 	ConversationID string    `json:"conversationId"`
 	OtherUserID    string    `json:"otherUserId"`
 	CreatedAt      time.Time `json:"createdAt"`
+	// InitiatedByMe is true for the member whose like completed the match; their client
+	// already shows the match screen and skips the realtime toast.
+	InitiatedByMe bool `json:"initiatedByMe"`
 }
 
 type MatchWithProfile struct {

@@ -57,7 +57,9 @@ export function RealtimeProvider({ children, onOpenConversation, activeConversat
         case "match.created": {
           const match = event.data as Match;
           void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
-          showToast(`Nouveau match avec ${match.profile.firstName} !`, "match", () => onOpenConversation(match.conversationId));
+          if (!match.initiatedByMe) {
+            showToast(`Nouveau match avec ${match.profile.firstName} !`, "match", () => onOpenConversation(match.conversationId));
+          }
           break;
         }
         case "match.ended": {

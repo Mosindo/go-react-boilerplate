@@ -62,6 +62,7 @@ func (s *Service) Swipe(ctx context.Context, swiperID, targetID, action string) 
 	if err != nil {
 		return SwipeResponse{}, err
 	}
+	swiperView.InitiatedByMe = true
 	res.Match = swiperView
 	s.announce(ctx, swiperID, *swiperView)
 	if targetView, err := s.matchFor(ctx, targetID, swiperID, match); err == nil {

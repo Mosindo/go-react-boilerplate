@@ -611,7 +611,10 @@ func TestDatingCriticalFlow(t *testing.T) {
 	if !match.Matched || match.Match == nil || match.Match.ConversationID == "" || match.Match.OtherUserID != alice.ID {
 		t.Fatalf("expected match, got %+v", match)
 	}
-	expectEvent(t, ws, "match.created")
+	matchEvent := expectEvent(t, ws, "match.created")
+	if !strings.Contains(string(matchEvent), `"initiatedByMe":false`) {
+		t.Fatalf("the member who did not complete the match must get initiatedByMe=false: %s", matchEvent)
+	}
 	conversationID := match.Match.ConversationID
 
 	var matchCount int
@@ -863,6 +866,16 @@ func TestRateLimitOnRegister(t *testing.T) {
 	expectStatus(t, last, http.StatusTooManyRequests, "6th register from same IP")
 	if last.Header.Get("Retry-After") == "" {
 		t.Fatal("expected Retry-After header")
+	}
+}
+
+func TestOversizedJSONBodyIsRejected(t *testing.T) {
+	env := setupEnv(t)
+	a := env.register("bigbody")
+	huge := strings.Repeat("a", 2<<20)
+	res := env.do(http.MethodPatch, "/me/profile", a, map[string]string{"bio": huge})
+	if res.Status != http.StatusBadRequest && res.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected oversized body to be rejected, got %d", res.Status)
 	}
 }
 

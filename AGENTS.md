@@ -1,30 +1,24 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Lueur`, a free dating application (Go API + Expo app) built from the former
+`go-react-saas` boilerplate. The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+A dating app that is 100% free for its members: no subscription, no paywall, no paid boost, no artificial
+like limit, no mandatory ads. Never introduce monetisation that locks an essential feature.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Core modules:
+- auth (accounts, sessions, password reset, account deletion)
+- profiles (profile, preferences, privacy settings, interests)
+- photos
+- discovery
+- matching
+- chat (match-scoped conversations, realtime)
+- safety (blocks, reports)
 - notifications
-- files
 
 ---
 
@@ -63,13 +57,15 @@ Target structure:
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `authtoken/`, `httpx/`, `media/`, `storage/`, `mailer/`, `realtime/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -113,10 +109,16 @@ User input:
 
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
+- Expected environment variables (see `.env.example`):
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - `APP_ENV`, `UPLOAD_DIR`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*`
+
+Privacy:
+- Never return exact coordinates, e-mail or birthdate of another member
+- Every chat/profile access must be checked server-side (participant, active match, no block)
+- Demo data must stay flagged (`is_demo`, `.invalid` e-mails) and never be seeded in production
 
 ---
 
@@ -130,12 +132,13 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
+- `swipes (swiper_id, target_id)` and `swipes (target_id, swiper_id)`
+- `matches (user_a_id, user_b_id)` unique
+- `conversation_participants (conversation_id, user_id)` and `(user_id, conversation_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `blocks (blocker_id, blocked_id)` and `(blocked_id, blocker_id)`
 
 ---
 
@@ -143,20 +146,22 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must be empty) and `go vet ./...`
+- `go test ./...` with `DATABASE_URL_TEST` set so integration tests run
+- `go build ./cmd/api` and `go build ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`,
+  `npm run format:check` and `npm test` healthy in `apps/mobile`
+- Critical journey changes: `./scripts/e2e.sh`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/main_integration_test.go`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth lifecycle, password reset/change, account deletion
+- Profiles, preferences, location privacy, photos
+- Discovery, swipes, matches (including concurrent mutual likes), undo, unmatch
+- Chat (`/conversations`, messages, read receipts, local deletion, stranger access denied) and realtime
+- Blocks, reports, notifications, rate limiting
 
 ---
 
@@ -171,17 +176,16 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
-- A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
-  - chat send/read
+- A frontend is only "ready" after a real smoke test (automated by `scripts/e2e.sh` on web):
+  - register and onboarding (photo, location)
+  - discovery, like, match
+  - chat send/read (realtime)
   - notifications read flow
+  - block/report and account deletion
 
 ---
 
@@ -207,7 +211,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Introducing paid features, paywalls or artificial limits without explicit approval
 
 ---
 

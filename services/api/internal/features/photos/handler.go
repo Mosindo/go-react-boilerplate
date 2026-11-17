@@ -135,6 +135,8 @@ func (h *Handler) respond(c *gin.Context, op string, status int, photos []profil
 			httpx.Fail(c, http.StatusConflict, "too_many_photos", "6 photos maximum.")
 		case errors.Is(err, ErrPhotoNotFound):
 			httpx.Fail(c, http.StatusNotFound, "photo_not_found", "Photo introuvable.")
+		case errors.Is(err, ErrRepoUserAbsent):
+			httpx.Fail(c, http.StatusUnauthorized, "user_not_found", "Compte introuvable.")
 		case errors.Is(err, ErrInvalidOrder):
 			httpx.Fail(c, http.StatusBadRequest, "invalid_order", "L'ordre doit contenir toutes tes photos, une seule fois.")
 		default:
