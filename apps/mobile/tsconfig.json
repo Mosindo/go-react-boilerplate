@@ -3,6 +3,11 @@
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
     "moduleResolution": "bundler"
-  }
+  },
+  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx"]
 }
