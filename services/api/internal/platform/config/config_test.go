@@ -26,3 +26,33 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadDefaultsAndValidation(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.AppEnv != EnvDevelopment || cfg.Port != "8080" || cfg.MediaDir == "" || cfg.SMTP.Port != 587 {
+		t.Fatalf("unexpected defaults: %#v", cfg)
+	}
+
+	t.Setenv("APP_ENV", "staging")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid APP_ENV to be rejected")
+	}
+	t.Setenv("APP_ENV", "production")
+
+	t.Setenv("MEDIA_SIGNING_SECRET", "short")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected short MEDIA_SIGNING_SECRET to be rejected")
+	}
+	t.Setenv("MEDIA_SIGNING_SECRET", "")
+
+	t.Setenv("SMTP_HOST", "smtp.mail.test")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected SMTP_FROM to be required with SMTP_HOST")
+	}
+}

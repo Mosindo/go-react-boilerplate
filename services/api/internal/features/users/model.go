@@ -1,21 +1,11 @@
 package users
 
-import "time"
-
-type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=128"`
 }
 
-type UserResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
-}
-
-type UsersResponse struct {
-	Users []UserResponse `json:"users"`
+// DeletedAccount lists what must be cleaned up outside the database.
+type DeletedAccount struct {
+	PhotoStorageKeys []string
+	FormerMatchIDs   []string
 }

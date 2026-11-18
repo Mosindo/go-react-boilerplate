@@ -3,73 +3,61 @@ package users
 import (
 	"context"
 	"errors"
+	"log"
+
+	"example.com/api/internal/platform/realtime"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
+	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidCredentials = errors.New("invalid credentials")
 )
+
+// MediaRemover deletes stored blobs once their database rows are gone.
+type MediaRemover interface {
+	Delete(key string) error
+}
 
 type Service struct {
-	repo Repository
+	repo      Repository
+	media     MediaRemover
+	publisher realtime.Publisher
 }
 
-const (
-	defaultUsersLimit = 20
-	maxUsersLimit     = 100
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, media MediaRemover, publisher realtime.Publisher) *Service {
+	return &Service{repo: repo, media: media, publisher: publisher}
 }
 
-func (s *Service) List(ctx context.Context) ([]User, error) {
-	return s.ListWithPagination(ctx, "", defaultUsersLimit, 0)
-}
-
-func (s *Service) ListWithPagination(ctx context.Context, organizationID string, limit, offset int) ([]User, error) {
-	normalizedLimit := normalizeUsersLimit(limit)
-	normalizedOffset := normalizeOffset(offset)
-	users, err := s.repo.ListUsers(ctx, organizationID, normalizedLimit, normalizedOffset)
+// DeleteAccount permanently removes the member after re-checking the password.
+func (s *Service) DeleteAccount(ctx context.Context, userID, password string) error {
+	hash, err := s.repo.GetPasswordHash(ctx, userID)
 	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]User, 0, len(users))
-	for _, user := range users {
-		payload = append(payload, User{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		})
-	}
-	return payload, nil
-}
-
-func (s *Service) GetByID(ctx context.Context, organizationID, userID string) (User, error) {
-	user, err := s.repo.GetUserByID(ctx, organizationID, userID)
-	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return User{}, ErrUserNotFound
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrUserNotFound
 		}
-		return User{}, err
+		return err
 	}
-	return User{ID: user.ID, Email: user.Email, OrganizationID: user.OrganizationID, CreatedAt: user.CreatedAt}, nil
-}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+		return ErrInvalidCredentials
+	}
 
-func normalizeUsersLimit(limit int) int {
-	if limit <= 0 {
-		return defaultUsersLimit
+	deleted, err := s.repo.DeleteUser(ctx, userID)
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return ErrUserNotFound
+		}
+		return err
 	}
-	if limit > maxUsersLimit {
-		return maxUsersLimit
-	}
-	return limit
-}
 
-func normalizeOffset(offset int) int {
-	if offset < 0 {
-		return 0
+	for _, key := range deleted.PhotoStorageKeys {
+		if err := s.media.Delete(key); err != nil {
+			log.Printf(`{"event":"account_delete_media_error","error":%q}`, err.Error())
+		}
 	}
-	return offset
+	for _, partnerID := range deleted.FormerMatchIDs {
+		s.publisher.Publish(partnerID, realtime.Event{Type: "match.removed", Data: map[string]string{"userId": userID}})
+	}
+	s.publisher.Disconnect(userID)
+	return nil
 }

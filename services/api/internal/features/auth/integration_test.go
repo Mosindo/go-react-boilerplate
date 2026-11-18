@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	chatfeature "example.com/api/internal/features/chat"
-	usersfeature "example.com/api/internal/features/users"
 	"example.com/api/internal/platform/db"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -19,7 +17,7 @@ func TestAuthServiceRegisterLoginMe(t *testing.T) {
 	defer pool.Close()
 
 	authRepo := NewPGRepository(pool)
-	svc := NewService(authRepo, []byte("services-test-secret"))
+	svc := NewService(authRepo, []byte("services-test-secret-0123456789abcdef"), &captureMailer{})
 	email := uniqueEmail("authsvc")
 	password := "Password123"
 	defer cleanupUsers(t, pool, []string{email})
@@ -102,123 +100,101 @@ func TestAuthServiceRegisterLoginMe(t *testing.T) {
 	}
 }
 
-func TestUsersServiceListAndGetByID(t *testing.T) {
+type captureMailer struct {
+	body string
+}
+
+func (m *captureMailer) Send(_ context.Context, _, _, body string) error {
+	m.body = body
+	return nil
+}
+
+func TestPasswordResetFlow(t *testing.T) {
 	pool := setupFeaturesTestDB(t)
 	defer pool.Close()
 
-	authRepo := NewPGRepository(pool)
-	authSvc := NewService(authRepo, []byte("services-test-secret"))
-	usersRepo := usersfeature.NewPGRepository(pool)
-	usersSvc := usersfeature.NewService(usersRepo)
+	mailer := &captureMailer{}
+	svc := NewService(NewPGRepository(pool), []byte("services-test-secret-0123456789abcdef"), mailer)
+	email := uniqueEmail("reset")
+	defer cleanupUsers(t, pool, []string{email})
 
-	email1 := uniqueEmail("users1")
-	email2 := uniqueEmail("users2")
-	email3 := uniqueEmail("users3")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email1, email2, email3})
-
-	_, user1, err := authSvc.Register(context.Background(), email1, password, "", "")
+	tokens, user, err := svc.Register(context.Background(), email, "Password123", "", "")
 	if err != nil {
-		t.Fatalf("register user1: %v", err)
-	}
-	_, user2, err := authSvc.Register(context.Background(), email2, password, "", "")
-	if err != nil {
-		t.Fatalf("register user2: %v", err)
-	}
-	_, user3, err := authSvc.Register(context.Background(), email3, password, "", "")
-	if err != nil {
-		t.Fatalf("register user3: %v", err)
+		t.Fatalf("register: %v", err)
 	}
 
-	listed, err := usersSvc.ListWithPagination(context.Background(), user1.OrganizationID, 10, 0)
-	if err != nil {
-		t.Fatalf("list users: %v", err)
+	if err := svc.RequestPasswordReset(context.Background(), "unknown_"+email); err != nil {
+		t.Fatalf("unknown e-mail must not error: %v", err)
 	}
-	if !containsUser(listed, user1.ID) || !containsUser(listed, user2.ID) || !containsUser(listed, user3.ID) {
-		t.Fatalf("expected user list to contain all registered users")
-	}
-
-	gotUser, err := usersSvc.GetByID(context.Background(), user1.OrganizationID, user2.ID)
-	if err != nil {
-		t.Fatalf("get user by id: %v", err)
-	}
-	if gotUser.Email != email2 {
-		t.Fatalf("expected user email %q, got %q", email2, gotUser.Email)
-	}
-	if gotUser.OrganizationID != user1.OrganizationID {
-		t.Fatalf("expected user organization id %s, got %s", user1.OrganizationID, gotUser.OrganizationID)
+	if mailer.body != "" {
+		t.Fatal("no mail must be sent for unknown e-mail")
 	}
 
-	_, err = usersSvc.GetByID(context.Background(), user1.OrganizationID, "00000000-0000-0000-0000-000000000000")
-	if !errors.Is(err, usersfeature.ErrUserNotFound) {
-		t.Fatalf("expected users ErrUserNotFound, got %v", err)
+	if err := svc.RequestPasswordReset(context.Background(), email); err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+	code := mailer.body[strings.Index(mailer.body, ": ")+2:][:6]
+
+	wrong := "000000"
+	if code == wrong {
+		wrong = "999999"
+	}
+	if err := svc.ResetPassword(context.Background(), email, wrong, "NewPassword456"); !errors.Is(err, ErrInvalidResetCode) {
+		t.Fatalf("expected wrong code rejection, got %v", err)
+	}
+	if err := svc.ResetPassword(context.Background(), email, code, "weak"); !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("expected weak password rejection, got %v", err)
+	}
+	if err := svc.ResetPassword(context.Background(), email, code, "NewPassword456"); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if err := svc.ResetPassword(context.Background(), email, code, "NewPassword789"); !errors.Is(err, ErrInvalidResetCode) {
+		t.Fatalf("code must be single use, got %v", err)
+	}
+	if _, _, err := svc.Refresh(context.Background(), tokens.RefreshToken, "", ""); !errors.Is(err, ErrInvalidRefreshToken) {
+		t.Fatalf("existing sessions must be revoked after reset, got %v", err)
+	}
+	if _, _, err := svc.Login(context.Background(), email, "NewPassword456", "", ""); err != nil {
+		t.Fatalf("login with new password: %v", err)
+	}
+	_ = user
+}
+
+func TestResetCodeLocksAfterTooManyAttempts(t *testing.T) {
+	pool := setupFeaturesTestDB(t)
+	defer pool.Close()
+
+	mailer := &captureMailer{}
+	svc := NewService(NewPGRepository(pool), []byte("services-test-secret-0123456789abcdef"), mailer)
+	email := uniqueEmail("resetlock")
+	defer cleanupUsers(t, pool, []string{email})
+	if _, _, err := svc.Register(context.Background(), email, "Password123", "", ""); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := svc.RequestPasswordReset(context.Background(), email); err != nil {
+		t.Fatal(err)
+	}
+	code := mailer.body[strings.Index(mailer.body, ": ")+2:][:6]
+	wrong := "111111"
+	if code == wrong {
+		wrong = "222222"
+	}
+	for i := 0; i < maxResetAttempts; i++ {
+		_ = svc.ResetPassword(context.Background(), email, wrong, "NewPassword456")
+	}
+	if err := svc.ResetPassword(context.Background(), email, code, "NewPassword456"); !errors.Is(err, ErrInvalidResetCode) {
+		t.Fatalf("code must be locked after too many attempts, got %v", err)
 	}
 }
 
-func TestChatServiceSendAndListFlow(t *testing.T) {
-	pool := setupFeaturesTestDB(t)
-	defer pool.Close()
-
-	authRepo := NewPGRepository(pool)
-	authSvc := NewService(authRepo, []byte("services-test-secret"))
-	chatRepo := chatfeature.NewPGRepository(pool)
-	chatSvc := chatfeature.NewService(chatRepo)
-
-	email1 := uniqueEmail("chat1")
-	email2 := uniqueEmail("chat2")
-	email3 := uniqueEmail("chat3")
-	password := "Password123"
-	defer cleanupUsers(t, pool, []string{email1, email2, email3})
-
-	_, user1, err := authSvc.Register(context.Background(), email1, password, "", "")
-	if err != nil {
-		t.Fatalf("register user1: %v", err)
+func TestValidatePassword(t *testing.T) {
+	for _, bad := range []string{"short1", "onlyletters", "12345678", strings.Repeat("a1", 40)} {
+		if err := ValidatePassword(bad); !errors.Is(err, ErrWeakPassword) {
+			t.Fatalf("expected %q to be rejected", bad)
+		}
 	}
-	_, user2, err := authSvc.Register(context.Background(), email2, password, "", "")
-	if err != nil {
-		t.Fatalf("register user2: %v", err)
-	}
-	_, user3, err := authSvc.Register(context.Background(), email3, password, "", "")
-	if err != nil {
-		t.Fatalf("register user3: %v", err)
-	}
-
-	_, err = chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, "00000000-0000-0000-0000-000000000000", "should fail")
-	if !errors.Is(err, chatfeature.ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound for missing recipient, got %v", err)
-	}
-
-	_, err = chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, user2.ID, "   ")
-	if !errors.Is(err, chatfeature.ErrMessageContentNeeded) {
-		t.Fatalf("expected ErrMessageContentNeeded, got %v", err)
-	}
-
-	sentToUser2, err := chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, user2.ID, "hello service chat")
-	if err != nil {
-		t.Fatalf("send message to user2: %v", err)
-	}
-	if sentToUser2.Content != "hello service chat" {
-		t.Fatalf("unexpected sent message content: %q", sentToUser2.Content)
-	}
-
-	if _, err := chatSvc.SendMessage(context.Background(), user1.OrganizationID, user1.ID, user3.ID, "hello third user"); err != nil {
-		t.Fatalf("send message to user3: %v", err)
-	}
-
-	messages, err := chatSvc.ListMessages(context.Background(), user1.OrganizationID, user1.ID, user2.ID)
-	if err != nil {
-		t.Fatalf("list messages: %v", err)
-	}
-	if len(messages) == 0 {
-		t.Fatalf("expected at least one message")
-	}
-
-	chats, err := chatSvc.ListChats(context.Background(), user1.OrganizationID, user1.ID)
-	if err != nil {
-		t.Fatalf("list chats: %v", err)
-	}
-	if !containsChatSummary(chats, user2.ID) || !containsChatSummary(chats, user3.ID) {
-		t.Fatalf("expected chats list to include both conversation users")
+	if err := ValidatePassword("Password123"); err != nil {
+		t.Fatalf("expected valid password: %v", err)
 	}
 }
 
@@ -258,20 +234,15 @@ func cleanupUsers(t *testing.T, pool *pgxpool.Pool, emails []string) {
 	}
 }
 
-func containsUser(users []usersfeature.User, userID string) bool {
-	for _, user := range users {
-		if user.ID == userID {
-			return true
+func TestValidEmail(t *testing.T) {
+	for _, ok := range []string{"a@b.co", "lea.martin+tag@mail.example.fr"} {
+		if !ValidEmail(ok) {
+			t.Fatalf("expected %q to be valid", ok)
 		}
 	}
-	return false
-}
-
-func containsChatSummary(chats []chatfeature.ChatSummary, userID string) bool {
-	for _, chat := range chats {
-		if chat.UserID == userID {
-			return true
+	for _, bad := range []string{"", "plain", "a@b", "Léa <lea@x.fr>", "a b@c.fr", "@x.fr"} {
+		if ValidEmail(bad) {
+			t.Fatalf("expected %q to be invalid", bad)
 		}
 	}
-	return false
 }

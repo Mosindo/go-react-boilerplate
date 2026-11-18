@@ -4,73 +4,111 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
-const minJWTSecretLength = 32
+const minSecretLength = 32
+
+const (
+	EnvDevelopment = "development"
+	EnvProduction  = "production"
+)
+
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+}
+
+func (s SMTPConfig) Enabled() bool {
+	return s.Host != ""
+}
 
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripePriceID       string
-	AppBaseURL          string
-	AllowedOrigins      []string
+	AppEnv             string
+	Port               string
+	DatabaseURL        string
+	JWTSecret          string
+	MediaDir           string
+	MediaSigningSecret string
+	AllowedOrigins     []string
+	TrustedProxies     []string
+	SMTP               SMTPConfig
+}
+
+func (c Config) IsProduction() bool {
+	return c.AppEnv == EnvProduction
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                getenv("PORT", "8080"),
-		DatabaseURL:         strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		StripeSecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		StripePriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		AppBaseURL:          strings.TrimSpace(os.Getenv("APP_BASE_URL")),
-		AllowedOrigins:      splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		AppEnv:             strings.ToLower(getenv("APP_ENV", EnvDevelopment)),
+		Port:               getenv("PORT", "8080"),
+		DatabaseURL:        strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:          strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		MediaDir:           getenv("MEDIA_DIR", "./data/media"),
+		MediaSigningSecret: strings.TrimSpace(os.Getenv("MEDIA_SIGNING_SECRET")),
+		AllowedOrigins:     splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies:     splitCSV(os.Getenv("TRUSTED_PROXIES")),
+		SMTP: SMTPConfig{
+			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
+			Username: strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     strings.TrimSpace(os.Getenv("SMTP_FROM")),
+		},
 	}
 
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("DATABASE_URL is required (for Docker/CI use postgres://postgres:postgres@postgres:5432/app?sslmode=disable)")
+	if cfg.AppEnv != EnvDevelopment && cfg.AppEnv != EnvProduction {
+		return Config{}, fmt.Errorf("APP_ENV must be %q or %q", EnvDevelopment, EnvProduction)
 	}
-	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
+	if cfg.DatabaseURL == "" {
+		return Config{}, errors.New("DATABASE_URL is required (for Docker use postgres://postgres:postgres@postgres:5432/app?sslmode=disable)")
+	}
+	if err := validateSecret("JWT_SECRET", cfg.JWTSecret); err != nil {
 		return Config{}, err
 	}
-	if cfg.StripeSecretKey != "" {
-		if cfg.StripePriceID == "" {
-			return Config{}, errors.New("STRIPE_PRICE_ID is required when STRIPE_SECRET_KEY is set")
+	if cfg.MediaSigningSecret != "" {
+		if err := validateSecret("MEDIA_SIGNING_SECRET", cfg.MediaSigningSecret); err != nil {
+			return Config{}, err
 		}
-		if cfg.AppBaseURL == "" {
-			return Config{}, errors.New("APP_BASE_URL is required when STRIPE_SECRET_KEY is set")
-		}
+	}
+
+	port, err := strconv.Atoi(getenv("SMTP_PORT", "587"))
+	if err != nil || port <= 0 || port > 65535 {
+		return Config{}, errors.New("SMTP_PORT must be a valid TCP port")
+	}
+	cfg.SMTP.Port = port
+	if cfg.SMTP.Enabled() && cfg.SMTP.From == "" {
+		return Config{}, errors.New("SMTP_FROM is required when SMTP_HOST is set")
 	}
 
 	return cfg, nil
 }
 
 func getenv(key, fallback string) string {
-	v := os.Getenv(key)
+	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
 		return fallback
 	}
 	return v
 }
 
-func validateJWTSecret(secret string) error {
+func validateSecret(name, secret string) error {
 	trimmed := strings.TrimSpace(secret)
 	if trimmed == "" {
-		return errors.New("JWT_SECRET is required")
+		return fmt.Errorf("%s is required", name)
 	}
-	if len(trimmed) < minJWTSecretLength {
-		return fmt.Errorf("JWT_SECRET must be at least %d characters", minJWTSecretLength)
+	if len(trimmed) < minSecretLength {
+		return fmt.Errorf("%s must be at least %d characters", name, minSecretLength)
 	}
 
 	lower := strings.ToLower(trimmed)
-	for _, fragment := range []string{"change-me", "replace-me", "example", "placeholder", "dev-secret", "test-secret"} {
+	for _, fragment := range []string{"change-me", "replace-me", "replace-with", "example", "placeholder", "dev-secret", "test-secret"} {
 		if strings.Contains(lower, fragment) {
-			return errors.New("JWT_SECRET must be a strong random secret, not a placeholder value")
+			return fmt.Errorf("%s must be a strong random secret, not a placeholder value", name)
 		}
 	}
 
