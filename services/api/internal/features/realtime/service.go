@@ -31,21 +31,21 @@ func (s *Service) IssueTicket(userID, sessionID string) (string, error) {
 }
 
 // Redeem validates the ticket and that its session is still active.
-func (s *Service) Redeem(ctx context.Context, token string) (string, error) {
+func (s *Service) Redeem(ctx context.Context, token string) (platformrealtime.Ticket, error) {
 	ticket, ok := s.tickets.Redeem(token)
 	if !ok {
-		return "", ErrInvalidTicket
+		return platformrealtime.Ticket{}, ErrInvalidTicket
 	}
 	active, err := s.sessions.SessionActive(ctx, ticket.SessionID, ticket.UserID)
 	if err != nil {
-		return "", err
+		return platformrealtime.Ticket{}, err
 	}
 	if !active {
-		return "", ErrInvalidTicket
+		return platformrealtime.Ticket{}, ErrInvalidTicket
 	}
-	return ticket.UserID, nil
+	return ticket, nil
 }
 
-func (s *Service) Serve(userID string, conn *websocket.Conn) {
-	s.hub.Serve(userID, conn)
+func (s *Service) Serve(ticket platformrealtime.Ticket, conn *websocket.Conn) {
+	s.hub.Serve(ticket.UserID, ticket.SessionID, conn)
 }

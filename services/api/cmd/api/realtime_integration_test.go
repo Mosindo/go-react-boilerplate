@@ -80,6 +80,16 @@ func TestRealtimeDeliversMessagesToMatchesOnly(t *testing.T) {
 	readEvent(leoConn, "conversation.read")
 
 	env.expect(env.do(http.MethodPost, "/auth/logout", map[string]string{"refreshToken": leo.RefreshToken}, ""), http.StatusNoContent, "logout")
+	// Logging out closes the sockets opened with that session.
+	_ = leoConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		if _, _, err := leoConn.ReadMessage(); err != nil {
+			if ne, ok := err.(interface{ Timeout() bool }); ok && ne.Timeout() {
+				t.Fatal("socket must be closed after logout")
+			}
+			break
+		}
+	}
 	resp := env.do(http.MethodPost, "/realtime/ticket", nil, leo.Token)
 	env.expect(resp, http.StatusUnauthorized, "ticket after logout")
 }

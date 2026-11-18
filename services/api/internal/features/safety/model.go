@@ -8,6 +8,11 @@ var ReportReasons = []string{"fake_profile", "inappropriate_content", "harassmen
 // after which a profile is hidden from discovery until a moderator reviews it.
 const ModerationThreshold = 3
 
+// ModerationMinAccountAge: only reporters whose account is older than this
+// count towards the threshold, so freshly created accounts cannot gang up
+// to hide someone. Their reports are still stored for moderators.
+const ModerationMinAccountAge = "24 hours"
+
 type BlockRequest struct {
 	UserID string `json:"userId" binding:"required,len=36"`
 }

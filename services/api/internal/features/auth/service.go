@@ -37,12 +37,13 @@ type Mailer interface {
 }
 
 const (
-	accessTokenTTL   = 15 * time.Minute
-	refreshTokenTTL  = 30 * 24 * time.Hour
-	resetCodeTTL     = 15 * time.Minute
-	maxResetAttempts = 5
-	minPasswordLen   = 8
-	maxPasswordBytes = 72 // bcrypt silently ignores anything beyond 72 bytes
+	accessTokenTTL       = 15 * time.Minute
+	refreshTokenTTL      = 30 * 24 * time.Hour
+	resetCodeTTL         = 15 * time.Minute
+	maxResetAttempts     = 5
+	maxResetCodesPerHour = 3
+	minPasswordLen       = 8
+	maxPasswordBytes     = 72 // bcrypt silently ignores anything beyond 72 bytes
 )
 
 // dummyHash is compared against when a login targets an unknown e-mail so the
@@ -52,6 +53,7 @@ var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equaliser-password
 // Disconnector closes realtime connections of a member whose sessions were revoked.
 type Disconnector interface {
 	Disconnect(userID string)
+	DisconnectSession(sessionID string)
 }
 
 type Service struct {
@@ -213,9 +215,12 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return ErrInvalidRefreshToken
 	}
 
-	err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash, time.Now())
+	sessionID, err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash, time.Now())
 	if err != nil && !errors.Is(err, ErrRepositorySessionGone) {
 		return err
+	}
+	if sessionID != "" && s.disconnector != nil {
+		s.disconnector.DisconnectSession(sessionID)
 	}
 	return nil
 }
@@ -274,6 +279,15 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		}
 		return err
 	}
+	// Per-account cap: each code allows 5 guesses, so issuing codes without
+	// limit would let an attacker brute-force the code space.
+	recent, err := s.repo.CountRecentResetCodes(ctx, stored.User.ID, time.Now().Add(-time.Hour))
+	if err != nil {
+		return err
+	}
+	if recent >= maxResetCodesPerHour {
+		return nil
+	}
 	code, err := generateResetCode()
 	if err != nil {
 		return err
@@ -307,14 +321,18 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		}
 		return err
 	}
-	if resetCode.UsedAt != nil || time.Now().After(resetCode.ExpiresAt) || resetCode.Attempts >= maxResetAttempts {
+	if resetCode.UsedAt != nil || time.Now().After(resetCode.ExpiresAt) {
+		return ErrInvalidResetCode
+	}
+	allowed, err := s.repo.ConsumeResetAttempt(ctx, resetCode.ID, maxResetAttempts)
+	if err != nil {
+		return err
+	}
+	if !allowed {
 		return ErrInvalidResetCode
 	}
 	expected := s.hashResetCode(userID, strings.TrimSpace(code))
 	if subtle.ConstantTimeCompare([]byte(expected), []byte(resetCode.CodeHash)) != 1 {
-		if err := s.repo.IncrementResetAttempts(ctx, resetCode.ID); err != nil {
-			return err
-		}
 		return ErrInvalidResetCode
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)

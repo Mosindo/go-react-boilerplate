@@ -41,7 +41,7 @@ func (h *Handler) Ticket(c *gin.Context) {
 }
 
 func (h *Handler) Connect(c *gin.Context) {
-	userID, err := h.service.Redeem(c.Request.Context(), c.Query("ticket"))
+	ticket, err := h.service.Redeem(c.Request.Context(), c.Query("ticket"))
 	if err != nil {
 		if errors.Is(err, ErrInvalidTicket) {
 			httpx.Fail(c, http.StatusUnauthorized, "invalid_ticket", err.Error(), "realtime.connect", nil)
@@ -54,6 +54,6 @@ func (h *Handler) Connect(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	c.Set("userID", userID)
-	h.service.Serve(userID, conn)
+	c.Set("userID", ticket.UserID)
+	h.service.Serve(ticket, conn)
 }

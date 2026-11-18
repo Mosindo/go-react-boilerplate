@@ -53,6 +53,8 @@ type limits struct {
 	uploads   *ratelimit.Limiter
 	reports   *ratelimit.Limiter
 	tickets   *ratelimit.Limiter
+	sensitive *ratelimit.Limiter
+	location  *ratelimit.Limiter
 }
 
 func defaultLimits() limits {
@@ -63,6 +65,8 @@ func defaultLimits() limits {
 		uploads:   ratelimit.New(30, time.Hour, 10),
 		reports:   ratelimit.New(10, time.Hour, 5),
 		tickets:   ratelimit.New(30, time.Minute, 10),
+		sensitive: ratelimit.New(10, time.Hour, 5),
+		location:  ratelimit.New(30, time.Hour, 10),
 	}
 }
 
@@ -162,6 +166,7 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(middleware.RequestLogger())
 
 	authService := authfeature.NewService(authfeature.NewPGRepository(a.dbPool), a.jwtSecret, a.mailer).WithDisconnector(a.hub)
+	a.hub.WithSessionChecker(authService)
 	requireUser := middleware.RequireUser(a.jwtSecret, authService)
 	limit := func(l *ratelimit.Limiter, scope string, key middleware.KeyFunc) gin.HandlerFunc {
 		return middleware.RateLimit(l, scope, key)
@@ -178,10 +183,12 @@ func setupRouter(a *app) *gin.Engine {
 	realtimeService := realtimefeature.NewService(a.hub, realtime.NewTicketStore(), authService)
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
+	sensitiveLimit := limit(a.limits.sensitive, "sensitive", middleware.ByUser)
 	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser,
-		limit(a.limits.anonymous, "auth", middleware.ByClientIP))
-	usersfeature.RegisterRoutes(r, usersfeature.NewHandler(usersService), requireUser)
-	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
+		limit(a.limits.anonymous, "auth", middleware.ByClientIP), sensitiveLimit)
+	usersfeature.RegisterRoutes(r, usersfeature.NewHandler(usersService), requireUser, sensitiveLimit)
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser,
+		limit(a.limits.location, "location", middleware.ByUser))
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser,
 		limit(a.limits.uploads, "uploads", middleware.ByUser))
 	discoveryfeature.RegisterRoutes(r, discoveryfeature.NewHandler(discoveryService), requireUser)

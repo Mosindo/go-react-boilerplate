@@ -212,12 +212,18 @@ Le test UI tourne sur la version web : l'application native partage exactement l
 - **Photos sûres** : type vérifié sur le contenu (pas sur l'extension), protection contre les bombes de décompression, redimensionnement, **ré-encodage JPEG qui supprime les métadonnées EXIF (dont le GPS)** et neutralise les fichiers polyglottes ; noms de fichiers aléatoires, URLs signées HMAC expirant après 1 à 2 h ; compression sur l'appareil avant envoi.
 - **Sessions révocables** : access token de 15 min, mais chaque requête vérifie que la session est active, donc déconnexion, réinitialisation du mot de passe et suppression de compte sont effectives immédiatement (WebSockets compris). Comparaison bcrypt factice pour les e-mails inconnus (pas d'énumération par le temps de réponse) ; la demande de réinitialisation répond toujours `202`.
 - **Temps réel** : WebSocket en lecture seule (toutes les écritures passent par l'API REST validée), authentifié par un ticket à usage unique valable 30 s (les navigateurs ne peuvent pas envoyer d'en-tête `Authorization` sur un WebSocket). Le client se reconnecte avec backoff exponentiel et repasse en polling tant que la connexion est coupée.
-- **Modération** : un signalement bloque automatiquement ; au 3ᵉ signalement distinct ouvert, le profil est masqué de la découverte en attendant une revue (`reports.status`). Les signalements survivent à la suppression des comptes (`ON DELETE SET NULL`).
+- **Modération** : un signalement bloque automatiquement ; au 3ᵉ signalement distinct ouvert (émis par des comptes de plus de 24 h, pour empêcher des comptes jetables de faire disparaître quelqu'un), le profil est masqué de la découverte en attendant une revue (`reports.status`). Les signalements survivent à la suppression des comptes (`ON DELETE SET NULL`).
 - **Suppression de compte** : profil, photos (fichiers compris), likes, matchs, conversations, messages, sessions et notifications sont effacés dans une transaction ; seuls les signalements anonymisés sont conservés.
-- **Anti-abus, pas de quota** : limites de débit généreuses par IP (auth) et par membre (swipes 120/min, messages 40/min, uploads 30/h, signalements 10/h) uniquement pour bloquer les robots.
+- **Anti-abus, pas de quota** : limites de débit généreuses par IP (auth) et par membre (swipes 120/min, messages 40/min, uploads 30/h, signalements 10/h, changements de position 30/h, suppression de compte et changement de mot de passe 10/h) uniquement pour bloquer les robots. Au plus 3 codes de réinitialisation par compte et par heure, 5 essais par code (compteur atomique). Au plus 5 WebSockets par membre ; chaque socket revérifie sa session toutes les 25 s et la déconnexion ferme celles de l'appareil.
 - **Stockage des tokens** : Keychain / Keystore via `expo-secure-store` sur mobile, `sessionStorage` sur le web (effacé à la fermeture de l'onglet).
 - **Swipe sans dépendance native** : `Animated` + `PanResponder`, avec boutons équivalents pour l'accessibilité et le web.
 - **Langue** : interface en français ; le code et les commentaires restent en anglais.
+
+### Limites connues
+
+- Un profil découvrable affiche son âge et sa distance arrondie à tout membre de la même organisation qui connaît son identifiant (même hors préférences mutuelles). La grille de ~1 km, l'arrondi de la distance et la limite de changements de position rendent la trilatération grossière, mais elle reste possible à l'échelle du kilomètre ; masquez la distance pour l'éviter.
+- Sans position partagée, la découverte n'applique aucun filtre de distance.
+- Les listes de matchs (100) et de conversations (50) chargent une première page ; la pagination de l'API est prête pour un défilement infini.
 
 ### Évolutions prévues par l'architecture
 

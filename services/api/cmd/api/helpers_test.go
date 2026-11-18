@@ -51,7 +51,7 @@ func (r testResponse) decode(t *testing.T, dst any) {
 
 func generousLimits() limits {
 	l := func() *ratelimit.Limiter { return ratelimit.New(10_000, time.Minute, 10_000) }
-	return limits{anonymous: l(), swipes: l(), messages: l(), uploads: l(), reports: l(), tickets: l()}
+	return limits{anonymous: l(), swipes: l(), messages: l(), uploads: l(), reports: l(), tickets: l(), sensitive: l(), location: l()}
 }
 
 func newTestEnv(t *testing.T) *testEnv {

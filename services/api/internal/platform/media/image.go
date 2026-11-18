@@ -17,7 +17,7 @@ const (
 	MaxUploadBytes = 10 << 20
 	MaxDimension   = 1600
 	MinDimension   = 200
-	maxSourcePixel = 50_000_000
+	maxSourcePixel = 24_000_000
 	maxSourceSide  = 12_000
 	jpegQuality    = 85
 )
@@ -28,6 +28,9 @@ var (
 	ErrImageTooSmall   = errors.New("image too small")
 	ErrInvalidImage    = errors.New("invalid image")
 )
+
+// decodeSlots bounds concurrent full decodes (each can take ~100 MB of RAM).
+var decodeSlots = make(chan struct{}, 3)
 
 var allowedContentTypes = map[string]struct{}{
 	"image/jpeg": {},
@@ -68,6 +71,9 @@ func ProcessUpload(r io.Reader) (ProcessedImage, error) {
 	if cfg.Width < MinDimension || cfg.Height < MinDimension {
 		return ProcessedImage{}, ErrImageTooSmall
 	}
+
+	decodeSlots <- struct{}{}
+	defer func() { <-decodeSlots }()
 
 	src, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {

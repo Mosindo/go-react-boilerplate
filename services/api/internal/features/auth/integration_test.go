@@ -187,6 +187,31 @@ func TestResetCodeLocksAfterTooManyAttempts(t *testing.T) {
 	}
 }
 
+func TestResetCodesAreCappedPerAccount(t *testing.T) {
+	pool := setupFeaturesTestDB(t)
+	defer pool.Close()
+	mailer := &captureMailer{}
+	svc := NewService(NewPGRepository(pool), []byte("services-test-secret-0123456789abcdef"), mailer)
+	email := uniqueEmail("resetcap")
+	defer cleanupUsers(t, pool, []string{email})
+	if _, _, err := svc.Register(context.Background(), email, "Password123", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	sent := 0
+	for i := 0; i < maxResetCodesPerHour+2; i++ {
+		mailer.body = ""
+		if err := svc.RequestPasswordReset(context.Background(), email); err != nil {
+			t.Fatal(err)
+		}
+		if mailer.body != "" {
+			sent++
+		}
+	}
+	if sent != maxResetCodesPerHour {
+		t.Fatalf("expected %d codes per hour, got %d", maxResetCodesPerHour, sent)
+	}
+}
+
 func TestValidatePassword(t *testing.T) {
 	for _, bad := range []string{"short1", "onlyletters", "12345678", strings.Repeat("a1", 40)} {
 		if err := ValidatePassword(bad); !errors.Is(err, ErrWeakPassword) {

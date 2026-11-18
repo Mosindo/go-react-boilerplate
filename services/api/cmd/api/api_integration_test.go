@@ -431,6 +431,14 @@ func TestBlockReportAndModeration(t *testing.T) {
 	suspect := env.onboard("suspect", "Sam", "man", []string{"woman"}, 44.84, -0.58)
 	env.expect(env.do(http.MethodPost, "/reports", map[string]string{"userId": suspect.UserID, "reason": "because"}, emma.Token), http.StatusBadRequest, "invalid reason")
 	reporters := []member{emma, nina, env.onboard("zoe", "Zoé", "woman", []string{"man"}, 44.84, -0.58)}
+	// Reports from accounts younger than 24 h are stored but do not hide anyone.
+	newcomer := env.onboard("newcomer", "Nadia", "woman", []string{"man"}, 44.84, -0.58)
+	env.expect(env.do(http.MethodPost, "/reports", map[string]string{"userId": suspect.UserID, "reason": "spam"}, newcomer.Token), http.StatusCreated, "newcomer report")
+	for _, r := range reporters {
+		if _, err := env.pool.Exec(context.Background(), `UPDATE users SET created_at = NOW() - INTERVAL '3 days' WHERE id = $1`, r.UserID); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for i, r := range reporters {
 		env.expect(env.do(http.MethodPost, "/reports", map[string]string{"userId": suspect.UserID, "reason": "harassment", "details": "Messages insistants"}, r.Token), http.StatusCreated, "report")
 		var hidden bool
@@ -445,8 +453,8 @@ func TestBlockReportAndModeration(t *testing.T) {
 	env.expect(env.do(http.MethodPost, "/reports", map[string]string{"userId": suspect.UserID, "reason": "spam"}, emma.Token), http.StatusCreated, "repeat report")
 	var reports int
 	_ = env.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM reports WHERE reported_user_id = $1`, suspect.UserID).Scan(&reports)
-	if reports != 3 {
-		t.Fatalf("expected 3 reports, got %d", reports)
+	if reports != 4 {
+		t.Fatalf("expected 4 reports, got %d", reports)
 	}
 	fresh := env.onboard("fresh", "Fanny", "woman", []string{"man"}, 44.84, -0.58)
 	if containsCard(env.discover(fresh.Token), suspect.UserID) {

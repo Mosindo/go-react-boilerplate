@@ -146,10 +146,14 @@ func (r *PGRepository) Report(ctx context.Context, reporterID, reportedID, reaso
 		WHERE user_id = $1
 		  AND NOT moderation_hidden
 		  AND (
-		    SELECT COUNT(DISTINCT reporter_user_id) FROM reports
-		    WHERE reported_user_id = $1 AND status = 'open'
+		    SELECT COUNT(DISTINCT r.reporter_user_id)
+		    FROM reports r
+		    JOIN users reporter ON reporter.id = r.reporter_user_id
+		    WHERE r.reported_user_id = $1
+		      AND r.status = 'open'
+		      AND reporter.created_at < NOW() - $3::interval
 		  ) >= $2
-	`, reportedID, ModerationThreshold); err != nil {
+	`, reportedID, ModerationThreshold, ModerationMinAccountAge); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
