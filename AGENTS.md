@@ -1,30 +1,29 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Lueur**, a free dating app built on the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Lueur lets adults create a profile, discover people nearby, like or pass, match when the
+interest is mutual, chat in real time, and stay safe (block, report, delete their account).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+The app is **100 % free**: never add subscriptions, paywalls, paid boosts, artificial like
+limits, locked essential features or mandatory ads. Rate limits exist only against abuse.
 
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- users (account deletion)
+- profiles
+- photos
+- discovery
+- matching
 - chat
+- safety (blocks, reports, moderation)
 - notifications
-- files
+- realtime
 
 ---
 
@@ -66,11 +65,14 @@ Target structure:
 - `features/`
   - `auth/`
   - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `discovery/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
+  - `realtime/`
 
 Each feature should contain:
 - `handler.go`
@@ -111,12 +113,19 @@ User input:
 - Validate pagination, filters, and sort inputs
 - Validate file metadata and upload constraints
 
+Privacy:
+- Never return e-mails, birthdates or coordinates of other members
+- Store coordinates rounded (~1 km); only show bucketed distances
+- Members under 18 are rejected server-side; birthdate is immutable
+- Chat access requires an active match without any block
+
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
+- Expected environment variables (see `.env.example`):
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - optional: `APP_ENV`, `MEDIA_DIR`, `MEDIA_SIGNING_SECRET`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*`
 
 ---
 
@@ -130,12 +139,13 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `profiles (gender, birthdate)` (discoverable only) and `profiles (latitude, longitude)`
+- `swipes (target_user_id, actor_user_id)` (likes)
+- `matches (user_low_id | user_high_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `blocks (blocked_user_id, blocker_user_id)`
 
 ---
 
@@ -143,19 +153,22 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `go test ./...` with `DATABASE_URL` set so integration tests run
+- `go build ./cmd/api ./cmd/seed`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint` and `npm run format:check` healthy in `apps/mobile`
+- `./scripts/qa.sh` runs all of the above; with `E2E_API_URL` it also runs the API and web UI end-to-end suites
 
 If tests fail: fix them before continuing.
 
 Integration tests to keep healthy:
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/me`, password reset)
+- Profiles and photos (`/me/profile`, `/me/preferences`, `/me/photos`)
+- Discovery and matching (`/discovery`, `/swipes`, `/matches`)
+- Chat (`/chats`, `/chats/:userId/messages`, `/chats/:userId/read`) and realtime (`/realtime/ws`)
+- Safety (`/blocks`, `/reports`), account deletion (`DELETE /me`)
 - Notifications (`/notifications`)
 
 ---
@@ -176,10 +189,10 @@ Mandatory rules to avoid recurring environment issues:
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
+  - register and onboarding (profile, photo)
   - login
-  - users load
-  - posts load
+  - discovery loads
+  - like → match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +220,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Introducing paid features, paywalls or artificial limits
+- Exposing private member data (e-mail, birthdate, coordinates) to other members
 
 ---
 

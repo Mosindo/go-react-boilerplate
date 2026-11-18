@@ -161,7 +161,7 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
 
-	authService := authfeature.NewService(authfeature.NewPGRepository(a.dbPool), a.jwtSecret, a.mailer)
+	authService := authfeature.NewService(authfeature.NewPGRepository(a.dbPool), a.jwtSecret, a.mailer).WithDisconnector(a.hub)
 	requireUser := middleware.RequireUser(a.jwtSecret, authService)
 	limit := func(l *ratelimit.Limiter, scope string, key middleware.KeyFunc) gin.HandlerFunc {
 		return middleware.RateLimit(l, scope, key)

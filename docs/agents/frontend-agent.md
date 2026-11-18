@@ -2,17 +2,17 @@
 
 ## Responsibility
 
-- Integrate React Query into the mobile frontend
-- Implement auth hooks such as `useAuth`, `useLogin`, `useRegister`, and `useCurrentUser`
-- Connect hooks through the existing API client abstraction
-- Handle loading, error, and session state coherently
+- Maintain the Expo app (`apps/mobile`): screens, design system, navigation
+- Keep server state in React Query hooks (`src/hooks/queries.ts`) and session state in `useAuth`
+- Keep realtime events flowing into the query cache (`src/hooks/useRealtime.tsx`)
+- Handle loading, empty, error and success feedback on every screen
 
 ## Constraints
 
 - Must use the existing API client layer
 - No direct `fetch` calls from screens or components
 - Shared logic belongs in reusable hooks/modules, not screens
-- Must preserve existing navigation and working chat behavior
+- Must keep `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run e2e:web` green
 
 ## Allowed Actions
 

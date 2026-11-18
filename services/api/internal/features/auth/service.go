@@ -49,10 +49,28 @@ const (
 // response time does not reveal whether an account exists.
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equaliser-password-1"), bcrypt.DefaultCost)
 
+// Disconnector closes realtime connections of a member whose sessions were revoked.
+type Disconnector interface {
+	Disconnect(userID string)
+}
+
 type Service struct {
-	repo      Repository
-	jwtSecret []byte
-	mailer    Mailer
+	repo         Repository
+	jwtSecret    []byte
+	mailer       Mailer
+	disconnector Disconnector
+}
+
+// WithDisconnector makes credential changes also close open WebSockets.
+func (s *Service) WithDisconnector(d Disconnector) *Service {
+	s.disconnector = d
+	return s
+}
+
+func (s *Service) disconnect(userID string) {
+	if s.disconnector != nil {
+		s.disconnector.Disconnect(userID)
+	}
 }
 
 func NewService(repo Repository, jwtSecret []byte, mailer Mailer) *Service {
@@ -237,7 +255,12 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdatePassword(ctx, userID, string(next), sessionID)
+	if err := s.repo.UpdatePassword(ctx, userID, string(next), sessionID); err != nil {
+		return err
+	}
+	// The current device reconnects transparently with its still-valid session.
+	s.disconnect(userID)
+	return nil
 }
 
 // RequestPasswordReset e-mails a 6 digit code. It never reveals whether the
@@ -304,6 +327,7 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		}
 		return err
 	}
+	s.disconnect(userID)
 	return nil
 }
 
