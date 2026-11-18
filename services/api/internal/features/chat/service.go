@@ -147,7 +147,7 @@ func (s *Service) Send(ctx context.Context, userID, otherID, content string) (Me
 	s.publisher.Publish(otherID, event)
 	s.publisher.Publish(userID, event)
 	s.notifier.Notify(ctx, otherID, "message.received", "Nouveau message",
-		access.SenderFirstName+" vous a écrit.", map[string]string{"userId": userID}, true)
+		access.SenderFirstName+" vous a écrit.", map[string]string{"userId": userID, "firstName": access.SenderFirstName}, true)
 	return message, nil
 }
 

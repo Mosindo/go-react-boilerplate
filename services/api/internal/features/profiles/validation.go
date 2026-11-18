@@ -37,7 +37,7 @@ const (
 	MaxInterests      = 10
 )
 
-var firstNamePattern = regexp.MustCompile(`^[\p{L}][\p{L}\p{M}' -]*$`)
+var firstNamePattern = regexp.MustCompile(`^[\p{L}][\p{L}\p{M}'’ -]*$`)
 
 func normalizeSpaces(s string) string {
 	return strings.Join(strings.Fields(s), " ")

@@ -6,7 +6,7 @@ import (
 )
 
 func TestValidateFirstName(t *testing.T) {
-	ok := []string{"Léa", "  Jean   Paul ", "Anne-Sophie", "O'Neil", "Zoë"}
+	ok := []string{"Léa", "  Jean   Paul ", "Anne-Sophie", "O'Neil", "O’Neil", "Zoë"}
 	for _, name := range ok {
 		if _, err := validateFirstName(name); err != nil {
 			t.Fatalf("expected %q to be valid: %v", name, err)

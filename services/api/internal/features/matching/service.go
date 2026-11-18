@@ -75,7 +75,7 @@ func (s *Service) announceMatch(ctx context.Context, recipientID string, match M
 	s.publisher.Publish(recipientID, realtime.Event{Type: "match.created", Data: match})
 	s.notifier.Notify(ctx, recipientID, "match.created", "Nouveau match",
 		"Vous et "+match.User.FirstName+" vous plaisez mutuellement. Dites bonjour !",
-		map[string]string{"userId": match.User.UserID, "matchId": match.ID}, false)
+		map[string]string{"userId": match.User.UserID, "matchId": match.ID, "firstName": match.User.FirstName}, false)
 }
 
 func (s *Service) summary(ctx context.Context, viewerID, otherID string) (Match, error) {

@@ -59,3 +59,5 @@ services/api/api
 services/api/seed
 data/
 services/api/data/
+apps/mobile/e2e/reports/
+services/api/seed.exe

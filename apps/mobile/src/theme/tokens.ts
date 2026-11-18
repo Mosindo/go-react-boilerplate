@@ -1,59 +1,58 @@
-import { createTokens } from "tamagui";
-import { colors, fontSizes, radii, spacing } from "../shared/ui";
+import { Platform } from "react-native";
 
-export const tokens = createTokens({
-  color: {
-    background: colors.background,
-    backgroundElevated: colors.backgroundElevated,
-    text: colors.text,
-    textMuted: colors.textMuted,
-    border: colors.border,
-    primary: colors.primary,
-    secondary: colors.secondary,
-    success: colors.success,
-    warning: colors.warning,
-    danger: colors.danger,
-    muted: colors.surfaceMuted,
-    accent: colors.surfaceAccent
-  },
-  space: {
-    0: 0,
-    0.5: spacing.xxs,
-    1: spacing.xs,
-    2: spacing.sm,
-    3: spacing.md,
-    4: spacing.lg,
-    5: spacing.xl,
-    6: spacing.xxl,
-    7: spacing.xxxl,
-    true: spacing.lg
-  },
-  size: {
-    0: 0,
-    0.5: fontSizes.xxs,
-    1: fontSizes.xs,
-    2: fontSizes.sm,
-    3: fontSizes.md,
-    4: fontSizes.lg,
-    5: fontSizes.xl,
-    6: fontSizes.xxl,
-    true: fontSizes.md
-  },
-  radius: {
-    0: 0,
-    0.5: radii.xs,
-    1: radii.sm,
-    2: radii.md,
-    3: radii.lg,
-    4: radii.xl,
-    true: radii.md
-  },
-  zIndex: {
-    0: 0,
-    1: 100,
-    2: 200,
-    3: 300,
-    4: 400,
-    5: 500
+export const spacing = {
+  xxs: 4,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 20,
+  xl: 24,
+  xxl: 32,
+  xxxl: 48
+} as const;
+
+export const radii = {
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
+  pill: 999
+} as const;
+
+const serif = Platform.select({ ios: "Georgia", android: "serif", default: "Georgia, 'Times New Roman', serif" });
+
+export const fonts = {
+  display: serif,
+  body: Platform.select({ ios: "System", android: "sans-serif", default: "system-ui, -apple-system, 'Segoe UI', sans-serif" })
+} as const;
+
+export const typography = {
+  display: { fontFamily: fonts.display, fontSize: 34, lineHeight: 40, letterSpacing: -0.5 },
+  title: { fontFamily: fonts.display, fontSize: 26, lineHeight: 32, letterSpacing: -0.3 },
+  heading: { fontFamily: fonts.body, fontSize: 18, lineHeight: 24, fontWeight: "600" as const },
+  body: { fontFamily: fonts.body, fontSize: 16, lineHeight: 23 },
+  bodyStrong: { fontFamily: fonts.body, fontSize: 16, lineHeight: 23, fontWeight: "600" as const },
+  label: { fontFamily: fonts.body, fontSize: 14, lineHeight: 19, fontWeight: "500" as const },
+  caption: { fontFamily: fonts.body, fontSize: 13, lineHeight: 17 },
+  overline: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600" as const,
+    letterSpacing: 1,
+    textTransform: "uppercase" as const
   }
-});
+} as const;
+
+export type TypographyVariant = keyof typeof typography;
+
+export const layout = {
+  maxContentWidth: 560,
+  touchTarget: 48
+} as const;
+
+export const motion = {
+  fast: 140,
+  normal: 220,
+  slow: 320
+} as const;
