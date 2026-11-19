@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,58 +10,75 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionValidator confirms that the session referenced by an access token is still active.
+type SessionValidator interface {
+	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+}
+
+func unauthorized(c *gin.Context, message string) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": message, "code": "unauthorized"})
+}
+
+// RequireUser validates an HS256 access token (signature, algorithm, mandatory expiry,
+// required claims) and then checks that the session was not revoked.
+func RequireUser(secret []byte, sessions SessionValidator) gin.HandlerFunc {
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuedAt(),
+	)
+
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			unauthorized(c, "missing token")
 			return
 		}
 
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, errors.New("unexpected signing method")
+		userID, sessionID, err := parseAccessToken(parser, secret, tokenString)
+		if err != nil {
+			unauthorized(c, "invalid token")
+			return
+		}
+
+		if sessions != nil {
+			active, err := sessions.SessionActive(c.Request.Context(), sessionID, userID)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication temporarily unavailable", "code": "unavailable"})
+				return
 			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method type")
+			if !active {
+				unauthorized(c, "session revoked")
+				return
 			}
-			return secret, nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		userID, ok := stringClaim(claims, "uid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		sessionID, ok := stringClaim(claims, "sid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
 		}
 
 		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}
+}
+
+func parseAccessToken(parser *jwt.Parser, secret []byte, tokenString string) (string, string, error) {
+	claims := jwt.MapClaims{}
+	token, err := parser.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, errors.New("unexpected signing method")
+		}
+		return secret, nil
+	})
+	if err != nil || !token.Valid {
+		return "", "", errors.New("invalid token")
+	}
+	userID, ok := stringClaim(claims, "uid")
+	if !ok {
+		return "", "", errors.New("missing uid")
+	}
+	sessionID, ok := stringClaim(claims, "sid")
+	if !ok {
+		return "", "", errors.New("missing sid")
+	}
+	return userID, sessionID, nil
 }
 
 func bearerToken(header string) string {

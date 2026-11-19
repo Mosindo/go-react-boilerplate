@@ -2,118 +2,127 @@ package notifications
 
 import (
 	"context"
-	"errors"
-	"strings"
-	"unicode/utf8"
+	"time"
+
+	"example.com/api/internal/features/profiles"
+	"example.com/api/internal/platform/realtime"
 )
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
-)
+type CardLoader interface {
+	Cards(ctx context.Context, viewerID string, userIDs []string) (map[string]profiles.Card, error)
+}
 
 type Service struct {
-	repo Repository
+	repo      Repository
+	cards     CardLoader
+	publisher realtime.Publisher
 }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, cards CardLoader, publisher realtime.Publisher) *Service {
+	return &Service{repo: repo, cards: cards, publisher: publisher}
 }
 
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
+func (s *Service) NotifyMatch(ctx context.Context, userID, actorID, conversationID string) error {
+	return s.create(ctx, userID, TypeMatch, actorID, conversationID)
+}
+
+func (s *Service) NotifyMessage(ctx context.Context, userID, actorID, conversationID string) error {
+	return s.create(ctx, userID, TypeMessage, actorID, conversationID)
+}
+
+func (s *Service) create(ctx context.Context, userID, kind, actorID, conversationID string) error {
+	if _, err := s.repo.Create(ctx, userID, kind, &actorID, &conversationID); err != nil {
+		return err
+	}
+	return s.publishCount(ctx, userID)
+}
+
+func (s *Service) publishCount(ctx context.Context, userID string) error {
+	count, err := s.repo.UnreadCount(ctx, userID)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
-	}
-	return payload, nil
+	s.publisher.Publish(userID, realtime.Event{Type: "notifications.unread", Payload: map[string]int{"unreadCount": count}})
+	return nil
 }
 
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
-	if err != nil {
-		return Notification{}, err
-	}
-	return mapStoredNotification(notification), nil
-}
-
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
-	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
+func (s *Service) List(ctx context.Context, userID, cursor string, limit int) (ListResponse, error) {
+	var before *time.Time
+	if cursor != "" {
+		t, err := s.repo.CursorOf(ctx, userID, cursor)
+		if err != nil {
+			return ListResponse{}, err
 		}
-		return Notification{}, err
+		before = &t
 	}
-	return mapStoredNotification(notification), nil
+	stored, err := s.repo.List(ctx, userID, before, cursor, limit+1)
+	if err != nil {
+		return ListResponse{}, err
+	}
+	var next *string
+	if len(stored) > limit {
+		stored = stored[:limit]
+		id := stored[limit-1].ID
+		next = &id
+	}
+
+	actorIDs := make([]string, 0, len(stored))
+	seen := map[string]bool{}
+	for _, n := range stored {
+		if n.ActorID != nil && !seen[*n.ActorID] {
+			seen[*n.ActorID] = true
+			actorIDs = append(actorIDs, *n.ActorID)
+		}
+	}
+	cards, err := s.cards.Cards(ctx, userID, actorIDs)
+	if err != nil {
+		return ListResponse{}, err
+	}
+
+	items := make([]Notification, 0, len(stored))
+	for _, n := range stored {
+		item := Notification{ID: n.ID, Type: n.Type, ConversationID: n.ConversationID, ReadAt: n.ReadAt, CreatedAt: n.CreatedAt}
+		if n.ActorID != nil {
+			if card, ok := cards[*n.ActorID]; ok {
+				actor := Actor{UserID: card.UserID, FirstName: card.FirstName}
+				if len(card.Photos) > 0 {
+					actor.PhotoURL = &card.Photos[0].URL
+				}
+				item.Actor = &actor
+			}
+		}
+		items = append(items, item)
+	}
+
+	unread, err := s.repo.UnreadCount(ctx, userID)
+	if err != nil {
+		return ListResponse{}, err
+	}
+	return ListResponse{Notifications: items, NextCursor: next, UnreadCount: unread}, nil
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
-	}
+func (s *Service) UnreadCount(ctx context.Context, userID string) (int, error) {
+	return s.repo.UnreadCount(ctx, userID)
 }
 
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
+func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
+	if err := s.repo.MarkRead(ctx, userID, id); err != nil {
+		return err
 	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
-	}
-	return limit
+	return s.publishCount(ctx, userID)
 }
 
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
+func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
+	if err := s.repo.MarkAllRead(ctx, userID); err != nil {
+		return err
 	}
-	return offset
+	return s.publishCount(ctx, userID)
+}
+
+// MarkConversationRead clears message notifications once a conversation was opened.
+func (s *Service) MarkConversationRead(ctx context.Context, userID, conversationID string) error {
+	if err := s.repo.MarkConversationRead(ctx, userID, conversationID); err != nil {
+		return err
+	}
+	return s.publishCount(ctx, userID)
 }
