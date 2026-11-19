@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Lueur Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,8 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-19
+
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Lueur, a complete and entirely free dating application (API + Expo app for iOS, Android and web).
+- Accounts with session revocation, password recovery by emailed code and full account deletion.
+- Profiles, preferences, interests, approximate location (~1 km) and privacy controls.
+- Photo management (1-6 photos, re-encoding without metadata, signed expiring URLs).
+- Discovery with mutual filters and pluggable ranking, likes/passes, atomic matching, free "who liked me".
+- Realtime chat over WebSocket with read receipts, local deletion and unmatch.
+- Blocking, reporting, notifications.
+- Tracked transactional migrations, demo seed, integration tests, Jest tests, Playwright web E2E, CI.
+
+### Removed
+- Stripe billing, organizations/subscriptions, posts, comments, votes and generic files modules.
+- Unused Tamagui dependency and PowerShell/Maestro QA scripts (replaced by cross-platform CI and E2E).
 
 ## [0.1.0] - 2026-03-17
 

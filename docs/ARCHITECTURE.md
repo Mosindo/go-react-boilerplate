@@ -1,173 +1,85 @@
-# go-react-saas Architecture
+# Architecture de Lueur
 
-This document explains how `go-react-saas` is organized so new developers and AI agents can quickly navigate the repository, understand responsibilities, and extend the system without breaking its boundaries.
-
-## 1. Monorepo Structure
-
-The repository is organized into a small number of top-level directories:
-
-- `apps/`: frontend applications
-- `services/`: backend services
-- `infra/`: local infrastructure and container orchestration
-- `scripts/`: smoke tests, QA helpers, and local automation
-- `docs/`: architecture and contributor-facing documentation
-
-At the moment, the main applications are:
-- `apps/mobile`: React Native mobile client
-- `services/api`: Go API
-
-This layout keeps frontend, backend, infrastructure, and documentation concerns separated while still living in one repository.
-
-## 2. Backend Architecture
-
-The backend uses a feature-first architecture in Go with Gin.
+## Vue d'ensemble
 
 ```text
-services/api/
-├─ cmd/api/main.go
-└─ internal/
-   ├─ platform/
-   │  ├─ config/
-   │  ├─ db/
-   │  ├─ middleware/
-   │  ├─ logger/
-   │  └─ errors/
-   └─ features/
-      ├─ auth/
-      ├─ billing/
-      ├─ users/
-      ├─ files/
-      ├─ chat/
-      ├─ posts/
-      ├─ comments/
-      └─ notifications/
+App Expo (iOS / Android / web)
+  │  REST JSON (Bearer access token)      WebSocket /realtime (ticket à usage unique)
+  ▼                                        ▼
+API Go (Gin) ── features ── platform ── PostgreSQL (pool pgx unique)
+                     │
+                     └── stockage photos (UPLOAD_DIR) servi par URLs signées
 ```
 
-`cmd/api/main.go` is the composition root. It wires the application together by loading configuration, opening the database, registering feature routes, and starting the HTTP server.
+## Backend (`services/api`)
 
-Each feature folder groups everything needed for that domain. Instead of scattering handlers, services, and repositories across separate global folders, the code stays close to the feature it belongs to.
+- `cmd/api` : charge la config, se connecte (retry), applique les migrations, démarre un `http.Server` (Gin) avec arrêt propre.
+- `cmd/seed` : données de démonstration (refusé en production) et purge.
+- `internal/app` : composition root (`app.New`) partagée par `cmd/api` et les tests d'intégration ; câble les features, les middlewares et les limites de débit.
+- `internal/features/<feature>` : `model.go`, `repository.go` (SQL uniquement), `service.go` (règles métier), `handler.go` (HTTP fin), `routes.go`.
 
-Current notable backend modules:
-- `auth`: registration, login, refresh, logout, `/me`, JWT access tokens, refresh-token sessions
-- `billing`: checkout and webhook handling for subscription lifecycle
-- `users`: tenant-scoped directory access
-- `chat`, `posts`, `comments`: tenant-scoped shared content flows
+| Feature | Responsabilité |
+| --- | --- |
+| `auth` | inscription, connexion, refresh avec rotation, logout, récupération par code, `/me`, suppression du compte, validation des sessions pour le middleware |
+| `profiles` | profil, préférences, intérêts, position arrondie, cartes publiques chargées par lot (3 requêtes quel que soit le nombre de profils), règle de visibilité |
+| `photos` | upload / remplacement / ordre / suppression, service des médias signés |
+| `matching` | candidats de découverte, `Ranker`, like/pass, création atomique du match et de sa conversation, likes reçus, annulation de match |
+| `chat` | liste des conversations, messages paginés par curseur, envoi, lecture, suppression locale |
+| `notifications` | création (messages regroupés), liste, compteurs, lecture |
+| `safety` | blocages, signalements (qui bloquent aussi) |
+| `realtime` | ticket + endpoint WebSocket |
 
-Each backend feature follows the same structure:
-- `handler.go`: receives HTTP requests, validates input, and returns HTTP responses
-- `service.go`: contains business rules and orchestration
-- `repository.go`: contains explicit PostgreSQL queries and persistence logic
-- `model.go`: defines domain, request, and response models
-- `routes.go`: registers the feature's endpoints with Gin
+`internal/platform` : `config`, `db` (pool + migrations suivies), `middleware` (JWT + session, CORS, en-têtes de sécurité, limite de corps, rate limiting, logs), `httpx` (erreurs homogènes, validation d'ID/pagination), `geo`, `media` (traitement d'image, stockage, signature), `mailer`, `realtime` (hub), `logger` (journalisation avec masquage des secrets).
 
-This pattern improves maintainability because:
-- feature code is easier to find
-- boundaries are explicit
-- business logic stays out of handlers
-- SQL stays out of handlers and services
-- new modules can follow a predictable template
+Les dépendances entre features passent par des interfaces déclarées côté consommateur (`CardLoader`, `MatchNotifier`, `MessageNotifier`, `realtime.Publisher`, `AccountHooks`).
 
-## 3. Platform Layer
+## Modèle de données
 
-The `platform` layer contains infrastructure shared by all backend features.
+| Table | Clés et contraintes notables | Index |
+| --- | --- | --- |
+| `users` | e-mail en minuscules, unique ; `is_demo` | `email` (unique), `is_demo` partiel |
+| `sessions` | hash SHA-256 du refresh token, révocation | `token_hash` unique, `(user_id, created_at)` |
+| `password_resets` | HMAC du code, tentatives, expiration, usage unique | `(user_id, created_at)` |
+| `profiles` | 1-1 avec `users` ; genre/intention en liste fermée ; longueurs bornées ; lat/lng arrondies, toutes deux nulles ou non | `(gender, birthdate)`, `(latitude, longitude)` partiel, `last_active_at` |
+| `preferences` | genres recherchés ⊂ {woman, man, nonbinary}, 18 ≤ âge_min ≤ âge_max ≤ 99, distance 1–500 km | PK |
+| `interests` / `user_interests` | catalogue / association | PK + `interest_id` |
+| `photos` | position 0–5, unicité `(user_id, position)` différée (réordonnancement atomique), `storage_key` unique | via contrainte |
+| `swipes` | PK `(swiper_id, target_id)` ⇒ une seule décision par paire ; pas de swipe sur soi | `(target_id, decision, created_at)` |
+| `matches` | paire ordonnée `user_a_id < user_b_id`, unique ; `unmatched_at` | `user_b_id` (+ unicité couvrant `user_a_id`) |
+| `conversations` | 1-1 avec `matches`, `last_message_at` | `match_id` unique |
+| `conversation_participants` | PK `(conversation_id, user_id)`, `last_read_at`, `cleared_at` | `(user_id, conversation_id)` |
+| `messages` | 1–2000 caractères | `(conversation_id, created_at DESC, id DESC)` |
+| `blocks` | PK `(blocker_id, blocked_id)` | `(blocked_id, blocker_id)` |
+| `reports` | motif en liste fermée, statut de modération ; `ON DELETE SET NULL` pour conserver l'historique | `(reported_id, created_at)`, `(status, created_at)` |
+| `notifications` | types `match` / `message` | `(user_id, created_at DESC, id DESC)`, non-lus partiel |
 
-- `config/`: loads runtime configuration from environment variables such as `DATABASE_URL`, `JWT_SECRET`, `PORT`, and optional Stripe billing keys
-- `db/`: initializes the PostgreSQL connection pool and runs embedded migrations
-- `middleware/`: contains reusable HTTP middleware such as auth checks, request metadata handling, and logging hooks
-- `logger/`: provides shared logging utilities so features do not each invent their own logging style
-- `errors/`: provides shared API error types and helpers for consistent error responses
+Toutes les données personnelles sont en `ON DELETE CASCADE` depuis `users`.
 
-The purpose of this layer is to centralize technical infrastructure so feature modules stay focused on domain behavior.
+## Règles métier clés (toutes vérifiées côté serveur)
 
-## 4. Database Design
+- **Découverte** : préférences de genre et d'âge **mutuelles**, distance dans le rayon des deux personnes (si le demandeur a une position ; préfiltre par boîte englobante indexée puis haversine), profils découvrables avec au moins une photo, jamais soi-même, jamais un profil déjà traité, jamais un blocage dans un sens ou l'autre, comptes de démo exclus en production. Le dépôt renvoie un lot borné (≤ 100), classé ensuite par `Ranker`.
+- **Swipe** : verrou consultatif transactionnel par paire → insertion du swipe (conflit = 409) → si réciprocité, insertion du match (unique) + conversation + participants dans la même transaction. Deux likes simultanés produisent exactement un match (test d'intégration dédié).
+- **Accès au chat** : une seule requête de « membership » vérifie que l'utilisateur participe, que le match est actif et qu'aucun blocage n'existe ; un non-participant reçoit 404 (indiscernable d'une conversation inexistante).
+- **Lu / non-lu** : un horodatage `last_read_at` par participant ; un message est « lu » s'il est antérieur au marqueur du partenaire.
+- **Visibilité d'un profil** : pas de blocage, et match actif ou profil découvrable avec photo. Les réponses ne contiennent jamais e-mail, date de naissance ni coordonnées.
 
-The API uses PostgreSQL with explicit SQL queries. There is no ORM.
+## Sécurité
 
-This is an intentional choice:
-- SQL stays visible and reviewable
-- query behavior is explicit
-- performance characteristics are easier to reason about
-- schema changes stay close to the database design
+- JWT HS256 uniquement (`WithValidMethods`), expiration obligatoire, claims `uid`/`sid` requis, session vérifiée à chaque requête.
+- Mots de passe bcrypt (coût 12), comparaison à temps constant y compris pour un e-mail inconnu ; politique : 8–72 caractères, lettre + chiffre.
+- Récupération : code à 6 chiffres HMAC, 15 min, 5 essais, 3 demandes/h, réponse identique que le compte existe ou non, envoi asynchrone, toutes les sessions révoquées après réinitialisation.
+- Rate limiting par IP (identifiants, récupération) et par utilisateur (uploads, swipes, messages, signalements) ; `X-Forwarded-For` uniquement depuis `TRUSTED_PROXIES`.
+- Corps JSON limités à 64 Ko, uploads à 8 Mo ; validation de tous les identifiants (UUID), paginations bornées, textes nettoyés (caractères de contrôle).
+- Photos : détection du type par contenu, limite de pixels, ré-encodage (métadonnées supprimées), clés aléatoires validées par regex (pas de traversée de chemin), URLs HMAC expirantes, `Content-Security-Policy: default-src 'none'`.
+- En-têtes : `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, HSTS derrière HTTPS ; CORS sur liste blanche.
+- Logs JSON avec masquage des tokens, mots de passe et secrets.
 
-The generic modules rely on core tables such as:
-- `users`: account records and identity data
-- `organizations`: tenant identity for multi-tenant SaaS isolation
-- `subscriptions`: billing state linked to organizations
-- `sessions`: refresh-token session persistence
-- `posts`: generic user-generated content
-- `comments`: responses attached to posts
-- `conversations`: chat threads
-- `messages`: individual chat messages
-- `notifications`: system or user-facing notifications
-- `files`: uploaded file metadata and ownership
+## Frontend (`apps/mobile`)
 
-Related support tables such as `conversation_participants` and `votes` extend these core capabilities.
+- `src/api` : `client.ts` (timeouts, erreurs typées et traduites, refresh « single-flight » sur 401), `endpoints.ts` (seul point d'accès réseau), `tokenStore.ts` (SecureStore natif / sessionStorage web).
+- `src/state` : `session.tsx` (statut, utilisateur, profil), `realtime.tsx` (WebSocket avec reconnexion exponentielle, application des événements au cache TanStack Query, resynchronisation REST à chaque connexion), `matchCelebration.tsx`.
+- `src/navigation/RootNavigator.tsx` : non connecté → pile d'auth ; profil absent/incomplet → onboarding ; sinon onglets (Découvrir, Likes, Messages, Profil) + écrans empilés.
+- `src/features` : un dossier par domaine, sans logique réseau directe dans les composants.
+- `src/ui` + `src/theme` : design system thémé (clair/sombre), composants accessibles, `ActionSheet` et dialogues compatibles web (où `Alert` n'existe pas).
 
-Multi-tenant isolation is centered on `organizations`:
-- users belong to an `organization_id`
-- subscriptions belong to an `organization_id`
-- tenant-scoped repository queries limit shared content and chat access by organization
-
-## 5. Frontend Architecture
-
-The mobile frontend lives under `apps/mobile/src/`:
-
-```text
-apps/mobile/src/
-├─ api/
-├─ hooks/
-├─ components/
-├─ screens/
-├─ store/
-├─ theme/
-└─ utils/
-```
-
-Responsibilities:
-- `api/`: HTTP client functions and endpoint wrappers
-- `hooks/`: React Query-powered auth/session hooks
-- `components/`: reusable UI building blocks
-- `screens/`: route-level UI and screen orchestration
-- `store/`: access-token and refresh-token persistence
-- `theme/`: design tokens and shared styling primitives
-- `utils/`: shared helpers used across the app
-
-Screens should orchestrate the UI, while shared logic belongs in reusable modules such as API clients, helpers, components, and storage utilities. This keeps screens smaller and makes behavior easier to reuse across future clients.
-
-Session behavior is centralized:
-- auth state lives in hooks rather than screens
-- React Query owns current-user fetching and session restoration
-- screens consume hooks and API modules instead of issuing direct network requests
-
-## 6. Adding a New Feature
-
-New backend features should follow the same feature-first pattern:
-
-```text
-internal/features/example/
-├─ handler.go
-├─ service.go
-├─ repository.go
-├─ model.go
-└─ routes.go
-```
-
-Recommended process:
-
-1. Add or update the database migration if the feature needs persistence.
-2. Create a new folder under `internal/features/<feature>`.
-3. Define models in `model.go`.
-4. Implement database access in `repository.go`.
-5. Implement business logic in `service.go`.
-6. Expose HTTP handlers in `handler.go`.
-7. Register routes in `routes.go`.
-8. Wire the feature from `cmd/api/main.go`.
-
-When adding a feature, preserve the same architectural rules:
-- thin handlers
-- explicit services
-- SQL in repositories
-- reusable platform infrastructure
-- clear, predictable module boundaries
-
-This consistency is what makes `go-react-saas` scalable as more features are added.
+Performance : images via `expo-image` (cache mémoire + disque, clé de cache stable malgré la signature), listes virtualisées et paginées par curseur, cartes de découverte préchargées par lots de 10, invalidations ciblées plutôt que rechargements globaux, aucune liste chargée en entier.

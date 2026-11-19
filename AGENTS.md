@@ -1,30 +1,25 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is **Lueur**, a 100% free dating application built on the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+The founder explicitly requested a complete, entirely free dating application:
+no subscription, no paywall, no paid boost, no artificial like limit, no mandatory ads.
+Never add paid features or lock essential features.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
+Feature modules:
+- auth (accounts, sessions, recovery, account deletion)
+- profiles (profile, preferences, interests, approximate location)
+- photos
+- matching (discovery, likes/passes, matches)
 - chat
 - notifications
-- files
+- safety (blocks, reports)
+- realtime
 
 ---
 
@@ -65,12 +60,14 @@ Target structure:
   - `errors/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
+  - `realtime/`
+- `app/` (composition root shared by `cmd/api` and integration tests)
 
 Each feature should contain:
 - `handler.go`
@@ -130,12 +127,13 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `swipes (swiper_id, target_id)` and `swipes (target_id, decision, created_at)`
+- `matches (user_a_id, user_b_id)` unique
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `blocks (blocker_id, blocked_id)` and `blocks (blocked_id, blocker_id)`
 
 ---
 
@@ -143,20 +141,22 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
+- `gofmt -l .` (empty)
+- `go vet ./...`
+- `DATABASE_URL_TEST=<disposable db> go test -race ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test` healthy in `apps/mobile`
+- Critical path: `npm run e2e:web` (see README)
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/internal/app`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth (`/auth/*`, `/me`), recovery, account deletion
+- Profiles and photos (`/profile`, `/photos`, `/media`)
+- Discovery and matching (`/discovery`, `/likes/received`, `/matches`)
+- Chat (`/conversations`, `/conversations/:id/messages`) and realtime (`/realtime`)
+- Safety (`/blocks`, `/reports`) and notifications (`/notifications`)
 
 ---
 
@@ -177,9 +177,9 @@ Mandatory rules to avoid recurring environment issues:
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
-  - login
-  - users load
-  - posts load
+  - onboarding (profile + photo)
+  - discovery loads
+  - like → match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +207,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing payments, paywalls or usage limits that lock essential features
 
 ---
 

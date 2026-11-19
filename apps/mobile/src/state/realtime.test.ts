@@ -28,9 +28,18 @@ function seed(client: QueryClient, messages: Message[]) {
 
 const read = (client: QueryClient) => client.getQueryData<InfiniteData<MessagesPage>>(queryKeys.messages("c1"))!.pages[0].messages;
 
+// gcTime: Infinity avoids scheduling garbage-collection timers that would keep Jest alive.
+const clients: QueryClient[] = [];
+const newClient = () => {
+  const client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+  clients.push(client);
+  return client;
+};
+afterEach(() => clients.splice(0).forEach((c) => c.clear()));
+
 describe("realtime cache helpers", () => {
   it("prepends new messages once", () => {
-    const client = new QueryClient();
+    const client = newClient();
     seed(client, [msg("a", "2026-01-01T10:00:00Z")]);
     const b = msg("b", "2026-01-01T10:01:00Z", false);
     addMessageToCache(client, b);
@@ -39,13 +48,13 @@ describe("realtime cache helpers", () => {
   });
 
   it("ignores conversations that are not loaded", () => {
-    const client = new QueryClient();
+    const client = newClient();
     addMessageToCache(client, msg("x", "2026-01-01T10:00:00Z"));
     expect(client.getQueryData(queryKeys.messages("c1"))).toBeUndefined();
   });
 
   it("marks my messages read up to the read marker", () => {
-    const client = new QueryClient();
+    const client = newClient();
     seed(client, [msg("new", "2026-01-01T10:05:00Z"), msg("old", "2026-01-01T10:00:00Z"), msg("theirs", "2026-01-01T09:00:00Z", false)]);
     markReadInCache(client, "c1", "2026-01-01T10:01:00Z");
     const [newer, older, theirs] = read(client);
