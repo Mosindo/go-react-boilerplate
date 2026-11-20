@@ -29,6 +29,7 @@ import (
 const testSecret = "integration-k8s2Jd9fLq3Zp0Xv7Nw4Rt6Yb1Hc5Gm8"
 
 type captureMailer struct {
+	app      *App
 	mu       sync.Mutex
 	messages []mailer.Message
 }
@@ -43,6 +44,7 @@ func (m *captureMailer) Send(_ context.Context, msg mailer.Message) error {
 var resetCodePattern = regexp.MustCompile(`: ([A-Z2-9]{10})`)
 
 func (m *captureMailer) lastCodeFor(email string) string {
+	m.app.Shutdown() // e-mails are sent asynchronously
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i := len(m.messages) - 1; i >= 0; i-- {
@@ -94,6 +96,7 @@ func newEnv(t *testing.T, limits Limits) *env {
 	if err != nil {
 		t.Fatalf("app: %v", err)
 	}
+	mail.app = application
 	e := &env{t: t, pool: pool, app: application, server: httptest.NewServer(application.Engine), mail: mail, uploadDir: uploadDir}
 	t.Cleanup(func() {
 		e.server.Close()

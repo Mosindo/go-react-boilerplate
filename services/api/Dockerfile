@@ -9,11 +9,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./c
  && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/seed ./cmd/seed
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata \
- && addgroup -S app && adduser -S -G app app \
+# No package install needed: CA certificates (for SMTP over TLS) come from the builder.
+RUN addgroup -S app && adduser -S -G app app \
  && mkdir -p /data/uploads && chown -R app:app /data
 WORKDIR /app
 
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /out/api /out/seed ./
 
 ENV PORT=8080 \

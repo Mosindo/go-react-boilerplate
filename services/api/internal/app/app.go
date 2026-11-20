@@ -74,6 +74,8 @@ type Options struct {
 type App struct {
 	Engine *gin.Engine
 	Hub    *realtime.Hub
+	// Shutdown waits for background work (queued e-mails) to finish.
+	Shutdown func()
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, error) {
@@ -145,5 +147,5 @@ func New(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, error) {
 	safety.RegisterRoutes(r, safety.NewHandler(safetyService), requireUser, byUser(limits.Reports))
 	r.GET("/realtime", realtime.NewHandler(hub, secret, authRepo, cfg.AllowedOrigins).Serve)
 
-	return &App{Engine: r, Hub: hub}, nil
+	return &App{Engine: r, Hub: hub, Shutdown: authService.WaitForMail}, nil
 }

@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/mail"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -61,6 +62,7 @@ type Service struct {
 	purger       AccountPurger
 	disconnecter Disconnecter
 	now          func() time.Time
+	mailWG       sync.WaitGroup
 }
 
 func NewService(repo Repository, jwtSecret []byte, m mailer.Mailer, purger AccountPurger, disconnecter Disconnecter) *Service {
@@ -240,16 +242,33 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		return err
 	}
 
-	err = s.mailer.Send(ctx, mailer.Message{
+	msg := mailer.Message{
 		To:      stored.Email,
 		Subject: "Lueur — ton code de réinitialisation",
 		Body: "Bonjour,\n\nVoici ton code pour choisir un nouveau mot de passe : " + code +
 			"\n\nIl est valable 30 minutes. Si tu n'es pas à l'origine de cette demande, ignore simplement cet e-mail.\n\nL'équipe Lueur",
-	})
-	if err != nil {
-		log.Printf(`{"event":"password_reset_mail_failed","user_id":%q,"error":%q}`, stored.ID, err.Error())
 	}
+	// Sent off the request path: the response time must not reveal whether
+	// the account exists, and a slow SMTP relay must not block the client.
+	s.sendAsync(stored.ID, msg)
 	return nil
+}
+
+func (s *Service) sendAsync(userID string, msg mailer.Message) {
+	s.mailWG.Add(1)
+	go func() {
+		defer s.mailWG.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.mailer.Send(ctx, msg); err != nil {
+			log.Printf(`{"event":"password_reset_mail_failed","user_id":%q,"error":%q}`, userID, err.Error())
+		}
+	}()
+}
+
+// WaitForMail blocks until queued e-mails are sent (graceful shutdown, tests).
+func (s *Service) WaitForMail() {
+	s.mailWG.Wait()
 }
 
 func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword, userAgent, ipAddress string) (Tokens, User, error) {

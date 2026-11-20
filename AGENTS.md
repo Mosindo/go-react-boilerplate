@@ -1,30 +1,29 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository is `Lueur`, a 100% free dating application built on the former `go-react-saas` boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Lueur lets two people create an account, build a profile with photos, discover
+compatible profiles, like or pass, match when interest is mutual, chat in real
+time, get notifications, manage privacy, block or report, and delete their account.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules (decided by the founder):
+- 100% free: no subscription, no paywall, no paid boost, no ads, no artificial like limit
+- adults only (18+), enforced server-side
+- exact locations are never stored or exposed (coarse ~1 km grid, approximate distances)
 
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- matching (discovery, swipes, matches)
 - chat
 - notifications
-- files
+- safety (blocks, reports)
 
 ---
 
@@ -55,22 +54,20 @@ Core reusable modules:
 
 Target structure:
 
-`cmd/api/main.go`  
+`cmd/api/main.go` (server) and `cmd/seed/main.go` (demo data)
 `internal/`
+- `app/` (composition root + integration tests)
 - `platform/`
-  - `config/`
-  - `db/`
-  - `middleware/`
-  - `logger/`
-  - `errors/`
+  - `config/`, `db/`, `middleware/`, `logger/`, `httpx/`, `authtoken/`
+  - `realtime/`, `storage/`, `mediaurl/`, `mailer/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -113,10 +110,11 @@ User input:
 
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
+- Expected environment variables (see `.env.example`):
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - optional: `APP_ENV`, `UPLOAD_DIR`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*`
 
 ---
 
@@ -129,34 +127,44 @@ Secrets:
 - Keep common API paths O(n) over page size
 
 Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
-- `conversation_participants (conversation_id, user_id)`
+- `users.email` (unique)
+- `profiles (gender, birthdate) WHERE discoverable`, `profiles (location_lat, location_lng)`
+- `swipes` primary key `(swiper_id, target_id)` and likes received `(target_id, swiper_id)`
+- `matches (user_a_id, user_b_id)` unique
+- `conversation_participants (conversation_id, user_id)` and `(user_id, conversation_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)` unique
+- `blocks (blocker_id, blocked_id)` and reverse
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any backend delivery (`services/api`):
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must be empty)
+- `go vet ./...`
+- `DATABASE_URL_TEST=... go test -race ./...` (integration tests need a dedicated database)
+- `go build ./cmd/api ./cmd/seed`
+
+Frontend/API changes must also keep these healthy in `apps/mobile`:
+
+- `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, `npm run build:web`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`internal/app`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/*`, `/me`, password reset, account deletion)
+- Profiles and photos (`/profile`, `/profile/photos`, `/media/photos/:id`)
+- Discovery and matching (`/discovery`, `/swipes`, `/likes/received`, `/matches/:id`)
+- Chat (`/conversations`, `/conversations/:id/messages`)
 - Notifications (`/notifications`)
+- Safety (`/blocks`, `/reports`)
+- Realtime (`/realtime`)
+
+End-to-end: `npm run e2e:api` and `npm run e2e:web` (see README).
 
 ---
 
@@ -177,9 +185,9 @@ Mandatory rules to avoid recurring environment issues:
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
-  - login
-  - users load
-  - posts load
+  - onboarding (profile, photo)
+  - discovery loads
+  - like → match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +215,7 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing paid features, paywalls or artificial limits without founder approval
 
 ---
 
