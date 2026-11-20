@@ -26,3 +26,29 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadRejectsUnknownAppEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "staging-ish")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected unknown APP_ENV to be rejected")
+	}
+}
+
+func TestLoadRequiresSMTPFromWhenHostSet(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("SMTP_HOST", "smtp.mail.test")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected missing SMTP_FROM to be rejected")
+	}
+	t.Setenv("SMTP_FROM", "no-reply@mail.test")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.SMTP.Enabled() || cfg.SMTP.Port != 587 {
+		t.Fatalf("unexpected smtp config: %#v", cfg.SMTP)
+	}
+}

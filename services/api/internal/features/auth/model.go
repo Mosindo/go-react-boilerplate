@@ -1,25 +1,27 @@
 package auth
 
-import (
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-)
+import "time"
 
 type User struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
+	ID              string
+	Email           string
+	IsDemo          bool
+	ProfileComplete bool
+	CreatedAt       time.Time
+}
+
+type Tokens struct {
+	AccessToken  string
+	RefreshToken string
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    string `json:"email" binding:"required,max=320"`
 	Password string `json:"password" binding:"required,min=8,max=128"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    string `json:"email" binding:"required,max=320"`
 	Password string `json:"password" binding:"required,max=128"`
 }
 
@@ -31,28 +33,50 @@ type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,max=320"`
+}
+
+type ResetPasswordRequest struct {
+	Email    string `json:"email" binding:"required,max=320"`
+	Code     string `json:"code" binding:"required,max=32"`
+	Password string `json:"password" binding:"required,min=8,max=128"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword" binding:"required,max=128"`
+	NewPassword     string `json:"newPassword" binding:"required,min=8,max=128"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=128"`
+}
+
 type MeResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	OrganizationID string    `json:"organizationId"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID              string    `json:"id"`
+	Email           string    `json:"email"`
+	IsDemo          bool      `json:"isDemo"`
+	ProfileComplete bool      `json:"profileComplete"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 type AuthResponse struct {
-	Token        string     `json:"token"`
 	AccessToken  string     `json:"accessToken"`
 	RefreshToken string     `json:"refreshToken"`
 	User         MeResponse `json:"user"`
 }
 
-type Tokens struct {
-	AccessToken  string
-	RefreshToken string
+type RealtimeTicketResponse struct {
+	Ticket    string `json:"ticket"`
+	ExpiresIn int    `json:"expiresIn"`
 }
 
-type AccessTokenClaims struct {
-	UserID         string `json:"uid"`
-	OrganizationID string `json:"oid"`
-	SessionID      string `json:"sid"`
-	jwt.RegisteredClaims
+func toMeResponse(user User) MeResponse {
+	return MeResponse{
+		ID:              user.ID,
+		Email:           user.Email,
+		IsDemo:          user.IsDemo,
+		ProfileComplete: user.ProfileComplete,
+		CreatedAt:       user.CreatedAt,
+	}
 }

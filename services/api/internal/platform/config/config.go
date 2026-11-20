@@ -4,54 +4,92 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
 const minJWTSecretLength = 32
 
+// Environment names accepted by APP_ENV.
+const (
+	EnvDevelopment = "development"
+	EnvTest        = "test"
+	EnvProduction  = "production"
+)
+
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+}
+
+// Enabled reports whether outgoing e-mail is configured.
+func (s SMTPConfig) Enabled() bool {
+	return s.Host != "" && s.From != ""
+}
+
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripePriceID       string
-	AppBaseURL          string
-	AllowedOrigins      []string
+	AppEnv         string
+	Port           string
+	DatabaseURL    string
+	JWTSecret      string
+	AllowedOrigins []string
+	TrustedProxies []string
+	UploadDir      string
+	SMTP           SMTPConfig
+}
+
+// IsProduction reports whether the API runs with production safeguards.
+func (c Config) IsProduction() bool {
+	return c.AppEnv == EnvProduction
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                getenv("PORT", "8080"),
-		DatabaseURL:         strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		StripeSecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		StripePriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		AppBaseURL:          strings.TrimSpace(os.Getenv("APP_BASE_URL")),
-		AllowedOrigins:      splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		AppEnv:         strings.ToLower(getenv("APP_ENV", EnvDevelopment)),
+		Port:           getenv("PORT", "8080"),
+		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
+		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
+		SMTP: SMTPConfig{
+			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
+			Username: strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     strings.TrimSpace(os.Getenv("SMTP_FROM")),
+		},
+	}
+
+	switch cfg.AppEnv {
+	case EnvDevelopment, EnvTest, EnvProduction:
+	default:
+		return Config{}, fmt.Errorf("APP_ENV must be one of %s, %s, %s", EnvDevelopment, EnvTest, EnvProduction)
 	}
 
 	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("DATABASE_URL is required (for Docker/CI use postgres://postgres:postgres@postgres:5432/app?sslmode=disable)")
+		return Config{}, errors.New("DATABASE_URL is required (for Docker use postgres://postgres:postgres@postgres:5432/app?sslmode=disable)")
 	}
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return Config{}, err
 	}
-	if cfg.StripeSecretKey != "" {
-		if cfg.StripePriceID == "" {
-			return Config{}, errors.New("STRIPE_PRICE_ID is required when STRIPE_SECRET_KEY is set")
-		}
-		if cfg.AppBaseURL == "" {
-			return Config{}, errors.New("APP_BASE_URL is required when STRIPE_SECRET_KEY is set")
-		}
+
+	port, err := strconv.Atoi(getenv("SMTP_PORT", "587"))
+	if err != nil || port <= 0 || port > 65535 {
+		return Config{}, errors.New("SMTP_PORT must be a valid TCP port")
+	}
+	cfg.SMTP.Port = port
+	if cfg.SMTP.Host != "" && cfg.SMTP.From == "" {
+		return Config{}, errors.New("SMTP_FROM is required when SMTP_HOST is set")
 	}
 
 	return cfg, nil
 }
 
 func getenv(key, fallback string) string {
-	v := os.Getenv(key)
+	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
 		return fallback
 	}

@@ -1,6 +1,14 @@
 package notifications
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
+
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
 
 type Notification struct {
 	ID        string
@@ -8,28 +16,32 @@ type Notification struct {
 	Type      string
 	Title     string
 	Body      string
+	Data      json.RawMessage
 	IsRead    bool
 	CreatedAt time.Time
 	ReadAt    *time.Time
 }
 
 type NotificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Title     string          `json:"title"`
+	Body      string          `json:"body"`
+	Data      json.RawMessage `json:"data"`
+	IsRead    bool            `json:"isRead"`
+	CreatedAt time.Time       `json:"createdAt"`
+	ReadAt    *time.Time      `json:"readAt"`
 }
 
-type NotificationsResponse struct {
+type ListResponse struct {
 	Notifications []NotificationResponse `json:"notifications"`
+	UnreadCount   int                    `json:"unreadCount"`
 }
 
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+func toResponse(n Notification) NotificationResponse {
+	data := n.Data
+	if len(data) == 0 {
+		data = json.RawMessage("{}")
+	}
+	return NotificationResponse{ID: n.ID, Type: n.Type, Title: n.Title, Body: n.Body, Data: data, IsRead: n.IsRead, CreatedAt: n.CreatedAt, ReadAt: n.ReadAt}
 }
