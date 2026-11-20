@@ -53,6 +53,14 @@ func DefaultLimits() Limits {
 	}
 }
 
+// TestLimits relaxes every limit 20x for automated end-to-end runs (APP_ENV=test),
+// where a single IP creates many accounts in a few seconds.
+func TestLimits() Limits {
+	scale := func(r rate) rate { return rate{Count: r.Count * 20, Window: r.Window, Burst: r.Burst * 20} }
+	d := DefaultLimits()
+	return Limits{GlobalPerIP: scale(d.GlobalPerIP), Auth: scale(d.Auth), Swipes: scale(d.Swipes), Messages: scale(d.Messages), Uploads: scale(d.Uploads), Reports: scale(d.Reports)}
+}
+
 func (r rate) limiter() *middleware.RateLimiter {
 	return middleware.NewRateLimiter(r.Count, r.Window, r.Burst)
 }
@@ -93,6 +101,9 @@ func New(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, error) {
 	limits := opts.Limits
 	if limits.Auth.Count == 0 {
 		limits = DefaultLimits()
+		if cfg.AppEnv == config.EnvTest {
+			limits = TestLimits()
+		}
 	}
 
 	r := gin.New()
