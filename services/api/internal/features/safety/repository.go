@@ -28,6 +28,13 @@ func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
 }
 
 func blockTx(ctx context.Context, tx pgx.Tx, blockerID, blockedID string) (*RemovedMatch, error) {
+	// Same per-pair lock as matching.Swipe: a like racing this block cannot
+	// create a match after the block committed.
+	if _, err := tx.Exec(ctx, `
+		SELECT pg_advisory_xact_lock(hashtextextended(LEAST($1::uuid, $2::uuid)::text || GREATEST($1::uuid, $2::uuid)::text, 0))
+	`, blockerID, blockedID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2)
 		ON CONFLICT (blocker_id, blocked_id) DO NOTHING
@@ -59,6 +66,9 @@ func blockTx(ctx context.Context, tx pgx.Tx, blockerID, blockedID string) (*Remo
 	removed := &RemovedMatch{MatchID: *matchID}
 	if conversationID != nil {
 		removed.ConversationID = *conversationID
+	}
+	if err := deleteMatchNotifications(ctx, tx, removed.MatchID, removed.ConversationID); err != nil {
+		return nil, err
 	}
 	return removed, nil
 }
@@ -134,4 +144,14 @@ func (r *PGRepository) CreateReport(ctx context.Context, reporterID, reportedID,
 		return nil, err
 	}
 	return removed, tx.Commit(ctx)
+}
+
+// deleteMatchNotifications removes notifications that mention a match that no
+// longer exists (names and message previews of a blocked person).
+func deleteMatchNotifications(ctx context.Context, tx pgx.Tx, matchID, conversationID string) error {
+	_, err := tx.Exec(ctx, `
+		DELETE FROM notifications
+		WHERE data->>'matchId' = $1 OR ($2 <> '' AND data->>'conversationId' = $2)
+	`, matchID, conversationID)
+	return err
 }

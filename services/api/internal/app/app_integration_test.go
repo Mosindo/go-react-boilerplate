@@ -633,3 +633,74 @@ func TestAuthRateLimit(t *testing.T) {
 		t.Fatalf("expected login to be rate limited, got %v", statuses)
 	}
 }
+
+func TestReviewRegressions(t *testing.T) {
+	e := newEnv(t, relaxedLimits())
+
+	// A multibyte User-Agent longer than the stored limit must not break sign-up.
+	req, _ := http.NewRequest(http.MethodPost, e.server.URL+"/auth/register",
+		strings.NewReader(`{"email":"`+uniqueEmail("ua")+`","password":"Password123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "a"+strings.Repeat("é", 400))
+	e.expect(e.send(req), http.StatusCreated, "register with long UTF-8 user agent")
+
+	// Blocking removes notifications that name the blocked person.
+	alice := e.onboard(profileSpec{Name: "Alice", Gender: "woman", InterestedIn: []string{"man"}})
+	bob := e.onboard(profileSpec{Name: "Bob", Gender: "man", InterestedIn: []string{"woman"}})
+	_, conversationID := e.match(alice, bob)
+	e.expect(e.do(http.MethodPost, "/conversations/"+conversationID+"/messages", bob.AccessToken, map[string]string{"body": "secret preview"}), http.StatusCreated, "send")
+	e.expect(e.do(http.MethodPost, "/blocks", alice.AccessToken, map[string]string{"userId": bob.User.ID}), http.StatusNoContent, "block")
+	res := e.do(http.MethodGet, "/notifications", alice.AccessToken, nil)
+	if strings.Contains(string(res.Body), "Bob") || strings.Contains(string(res.Body), "secret preview") {
+		t.Fatalf("notifications about a blocked person must be removed: %s", res.Body)
+	}
+
+	// Logging out closes the WebSocket opened with that session.
+	res = e.do(http.MethodPost, "/auth/login", "", map[string]string{"email": alice.User.Email, "password": testPassword})
+	var second session
+	res.decode(t, &second)
+	res = e.do(http.MethodPost, "/realtime/ticket", second.AccessToken, nil)
+	var ticket struct {
+		Ticket string `json:"ticket"`
+	}
+	res.decode(t, &ticket)
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(e.server.URL, "http")+"/realtime?ticket="+ticket.Ticket, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	e.expect(e.do(http.MethodPost, "/auth/logout", "", map[string]string{"refreshToken": second.RefreshToken}), http.StatusNoContent, "logout")
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			if ne, ok := err.(interface{ Timeout() bool }); ok && ne.Timeout() {
+				t.Fatal("socket must be closed after logout")
+			}
+			break
+		}
+	}
+}
+
+func TestBlockRacingLikeNeverLeavesAMatch(t *testing.T) {
+	e := newEnv(t, relaxedLimits())
+	for round := 0; round < 8; round++ {
+		a := e.onboard(profileSpec{Name: "Ana", Gender: "woman", InterestedIn: []string{"man"}})
+		b := e.onboard(profileSpec{Name: "Ben", Gender: "man", InterestedIn: []string{"woman"}})
+		e.swipe(b.AccessToken, a.User.ID, "like")
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); e.swipe(a.AccessToken, b.User.ID, "like") }()
+		go func() {
+			defer wg.Done()
+			e.do(http.MethodPost, "/blocks", b.AccessToken, map[string]string{"userId": a.User.ID})
+		}()
+		wg.Wait()
+		var count int
+		_ = e.pool.QueryRow(context.Background(), `
+			SELECT COUNT(*) FROM matches WHERE user_a_id = LEAST($1::uuid, $2::uuid) AND user_b_id = GREATEST($1::uuid, $2::uuid)
+		`, a.User.ID, b.User.ID).Scan(&count)
+		if count != 0 {
+			t.Fatalf("round %d: a block must always win over a concurrent like", round)
+		}
+	}
+}

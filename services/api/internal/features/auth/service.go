@@ -46,13 +46,14 @@ var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equalizer-password
 // AccountPurger releases resources held outside the database (photo files)
 // when an account is deleted.
 type AccountPurger interface {
-	StorageKeysForUser(ctx context.Context, userID string) ([]string, error)
 	DeleteStoredObjects(ctx context.Context, keys []string)
 }
 
-// Disconnecter closes realtime connections of a user.
+// Disconnecter closes realtime connections when sessions end.
 type Disconnecter interface {
 	DisconnectUser(userID string)
+	DisconnectSession(sessionID string)
+	DisconnectUserExcept(userID, keepSessionID string)
 }
 
 type Service struct {
@@ -196,7 +197,14 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	if tokenHash == "" {
 		return ErrInvalidRefreshToken
 	}
-	return s.repo.RevokeSessionByTokenHash(ctx, tokenHash)
+	sessionID, err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return err
+	}
+	if sessionID != "" {
+		s.disconnecter.DisconnectSession(sessionID)
+	}
+	return nil
 }
 
 func (s *Service) Me(ctx context.Context, userID string) (User, error) {
@@ -335,7 +343,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdatePassword(ctx, userID, string(hash), sessionID)
+	if err := s.repo.UpdatePassword(ctx, userID, string(hash), sessionID); err != nil {
+		return err
+	}
+	s.disconnecter.DisconnectUserExcept(userID, sessionID)
+	return nil
 }
 
 // DeleteAccount permanently removes the account and all associated data.
@@ -351,11 +363,8 @@ func (s *Service) DeleteAccount(ctx context.Context, userID, password string) er
 		return ErrInvalidCredentials
 	}
 
-	keys, err := s.purger.StorageKeysForUser(ctx, userID)
+	keys, err := s.repo.DeleteUser(ctx, userID)
 	if err != nil {
-		return err
-	}
-	if err := s.repo.DeleteUser(ctx, userID); err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
 			return ErrUserNotFound
 		}

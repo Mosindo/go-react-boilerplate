@@ -154,11 +154,7 @@ func (s *Service) OpenSigned(ctx context.Context, photoID, expires, signature st
 	return rc, err
 }
 
-// StorageKeysForUser and DeleteStoredObjects implement auth.AccountPurger.
-func (s *Service) StorageKeysForUser(ctx context.Context, userID string) ([]string, error) {
-	return s.repo.StorageKeysForUser(ctx, userID)
-}
-
+// DeleteStoredObjects implements auth.AccountPurger.
 func (s *Service) DeleteStoredObjects(ctx context.Context, keys []string) {
 	for _, key := range keys {
 		s.discard(ctx, key)

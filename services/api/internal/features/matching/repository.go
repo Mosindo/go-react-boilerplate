@@ -259,9 +259,14 @@ func (r *PGRepository) LikesReceived(ctx context.Context, userID string, limit, 
 // DeleteMatch unmatches two members. The conversation and its messages are
 // removed by cascade; both swipes remain so the profiles never reappear.
 func (r *PGRepository) DeleteMatch(ctx context.Context, userID, matchID string) (string, string, error) {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var other string
 	var conversationID *string
-	err := r.dbPool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		WITH target AS (
 			SELECT m.id,
 			       CASE WHEN m.user_a_id = $2 THEN m.user_b_id ELSE m.user_a_id END AS other_id,
@@ -283,5 +288,11 @@ func (r *PGRepository) DeleteMatch(ctx context.Context, userID, matchID string) 
 	if conversationID != nil {
 		conv = *conversationID
 	}
-	return other, conv, nil
+	// Notifications about a finished match must not keep names and previews around.
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM notifications WHERE data->>'matchId' = $1 OR ($2 <> '' AND data->>'conversationId' = $2)
+	`, matchID, conv); err != nil {
+		return "", "", err
+	}
+	return other, conv, tx.Commit(ctx)
 }

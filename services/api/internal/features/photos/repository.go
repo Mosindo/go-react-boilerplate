@@ -40,7 +40,6 @@ type Repository interface {
 	Delete(ctx context.Context, userID, photoID string) (storageKey string, err error)
 	Reorder(ctx context.Context, userID string, orderedIDs []string) error
 	StorageKey(ctx context.Context, photoID string) (string, error)
-	StorageKeysForUser(ctx context.Context, userID string) ([]string, error)
 }
 
 type PGRepository struct {
@@ -212,12 +211,4 @@ func (r *PGRepository) StorageKey(ctx context.Context, photoID string) (string, 
 		return "", ErrRepositoryNotFound
 	}
 	return key, err
-}
-
-func (r *PGRepository) StorageKeysForUser(ctx context.Context, userID string) ([]string, error) {
-	rows, err := r.dbPool.Query(ctx, `SELECT storage_key FROM photos WHERE user_id = $1`, userID)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, pgx.RowTo[string])
 }

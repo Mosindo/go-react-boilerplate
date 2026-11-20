@@ -24,10 +24,11 @@ type Publisher interface {
 }
 
 type client struct {
-	userID string
-	send   chan []byte
-	once   sync.Once
-	closed chan struct{}
+	userID    string
+	sessionID string
+	send      chan []byte
+	once      sync.Once
+	closed    chan struct{}
 }
 
 func (c *client) close() {
@@ -49,8 +50,8 @@ const (
 	writeTimeout = 10 * time.Second
 )
 
-func (h *Hub) register(userID string) *client {
-	c := &client{userID: userID, send: make(chan []byte, sendBuffer), closed: make(chan struct{})}
+func (h *Hub) register(userID, sessionID string) *client {
+	c := &client{userID: userID, sessionID: sessionID, send: make(chan []byte, sendBuffer), closed: make(chan struct{})}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	set := h.clients[userID]
@@ -109,6 +110,33 @@ func (h *Hub) DisconnectUser(userID string) {
 		c.close()
 	}
 	delete(h.clients, userID)
+}
+
+// DisconnectSession closes the connections opened with one session (logout).
+func (h *Hub) DisconnectSession(sessionID string) {
+	h.disconnectWhere(func(c *client) bool { return c.sessionID == sessionID })
+}
+
+// DisconnectUserExcept closes a user's connections except those of keepSessionID
+// (password change signs out the other devices).
+func (h *Hub) DisconnectUserExcept(userID, keepSessionID string) {
+	h.disconnectWhere(func(c *client) bool { return c.userID == userID && c.sessionID != keepSessionID })
+}
+
+func (h *Hub) disconnectWhere(match func(*client) bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for userID, set := range h.clients {
+		for c := range set {
+			if match(c) {
+				c.close()
+				delete(set, c)
+			}
+		}
+		if len(set) == 0 {
+			delete(h.clients, userID)
+		}
+	}
 }
 
 // ConnectionCount is exposed for tests and diagnostics.

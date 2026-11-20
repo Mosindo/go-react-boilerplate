@@ -72,7 +72,7 @@ func (h *Handler) Serve(c *gin.Context) {
 	if err != nil {
 		return // the upgrader already replied
 	}
-	cl := h.hub.register(claims.UserID)
+	cl := h.hub.register(claims.UserID, claims.SessionID)
 	go h.writeLoop(conn, cl)
 	h.readLoop(conn, cl)
 }
@@ -117,6 +117,15 @@ func (h *Handler) writeLoop(conn *websocket.Conn, cl *client) {
 				return
 			}
 		case <-ticker.C:
+			// Re-check the session so suspension or revocation also ends
+			// sockets that were not closed explicitly.
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			active, err := h.sessions.IsSessionActive(ctx, cl.sessionID, cl.userID)
+			cancel()
+			if err == nil && !active {
+				cl.close()
+				continue
+			}
 			_ = conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				cl.close()

@@ -60,6 +60,11 @@ func (r *PGRepository) List(ctx context.Context, userID, filter string, onlyID *
 			LIMIT 1
 		) lm ON TRUE
 		WHERE me.user_id = $1 AND ($4::uuid IS NULL OR c.id = $4) AND `+condition+`
+		  AND NOT EXISTS (
+			SELECT 1 FROM blocks b
+			WHERE (b.blocker_id = me.user_id AND b.blocked_id = other.user_id)
+			   OR (b.blocker_id = other.user_id AND b.blocked_id = me.user_id)
+		  )
 		ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset, onlyID)
@@ -131,6 +136,12 @@ func (r *PGRepository) CreateMessage(ctx context.Context, conversationID, sender
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Serialise writers and readers of one conversation so a message can never
+	// get a timestamp older than a read cursor set while it was uncommitted.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM conversations WHERE id = $1 FOR UPDATE`, conversationID); err != nil {
+		return Message{}, "", err
+	}
+
 	var m Message
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO messages (conversation_id, sender_id, body)
@@ -164,8 +175,17 @@ func (r *PGRepository) CreateMessage(ctx context.Context, conversationID, sender
 // MarkRead moves the read cursor to the newest message (not to NOW(), which
 // could skip a message committed concurrently).
 func (r *PGRepository) MarkRead(ctx context.Context, conversationID, userID string) (*time.Time, error) {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// Wait for in-flight messages of this conversation (see CreateMessage).
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM conversations WHERE id = $1 FOR UPDATE`, conversationID); err != nil {
+		return nil, err
+	}
 	var lastRead *time.Time
-	err := r.dbPool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		UPDATE conversation_participants
 		SET last_read_at = NULLIF(GREATEST(
 			COALESCE(last_read_at, '-infinity'),
@@ -177,7 +197,10 @@ func (r *PGRepository) MarkRead(ctx context.Context, conversationID, userID stri
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrRepositoryNotFound
 	}
-	return lastRead, err
+	if err != nil {
+		return nil, err
+	}
+	return lastRead, tx.Commit(ctx)
 }
 
 func (r *PGRepository) Clear(ctx context.Context, conversationID, userID string) error {

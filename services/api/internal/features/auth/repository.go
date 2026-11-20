@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -39,7 +40,7 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (StoredUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	RotateSession(ctx context.Context, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
-	RevokeSessionByTokenHash(ctx context.Context, tokenHash string) error
+	RevokeSessionByTokenHash(ctx context.Context, tokenHash string) (sessionID string, err error)
 	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
 	LatestResetCreatedAt(ctx context.Context, userID string) (*time.Time, error)
 	CreatePasswordReset(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
@@ -47,7 +48,7 @@ type Repository interface {
 	IncrementResetAttempts(ctx context.Context, resetID string) error
 	CompletePasswordReset(ctx context.Context, userID, resetID, passwordHash string) error
 	UpdatePassword(ctx context.Context, userID, passwordHash, keepSessionID string) error
-	DeleteUser(ctx context.Context, userID string) error
+	DeleteUser(ctx context.Context, userID string) (photoKeys []string, err error)
 }
 
 type PGRepository struct {
@@ -149,12 +150,17 @@ func (r *PGRepository) RotateSession(ctx context.Context, currentTokenHash, next
 	return session, err
 }
 
-func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) error {
-	_, err := r.dbPool.Exec(ctx, `
+func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) (string, error) {
+	var sessionID string
+	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions SET revoked_at = NOW()
 		WHERE token_hash = $1 AND revoked_at IS NULL
-	`, tokenHash)
-	return err
+		RETURNING id
+	`, tokenHash).Scan(&sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return sessionID, err
 }
 
 // IsSessionActive is called on every authenticated request. It also refreshes
@@ -283,15 +289,33 @@ func (r *PGRepository) UpdatePassword(ctx context.Context, userID, passwordHash,
 
 // DeleteUser removes the account; foreign keys cascade to every related row
 // (profile, photos metadata, swipes, matches, messages, blocks, reports...).
-func (r *PGRepository) DeleteUser(ctx context.Context, userID string) error {
-	tag, err := r.dbPool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+// Photo storage keys are collected under the same per-user lock as uploads,
+// so no file can be committed in between and orphaned on disk.
+func (r *PGRepository) DeleteUser(ctx context.Context, userID string) ([]string, error) {
+	tx, err := r.dbPool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('photos:' || $1::text, 0))`, userID); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `SELECT storage_key FROM photos WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return nil, err
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrRepositoryNotFound
+		return nil, ErrRepositoryNotFound
 	}
-	return nil
+	return keys, tx.Commit(ctx)
 }
 
 func isUniqueViolation(err error) bool {
@@ -303,8 +327,9 @@ func nullableString(value string) any {
 	if value == "" {
 		return nil
 	}
-	if len(value) > 512 {
-		return value[:512]
+	value = strings.ToValidUTF8(value, "")
+	if runes := []rune(value); len(runes) > 256 {
+		return string(runes[:256])
 	}
 	return value
 }
