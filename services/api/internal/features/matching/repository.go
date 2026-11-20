@@ -132,6 +132,14 @@ func (r *PGRepository) Candidates(ctx context.Context, viewer ViewerContext, tod
 	})
 }
 
+// mutualCompatibilitySQL expects aliases p/pr (other member) and me/mypr
+// (current member): each one's gender and age fit the other's preferences.
+const mutualCompatibilitySQL = `(
+	p.gender = ANY(mypr.interested_in) AND me.gender = ANY(pr.interested_in)
+	AND date_part('year', age(CURRENT_DATE, p.birthdate)) BETWEEN mypr.age_min AND mypr.age_max
+	AND date_part('year', age(CURRENT_DATE, me.birthdate)) BETWEEN pr.age_min AND pr.age_max
+)`
+
 // Swipe records a decision and creates the match atomically. A per-pair
 // advisory lock makes two simultaneous mutual likes produce exactly one match.
 func (r *PGRepository) Swipe(ctx context.Context, swiperID, targetID, action string) (SwipeResult, error) {
@@ -147,17 +155,25 @@ func (r *PGRepository) Swipe(ctx context.Context, swiperID, targetID, action str
 		return SwipeResult{}, err
 	}
 
+	// The target must be someone the swiper could have discovered: active,
+	// visible, with a photo, not blocked, and mutually compatible in gender
+	// and age preferences. Distance is not re-checked (people move).
 	var eligible bool
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
-			SELECT 1 FROM profiles p
+			SELECT 1
+			FROM profiles p
 			JOIN users u ON u.id = p.user_id AND u.moderation_status = 'active'
+			JOIN preferences pr ON pr.user_id = p.user_id
+			JOIN profiles me ON me.user_id = $1
+			JOIN preferences mypr ON mypr.user_id = $1
 			WHERE p.user_id = $2 AND p.user_id <> $1 AND p.discoverable
 			  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id)
 			  AND NOT EXISTS (
 				SELECT 1 FROM blocks b
 				WHERE (b.blocker_id = $1 AND b.blocked_id = $2) OR (b.blocker_id = $2 AND b.blocked_id = $1)
 			  )
+			  AND `+mutualCompatibilitySQL+`
 		)
 	`, swiperID, targetID).Scan(&eligible); err != nil {
 		return SwipeResult{}, err
@@ -219,8 +235,12 @@ func (r *PGRepository) LikesReceived(ctx context.Context, userID string, limit, 
 		SELECT s.swiper_id
 		FROM swipes s
 		JOIN profiles p ON p.user_id = s.swiper_id AND p.discoverable
+		JOIN preferences pr ON pr.user_id = s.swiper_id
 		JOIN users u ON u.id = s.swiper_id AND u.moderation_status = 'active'
+		JOIN profiles me ON me.user_id = $1
+		JOIN preferences mypr ON mypr.user_id = $1
 		WHERE s.target_id = $1 AND s.action = 'like'
+		  AND `+mutualCompatibilitySQL+`
 		  AND NOT EXISTS (SELECT 1 FROM swipes mine WHERE mine.swiper_id = $1 AND mine.target_id = s.swiper_id)
 		  AND NOT EXISTS (
 			SELECT 1 FROM blocks b

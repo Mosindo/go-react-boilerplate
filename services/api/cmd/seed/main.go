@@ -65,7 +65,7 @@ func main() {
 	lat := flag.Float64("lat", 48.8566, "latitude around which demo members are placed")
 	lng := flag.Float64("lng", 2.3522, "longitude around which demo members are placed")
 	password := flag.String("password", envOr("SEED_DEMO_PASSWORD", "Demo12345"), "password of every demo account")
-	likesFor := flag.String("likes-for", "", "e-mail of an existing account that half of the demo members will like (instant matches)")
+	likesFor := flag.String("likes-for", "", "e-mail of an existing onboarded account that compatible demo members will like (instant matches)")
 	flag.Parse()
 
 	cfg, err := config.Load()
@@ -260,18 +260,24 @@ func likeTarget(ctx context.Context, pool *pgxpool.Pool, email string, demoIDs [
 	if err := pool.QueryRow(ctx, `SELECT id FROM users WHERE email = $1 AND NOT is_demo`, email).Scan(&targetID); err != nil {
 		return 0, fmt.Errorf("account %s not found: %w", email, err)
 	}
-	count := 0
-	for i, id := range demoIDs {
-		if i%2 != 0 {
-			continue
-		}
-		tag, err := pool.Exec(ctx, `
-			INSERT INTO swipes (swiper_id, target_id, action) VALUES ($1, $2, 'like') ON CONFLICT DO NOTHING
-		`, id, targetID)
-		if err != nil {
-			return count, err
-		}
-		count += int(tag.RowsAffected())
+	// Only demo members whose preferences are mutually compatible with the
+	// target like it, exactly as could happen through discovery.
+	tag, err := pool.Exec(ctx, `
+		INSERT INTO swipes (swiper_id, target_id, action)
+		SELECT p.user_id, $1, 'like'
+		FROM profiles p
+		JOIN preferences pr ON pr.user_id = p.user_id
+		JOIN profiles me ON me.user_id = $1
+		JOIN preferences mypr ON mypr.user_id = $1
+		WHERE p.user_id = ANY($2::uuid[])
+		  AND p.gender = ANY(mypr.interested_in) AND me.gender = ANY(pr.interested_in)
+		ON CONFLICT DO NOTHING
+	`, targetID, demoIDs)
+	if err != nil {
+		return 0, err
 	}
-	return count, nil
+	if tag.RowsAffected() == 0 {
+		fmt.Println("Note: complete the profile and preferences of this account first, then re-run the seed.")
+	}
+	return int(tag.RowsAffected()), nil
 }

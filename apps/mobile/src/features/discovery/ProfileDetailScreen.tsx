@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -123,7 +124,11 @@ export function ProfileDetailScreen({ navigation, route }: Props) {
         </Text>
       </ScrollView>
       {fromDiscovery ? (
-        <View style={[styles.floating, { bottom: spacing.xl, gap: spacing.xl }]}>
+        <LinearGradient
+          colors={[`${colors.background}00`, colors.background]}
+          pointerEvents="box-none"
+          style={[styles.floating, { paddingBottom: spacing.xl, gap: spacing.xl }]}
+        >
           <IconButton filled icon="close" label="Passer" onPress={() => swipe.mutate({ userId, action: "pass" })} size={64} />
           <IconButton
             filled
@@ -134,7 +139,7 @@ export function ProfileDetailScreen({ navigation, route }: Props) {
             testID="profile-like"
             tone="primary"
           />
-        </View>
+        </LinearGradient>
       ) : null}
       <ActionSheet
         actions={[
@@ -167,5 +172,5 @@ export function ProfileDetailScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   facts: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   fact: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1 },
-  floating: { position: "absolute", left: 0, right: 0, flexDirection: "row", justifyContent: "center" }
+  floating: { position: "absolute", left: 0, right: 0, bottom: 0, paddingTop: 48, flexDirection: "row", justifyContent: "center" }
 });

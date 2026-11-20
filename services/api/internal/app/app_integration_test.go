@@ -297,8 +297,16 @@ func TestDiscoveryRules(t *testing.T) {
 		}
 	}
 
+	// Likes are only possible between mutually compatible members.
+	resp, _ := e.swipe(alice.AccessToken, woman.User.ID, "like")
+	e.expect(resp, http.StatusNotFound, "like outside Alice's preferences")
+	resp, _ = e.swipe(notInterested.AccessToken, alice.User.ID, "like")
+	e.expect(resp, http.StatusNotFound, "like from someone Alice is not compatible with")
+	resp, _ = e.swipe(young.AccessToken, alice.User.ID, "like")
+	e.expect(resp, http.StatusNotFound, "like outside Alice's age range")
+
 	// A swiped profile never comes back.
-	resp, _ := e.swipe(alice.AccessToken, bob.User.ID, "pass")
+	resp, _ = e.swipe(alice.AccessToken, bob.User.ID, "pass")
 	e.expect(resp, http.StatusOK, "pass")
 	if containsCard(e.discover(alice.AccessToken), bob.User.ID) {
 		t.Fatal("passed profile must not reappear")

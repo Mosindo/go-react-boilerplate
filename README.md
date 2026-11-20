@@ -167,7 +167,7 @@ Tables : `users`, `sessions`, `password_reset_tokens`, `profiles`, `preferences`
 - photos abstraites générées (aucun visage réel) ;
 - **refusé quand `APP_ENV=production`** ; relancer le seed remplace les anciens comptes démo.
 
-Option `--likes-for <email>` : la moitié des profils démo likent ce compte, pour obtenir des matchs immédiatement en likant en retour.
+Option `--likes-for <email>` (compte déjà passé par l’onboarding) : les profils démo compatibles avec ses préférences likent ce compte, pour obtenir des matchs immédiatement en likant en retour.
 
 ## Tests, qualité et build
 
