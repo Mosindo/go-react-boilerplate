@@ -795,3 +795,41 @@ func setupRouterWithMailer(t *testing.T) (*gin.Engine, *pgxpool.Pool, *captureMa
 	router := setupRouter(&app{dbPool: pool, jwtSecret: []byte("integration-test-secret"), store: store, mailer: mail})
 	return router, pool, mail
 }
+
+func TestHardeningDefaults(t *testing.T) {
+	_, pool := setupTestRouter(t)
+	store, _ := storage.NewLocal(t.TempDir())
+	router := setupRouter(&app{dbPool: pool, jwtSecret: []byte("integration-test-secret"), store: store})
+	m := registerMember(t, router, "hardening")
+	defer cleanupMembers(t, pool, m)
+
+	// Community modules are disabled unless explicitly enabled.
+	expectStatus(t, doRequest(t, router, http.MethodGet, "/users", nil, m.Token), http.StatusNotFound, "users directory disabled")
+	expectStatus(t, doRequest(t, router, http.MethodGet, "/posts", nil, m.Token), http.StatusNotFound, "posts disabled")
+
+	// Oversized JSON bodies are rejected.
+	huge := strings.Repeat("a", 2<<20)
+	expectStatus(t, doRequest(t, router, http.MethodPut, "/me/profile", map[string]string{"bio": huge}, m.Token), http.StatusBadRequest, "oversized body")
+}
+
+func TestRateLimitIgnoresSpoofedForwardedFor(t *testing.T) {
+	_, pool := setupTestRouter(t)
+	store, _ := storage.NewLocal(t.TempDir())
+	router := setupRouter(&app{dbPool: pool, jwtSecret: []byte("integration-test-secret"), store: store, rateLimits: true})
+	limited := false
+	for i := 0; i < 25; i++ {
+		body, _ := json.Marshal(map[string]string{"email": "nobody@ratelimit.test", "password": "Password123"})
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.0.0.%d", i))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Fatal("a spoofed X-Forwarded-For must not bypass the rate limit")
+	}
+}

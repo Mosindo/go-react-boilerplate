@@ -902,9 +902,10 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *pgxpool.Pool) {
 		t.Fatalf("storage: %v", err)
 	}
 	a := &app{
-		dbPool:    pool,
-		jwtSecret: []byte("integration-test-secret"),
-		store:     store,
+		dbPool:           pool,
+		jwtSecret:        []byte("integration-test-secret"),
+		store:            store,
+		communityModules: true,
 	}
 
 	return setupRouter(a), pool

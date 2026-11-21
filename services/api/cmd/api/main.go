@@ -42,6 +42,9 @@ type app struct {
 	mailer         mailer.Mailer
 	hub            *realtime.Hub
 	allowedOrigins []string
+	trustedProxies []string
+	// communityModules registers the generic boilerplate modules.
+	communityModules bool
 	// rateLimits enables abuse protection. Tests construct the app without it.
 	rateLimits bool
 }
@@ -89,14 +92,16 @@ func main() {
 	}
 
 	a := &app{
-		dbPool:         pool,
-		jwtSecret:      []byte(cfg.JWTSecret),
-		mediaSecret:    mediaSecret,
-		store:          store,
-		mailer:         mail,
-		hub:            realtime.NewHub(),
-		allowedOrigins: cfg.AllowedOrigins,
-		rateLimits:     true,
+		dbPool:           pool,
+		jwtSecret:        []byte(cfg.JWTSecret),
+		mediaSecret:      mediaSecret,
+		store:            store,
+		mailer:           mail,
+		hub:              realtime.NewHub(),
+		allowedOrigins:   cfg.AllowedOrigins,
+		trustedProxies:   cfg.TrustedProxies,
+		communityModules: cfg.EnableCommunityModules,
+		rateLimits:       true,
 	}
 
 	srv := &http.Server{
@@ -143,6 +148,11 @@ func setupRouter(a *app) *gin.Engine {
 	}
 
 	r := gin.New()
+	// Only trust X-Forwarded-For from configured proxies; otherwise clients
+	// could spoof their IP and bypass per-IP rate limits.
+	if err := r.SetTrustedProxies(a.trustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(a.allowedOrigins))
@@ -150,6 +160,7 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
+	r.Use(middleware.MaxJSONBody(1 << 20))
 	r.MaxMultipartMemory = 12 << 20
 
 	signer := media.NewSigner(a.mediaSecret)
@@ -192,13 +203,16 @@ func setupRouter(a *app) *gin.Engine {
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser, a.limiter(30, time.Hour, middleware.KeyByUser))
 	discoveryfeature.RegisterRoutes(r, discoveryfeature.NewHandler(discoveryService), requireUser)
-	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, a.limiter(300, time.Hour, middleware.KeyByUser))
+	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, a.limiter(1000, time.Hour, middleware.KeyByUser))
 	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser, a.limiter(60, time.Minute, middleware.KeyByUser))
 	safetyfeature.RegisterRoutes(r, safetyfeature.NewHandler(safetyService), requireUser, a.limiter(20, time.Hour, middleware.KeyByUser))
 	notificationsfeature.RegisterRoutes(r, notificationsfeature.NewHandler(notificationsService), requireUser)
 
-	// Generic platform modules kept from the boilerplate (not used by the
-	// dating client but part of the reusable platform).
+	// Generic platform modules kept from the boilerplate. The dating client
+	// does not use them, so they are only exposed when explicitly enabled.
+	if !a.communityModules {
+		return r
+	}
 	usersfeature.RegisterRoutes(r, usersfeature.NewHandler(usersfeature.NewService(usersfeature.NewPGRepository(a.dbPool))), requireUser)
 	postsfeature.RegisterRoutes(r, postsfeature.NewHandler(postsfeature.NewService(postsfeature.NewPGRepository(a.dbPool))), requireUser)
 	commentsfeature.RegisterRoutes(r, commentsfeature.NewHandler(commentsfeature.NewService(commentsfeature.NewPGRepository(a.dbPool))), requireUser)

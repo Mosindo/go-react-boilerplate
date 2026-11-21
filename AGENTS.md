@@ -1,30 +1,29 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository contains **Lueur**, a free dating application built on the `go-react-saas` fullstack boilerplate.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+Lueur is a dating app that is **100% free** for its members:
+- no subscription, paywall, paid boost, artificial like limit, locked essential feature or mandatory ads;
+- account, profile, photos, discovery, like/pass, mutual match, realtime chat, notifications,
+  preferences, privacy settings, block, report and account deletion.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
-
-Core reusable modules:
-- auth
-- users
-- posts
-- comments
-- chat
+Dating feature modules:
+- auth (incl. password recovery, account deletion)
+- profiles (profile, preferences, interests, coarse location, privacy settings)
+- photos (upload pipeline, signed media URLs)
+- discovery (candidate filtering + pluggable ranking)
+- matching (swipes, matches)
+- chat (match-gated conversations, read receipts)
+- safety (blocks, reports)
 - notifications
-- files
+
+Generic boilerplate modules kept for reuse (disabled by default, `ENABLE_COMMUNITY_MODULES=true`):
+- users directory, posts, comments, files metadata
 
 ---
 
@@ -64,13 +63,8 @@ Target structure:
   - `logger/`
   - `errors/`
 - `features/`
-  - `auth/`
-  - `users/`
-  - `files/`
-  - `chat/`
-  - `posts/`
-  - `comments/`
-  - `notifications/`
+  - `auth/`, `profiles/`, `photos/`, `discovery/`, `matching/`, `chat/`, `safety/`, `notifications/`
+  - generic: `users/`, `posts/`, `comments/`, `files/`
 
 Each feature should contain:
 - `handler.go`
@@ -113,10 +107,11 @@ User input:
 
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
+- Expected environment variables (see `.env.example`):
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - `APP_ENV`, `UPLOAD_DIR`, `MEDIA_SIGNING_SECRET`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*`
 
 ---
 
@@ -130,6 +125,11 @@ Secrets:
 
 Required indexes:
 - `users.email`
+- `swipes (actor_user_id, target_user_id)` (primary key) and `swipes (target_user_id, action, actor_user_id)`
+- `matches (user_low_id, user_high_id)` (unique) plus per-side `created_at` indexes
+- `photos (user_id, position)` (unique)
+- `profiles (gender, birthdate)` and `profiles (latitude, longitude)`
+- `blocks (blocker_user_id, blocked_user_id)` and `blocks (blocked_user_id, blocker_user_id)`
 - `posts (author_id, created_at)`
 - `comments (post_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
@@ -150,13 +150,18 @@ Before any backend delivery:
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/*_integration_test.go`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
-- Notifications (`/notifications`)
+- Auth (`/auth/register`, `/auth/login`, `/auth/password/*`, `/me`, `DELETE /me`)
+- Profiles and photos (`/me/profile`, `/me/preferences`, `/me/photos`, `/media/photos/:id`)
+- Discovery and matching (`/discovery`, `/swipes`, `/matches/:userId`), including concurrent mutual likes
+- Chat (`/chats`, `/chats/:userId/messages`, `/chats/:userId/read`) and its permissions
+- Safety (`/blocks`, `/reports`)
+- Notifications (`/notifications`) and realtime (`/realtime`)
+- Generic modules (`/users`, `/posts`) when enabled
+
+Frontend: `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`;
+end-to-end: `npm run e2e:smoke` (API) and `npm run e2e:web` (Playwright on the web build).
 
 ---
 
@@ -171,15 +176,16 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+  - `docker-compose.yml`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile + photo)
+  - discovery loads
+  - like -> match
   - chat send/read
   - notifications read flow
 
@@ -207,7 +213,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing product-specific naming into shared platform packages without approval
+- Introducing paid features, paywalls or artificial limits on likes
 
 ---
 

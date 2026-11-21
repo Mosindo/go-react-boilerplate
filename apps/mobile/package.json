@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "build:web": "expo export --platform web --output-dir dist",
     "e2e:smoke": "node ./scripts/e2e-smoke.js",
-    "e2e:web": "node ./e2e/web-flow.js"
+    "e2e:web": "node ./e2e/web-flow.js",
+    "test": "node --experimental-strip-types --no-warnings --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -46,5 +47,8 @@
     "globals": "^14.0.0",
     "prettier": "^3.10.1",
     "typescript": "~5.9.2"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

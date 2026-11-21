@@ -36,7 +36,12 @@ type Config struct {
 	MediaSigningSecret string
 	UploadDir          string
 	AllowedOrigins     []string
-	SMTP               SMTPConfig
+	TrustedProxies     []string
+	// EnableCommunityModules exposes the generic boilerplate modules (users
+	// directory, posts, comments, file metadata) that the dating client does
+	// not use. Disabled by default to minimize the attack surface.
+	EnableCommunityModules bool
+	SMTP                   SMTPConfig
 }
 
 func (c Config) IsProduction() bool {
@@ -45,13 +50,15 @@ func (c Config) IsProduction() bool {
 
 func Load() (Config, error) {
 	cfg := Config{
-		Env:                strings.ToLower(getenv("APP_ENV", EnvProduction)),
-		Port:               getenv("PORT", "8080"),
-		DatabaseURL:        strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:          strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		MediaSigningSecret: strings.TrimSpace(os.Getenv("MEDIA_SIGNING_SECRET")),
-		UploadDir:          strings.TrimSpace(getenv("UPLOAD_DIR", "./data/uploads")),
-		AllowedOrigins:     splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		Env:                    strings.ToLower(getenv("APP_ENV", EnvProduction)),
+		Port:                   getenv("PORT", "8080"),
+		DatabaseURL:            strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:              strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		MediaSigningSecret:     strings.TrimSpace(os.Getenv("MEDIA_SIGNING_SECRET")),
+		UploadDir:              strings.TrimSpace(getenv("UPLOAD_DIR", "./data/uploads")),
+		AllowedOrigins:         splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies:         splitCSV(os.Getenv("TRUSTED_PROXIES")),
+		EnableCommunityModules: strings.EqualFold(strings.TrimSpace(os.Getenv("ENABLE_COMMUNITY_MODULES")), "true"),
 		SMTP: SMTPConfig{
 			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
 			Username: strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
