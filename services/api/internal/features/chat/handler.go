@@ -3,9 +3,9 @@ package chat
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
+	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -19,200 +19,103 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) Chats(c *gin.Context) {
-	userID := c.GetString("userID")
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "chat.list.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-		return
-	}
-	limit := parseBoundedLimit(c.Query("limit"), 20, 100)
-	offset := parseNonNegativeInt(c.Query("offset"), 0)
-	chats, err := h.service.ListChatsWithPagination(c.Request.Context(), organizationID, userID, limit, offset)
+	limit := httpx.ParseLimit(c.Query("limit"), DefaultChatsLimit, MaxChatsLimit)
+	offset := httpx.ParseOffset(c.Query("offset"))
+	chats, err := h.service.ListChats(c.Request.Context(), httpx.UserID(c), limit, offset)
 	if err != nil {
-		logger.LogHandlerError(c, "chat.list", http.StatusInternalServerError, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch chats"})
+		h.fail(c, "chat.list", err)
 		return
 	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, ChatsResponse{Chats: chats})
+}
 
-	payload := make([]ChatSummaryResponse, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummaryResponse{
-			User: UserResponse{
-				ID:        chat.UserID,
-				Email:     chat.UserEmail,
-				CreatedAt: chat.UserCreatedAt,
-			},
-		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreviewResponse{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
-		}
-		payload = append(payload, item)
+func otherUser(c *gin.Context) (string, bool) {
+	otherID, ok := httpx.UUIDParam(c, "userId")
+	if !ok {
+		httpx.Error(c, http.StatusBadRequest, "invalid_user_id", "invalid user id")
+		return "", false
 	}
-
-	c.JSON(http.StatusOK, ChatsResponse{Chats: payload})
+	return otherID, true
 }
 
 func (h *Handler) ChatMessages(c *gin.Context) {
-	userID := c.GetString("userID")
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "chat.messages.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+	otherID, ok := otherUser(c)
+	if !ok {
 		return
 	}
-	otherUserID := strings.TrimSpace(c.Param("userId"))
-	if !isUUIDLike(otherUserID) {
-		logger.LogHandlerError(c, "chat.messages.validate_user_id", http.StatusBadRequest, errors.New("invalid user id"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
-	if otherUserID == userID {
-		logger.LogHandlerError(c, "chat.messages.validate_self", http.StatusBadRequest, errors.New("cannot open self chat"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot open self chat"})
-		return
-	}
-
-	limit := parsePositiveInt(c.Query("limit"), 200)
-	messages, err := h.service.ListMessagesWithLimit(c.Request.Context(), organizationID, userID, otherUserID, limit)
-	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrValidateChatTarget):
-			c.JSON(status, gin.H{"error": "could not validate chat target"})
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusNotFound
-			c.JSON(status, gin.H{"error": "user not found"})
-		default:
-			c.JSON(status, gin.H{"error": "could not fetch messages"})
+	var before *string
+	if raw := strings.ToLower(strings.TrimSpace(c.Query("before"))); raw != "" {
+		if !httpx.IsUUID(raw) {
+			httpx.Error(c, http.StatusBadRequest, "invalid_cursor", "invalid before cursor")
+			return
 		}
-		logger.LogHandlerError(c, "chat.messages", status, err)
+		before = &raw
+	}
+	limit := httpx.ParseLimit(c.Query("limit"), DefaultChatMessagesLimit, MaxChatMessagesLimit)
+	resp, err := h.service.ListMessages(c.Request.Context(), httpx.UserID(c), otherID, before, limit)
+	if err != nil {
+		h.fail(c, "chat.messages", err)
 		return
 	}
-
-	payload := make([]ChatMessageResponse, 0, len(messages))
-	for _, message := range messages {
-		payload = append(payload, ChatMessageResponse{
-			ID:              message.ID,
-			SenderUserID:    message.SenderUserID,
-			RecipientUserID: message.RecipientUserID,
-			Content:         message.Content,
-			CreatedAt:       message.CreatedAt,
-		})
-	}
-
-	c.JSON(http.StatusOK, ChatMessagesResponse{Messages: payload})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *Handler) SendChatMessage(c *gin.Context) {
-	userID := c.GetString("userID")
-	organizationID := strings.TrimSpace(c.GetString("organizationID"))
-	if organizationID == "" {
-		logger.LogHandlerError(c, "chat.send.organization", http.StatusUnauthorized, errors.New("missing organization"))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+	otherID, ok := otherUser(c)
+	if !ok {
 		return
 	}
-	otherUserID := strings.TrimSpace(c.Param("userId"))
-	if !isUUIDLike(otherUserID) {
-		logger.LogHandlerError(c, "chat.send.validate_user_id", http.StatusBadRequest, errors.New("invalid user id"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
-	if otherUserID == userID {
-		logger.LogHandlerError(c, "chat.send.validate_self", http.StatusBadRequest, errors.New("cannot message yourself"))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot message yourself"})
-		return
-	}
-
 	var req SendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.LogHandlerError(c, "chat.send.bind", http.StatusBadRequest, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		httpx.InvalidRequest(c)
 		return
 	}
-
-	message, err := h.service.SendMessage(c.Request.Context(), organizationID, userID, otherUserID, req.Content)
+	message, err := h.service.SendMessage(c.Request.Context(), httpx.UserID(c), otherID, req.Content)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, ErrValidateChatTarget):
-			c.JSON(status, gin.H{"error": "could not validate chat target"})
-		case errors.Is(err, ErrUserNotFound):
-			status = http.StatusNotFound
-			c.JSON(status, gin.H{"error": "user not found"})
-		case errors.Is(err, ErrMessageContentNeeded):
-			status = http.StatusBadRequest
-			c.JSON(status, gin.H{"error": "message content required"})
-		default:
-			c.JSON(status, gin.H{"error": "could not send message"})
-		}
-		logger.LogHandlerError(c, "chat.send", status, err)
+		h.fail(c, "chat.send", err)
 		return
 	}
-
-	status := http.StatusCreated
-	c.JSON(status, ChatMessageResponse{
-		ID:              message.ID,
-		SenderUserID:    message.SenderUserID,
-		RecipientUserID: message.RecipientUserID,
-		Content:         message.Content,
-		CreatedAt:       message.CreatedAt,
-	})
-	logger.LogHandlerEvent(c, "chat.send.success", status, map[string]string{
-		"recipient_user_id": otherUserID,
-		"message_id":        message.ID,
-	})
+	c.JSON(http.StatusCreated, message)
 }
 
-func parsePositiveInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+func (h *Handler) MarkRead(c *gin.Context) {
+	otherID, ok := otherUser(c)
+	if !ok {
+		return
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed <= 0 {
-		return fallback
+	receipt, err := h.service.MarkRead(c.Request.Context(), httpx.UserID(c), otherID)
+	if err != nil {
+		h.fail(c, "chat.read", err)
+		return
 	}
-	return parsed
+	c.JSON(http.StatusOK, receipt)
 }
 
-func parseBoundedLimit(raw string, fallback, max int) int {
-	parsed := parsePositiveInt(raw, fallback)
-	if parsed > max {
-		return max
+func (h *Handler) Clear(c *gin.Context) {
+	otherID, ok := otherUser(c)
+	if !ok {
+		return
 	}
-	return parsed
+	if err := h.service.Clear(c.Request.Context(), httpx.UserID(c), otherID); err != nil {
+		h.fail(c, "chat.clear", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
-func parseNonNegativeInt(raw string, fallback int) int {
-	if strings.TrimSpace(raw) == "" {
-		return fallback
+func (h *Handler) fail(c *gin.Context, op string, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, ErrConversationNotFound):
+		status = http.StatusNotFound
+		httpx.Error(c, status, "conversation_not_found", "conversation not found")
+	case errors.Is(err, ErrMessageContentNeeded), errors.Is(err, ErrMessageTooLong):
+		status = http.StatusBadRequest
+		httpx.Error(c, status, "invalid_message", err.Error())
+	default:
+		httpx.Internal(c, "could not process chat request")
 	}
-	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || parsed < 0 {
-		return fallback
-	}
-	return parsed
-}
-
-func isUUIDLike(v string) bool {
-	if len(v) != 36 {
-		return false
-	}
-	hyphenPos := map[int]struct{}{8: {}, 13: {}, 18: {}, 23: {}}
-	for i := 0; i < len(v); i++ {
-		ch := v[i]
-		if _, ok := hyphenPos[i]; ok {
-			if ch != '-' {
-				return false
-			}
-			continue
-		}
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
-			return false
-		}
-	}
-	return true
+	logger.LogHandlerError(c, op, status, err)
 }

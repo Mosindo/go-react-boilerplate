@@ -2,16 +2,18 @@ package users
 
 import "time"
 
+// User is the public directory entry of a member. Emails are private and
+// are never exposed to other members.
 type User struct {
 	ID             string
-	Email          string
+	DisplayName    *string
 	OrganizationID string
 	CreatedAt      time.Time
 }
 
 type UserResponse struct {
 	ID             string    `json:"id"`
-	Email          string    `json:"email"`
+	DisplayName    *string   `json:"displayName"`
 	OrganizationID string    `json:"organizationId"`
 	CreatedAt      time.Time `json:"createdAt"`
 }

@@ -15,7 +15,7 @@ type User struct {
 
 type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email,max=254"`
-	Password string `json:"password" binding:"required,min=8,max=128"`
+	Password string `json:"password" binding:"required,max=128"`
 }
 
 type LoginRequest struct {
@@ -29,6 +29,20 @@ type RefreshRequest struct {
 
 type LogoutRequest struct {
 	RefreshToken string `json:"refreshToken" binding:"required,max=512"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email,max=254"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email,max=254"`
+	Code        string `json:"code" binding:"required,max=12"`
+	NewPassword string `json:"newPassword" binding:"required,max=128"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=128"`
 }
 
 type MeResponse struct {

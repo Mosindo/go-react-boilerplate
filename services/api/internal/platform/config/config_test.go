@@ -26,3 +26,35 @@ func TestLoadParsesAllowedOrigins(t *testing.T) {
 		t.Fatalf("unexpected allowed origins: %#v", cfg.AllowedOrigins)
 	}
 }
+
+func TestLoadDefaultsToProductionAndRejectsUnknownEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !cfg.IsProduction() {
+		t.Fatalf("expected production default, got %q", cfg.Env)
+	}
+	if cfg.SMTP.Enabled() {
+		t.Fatalf("expected SMTP disabled by default")
+	}
+
+	t.Setenv("APP_ENV", "staging-ish")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected unknown APP_ENV to be rejected")
+	}
+}
+
+func TestLoadRequiresSMTPFromWithHost(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@postgres:5432/app?sslmode=disable")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("SMTP_HOST", "smtp.mail.test")
+	t.Setenv("SMTP_FROM", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected SMTP_FROM to be required")
+	}
+}

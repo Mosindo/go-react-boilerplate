@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"example.com/api/internal/platform/db"
+	"example.com/api/internal/platform/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -251,8 +252,11 @@ func TestAuthAndUsersFlow(t *testing.T) {
 	if err := json.Unmarshal(userByID.Body, &listedUser); err != nil {
 		t.Fatalf("unmarshal /users/:id: %v", err)
 	}
-	if listedUser.Email != email2 {
-		t.Fatalf("expected /users/:id email %s, got %s", email2, listedUser.Email)
+	if listedUser.Email != "" {
+		t.Fatalf("/users/:id must never expose emails, got %s", listedUser.Email)
+	}
+	if listedUser.ID != auth2.User.ID {
+		t.Fatalf("expected /users/:id id %s, got %s", auth2.User.ID, listedUser.ID)
 	}
 	if listedUser.OrganizationID != auth1.User.OrganizationID {
 		t.Fatalf("expected /users/:id organization id %s, got %s", auth1.User.OrganizationID, listedUser.OrganizationID)
@@ -353,6 +357,15 @@ func TestChatFlow(t *testing.T) {
 	if err := json.Unmarshal(register3.Body, &auth3); err != nil {
 		t.Fatalf("unmarshal register3: %v", err)
 	}
+
+	unmatched := doRequest(t, router, http.MethodPost, "/chats/"+auth2.User.ID+"/messages", map[string]string{
+		"content": "hello before match",
+	}, auth1.Token)
+	if unmatched.Status != http.StatusNotFound {
+		t.Fatalf("chat without match expected 404, got %d body=%s", unmatched.Status, string(unmatched.Body))
+	}
+	forceMatch(t, pool, auth1.User.ID, auth2.User.ID)
+	forceMatch(t, pool, auth1.User.ID, auth3.User.ID)
 
 	send := doRequest(t, router, http.MethodPost, "/chats/"+auth2.User.ID+"/messages", map[string]string{
 		"content": "hello there",
@@ -496,6 +509,8 @@ func TestChatsSupportsLimitAndOffsetQuery(t *testing.T) {
 		t.Fatalf("unmarshal authC: %v", err)
 	}
 
+	forceMatch(t, pool, authA.User.ID, authB.User.ID)
+	forceMatch(t, pool, authA.User.ID, authC.User.ID)
 	sendB := doRequest(t, router, http.MethodPost, "/chats/"+authB.User.ID+"/messages", map[string]string{"content": "hello b"}, authA.Token)
 	sendC := doRequest(t, router, http.MethodPost, "/chats/"+authC.User.ID+"/messages", map[string]string{"content": "hello c"}, authA.Token)
 	if sendB.Status != http.StatusCreated || sendC.Status != http.StatusCreated {
@@ -560,6 +575,7 @@ func TestChatMessagesSupportsLimitQuery(t *testing.T) {
 		t.Fatalf("unmarshal register2: %v", err)
 	}
 
+	forceMatch(t, pool, auth1.User.ID, auth2.User.ID)
 	send1 := doRequest(t, router, http.MethodPost, "/chats/"+auth2.User.ID+"/messages", map[string]string{"content": "m1"}, auth1.Token)
 	send2 := doRequest(t, router, http.MethodPost, "/chats/"+auth2.User.ID+"/messages", map[string]string{"content": "m2"}, auth1.Token)
 	if send1.Status != http.StatusCreated || send2.Status != http.StatusCreated {
@@ -880,9 +896,15 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *pgxpool.Pool) {
 		t.Fatalf("run migrations: %v", err)
 	}
 
+	t.Cleanup(pool.Close)
+	store, err := storage.NewLocal(t.TempDir())
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
 	a := &app{
 		dbPool:    pool,
 		jwtSecret: []byte("integration-test-secret"),
+		store:     store,
 	}
 
 	return setupRouter(a), pool
@@ -1014,4 +1036,20 @@ func containsFile(files []fileResponse, fileID string) bool {
 		}
 	}
 	return false
+}
+
+// forceMatch creates a match directly in the database for tests that exercise
+// chat without going through profiles/photos/swipes.
+func forceMatch(t *testing.T, pool *pgxpool.Pool, a, b string) {
+	t.Helper()
+	low, high := a, b
+	if high < low {
+		low, high = high, low
+	}
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO matches (user_low_id, user_high_id) VALUES ($1, $2)
+		ON CONFLICT DO NOTHING
+	`, low, high); err != nil {
+		t.Fatalf("force match: %v", err)
+	}
 }

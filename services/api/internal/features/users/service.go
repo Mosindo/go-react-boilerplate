@@ -22,54 +22,19 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) List(ctx context.Context) ([]User, error) {
-	return s.ListWithPagination(ctx, "", defaultUsersLimit, 0)
-}
-
-func (s *Service) ListWithPagination(ctx context.Context, organizationID string, limit, offset int) ([]User, error) {
-	normalizedLimit := normalizeUsersLimit(limit)
-	normalizedOffset := normalizeOffset(offset)
-	users, err := s.repo.ListUsers(ctx, organizationID, normalizedLimit, normalizedOffset)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]User, 0, len(users))
-	for _, user := range users {
-		payload = append(payload, User{
-			ID:             user.ID,
-			Email:          user.Email,
-			OrganizationID: user.OrganizationID,
-			CreatedAt:      user.CreatedAt,
-		})
-	}
-	return payload, nil
-}
-
-func (s *Service) GetByID(ctx context.Context, organizationID, userID string) (User, error) {
-	user, err := s.repo.GetUserByID(ctx, organizationID, userID)
-	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return User{}, ErrUserNotFound
-		}
-		return User{}, err
-	}
-	return User{ID: user.ID, Email: user.Email, OrganizationID: user.OrganizationID, CreatedAt: user.CreatedAt}, nil
-}
-
-func normalizeUsersLimit(limit int) int {
+func (s *Service) ListWithPagination(ctx context.Context, organizationID, viewerID string, limit, offset int) ([]User, error) {
 	if limit <= 0 {
-		return defaultUsersLimit
+		limit = defaultUsersLimit
 	}
 	if limit > maxUsersLimit {
-		return maxUsersLimit
+		limit = maxUsersLimit
 	}
-	return limit
+	if offset < 0 {
+		offset = 0
+	}
+	return s.repo.ListUsers(ctx, organizationID, viewerID, limit, offset)
 }
 
-func normalizeOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+func (s *Service) GetByID(ctx context.Context, organizationID, viewerID, userID string) (User, error) {
+	return s.repo.GetUserByID(ctx, organizationID, viewerID, userID)
 }

@@ -46,6 +46,24 @@ type Repository interface {
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+	GetPasswordHash(ctx context.Context, userID string) (string, error)
+	CreateResetCode(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
+	GetActiveResetCode(ctx context.Context, userID string) (StoredResetCode, error)
+	IncrementResetAttempts(ctx context.Context, codeID string) error
+	CompletePasswordReset(ctx context.Context, userID, codeID, passwordHash string) error
+	DeleteUser(ctx context.Context, userID string) (DeletedUser, error)
+}
+
+type StoredResetCode struct {
+	ID       string
+	CodeHash string
+	Attempts int
+}
+
+type DeletedUser struct {
+	StorageKeys    []string
+	MatchedUserIDs []string
 }
 
 type PGRepository struct {
@@ -213,6 +231,170 @@ func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash s
 		return ErrRepositorySessionGone
 	}
 	return nil
+}
+
+func (r *PGRepository) SessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
+	var active bool
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM sessions
+			WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > NOW()
+		)
+	`, sessionID, userID).Scan(&active)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "22P02" { // malformed uuid in claims
+			return false, nil
+		}
+		return false, err
+	}
+	return active, nil
+}
+
+func (r *PGRepository) GetPasswordHash(ctx context.Context, userID string) (string, error) {
+	var hash string
+	err := r.dbPool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositoryNotFound
+	}
+	return hash, err
+}
+
+// CreateResetCode invalidates previous codes and stores a new one.
+func (r *PGRepository) CreateResetCode(ctx context.Context, userID, codeHash string, expiresAt time.Time) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `
+		UPDATE password_reset_codes SET used_at = NOW()
+		WHERE user_id = $1 AND used_at IS NULL
+	`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO password_reset_codes (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
+	`, userID, codeHash, expiresAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *PGRepository) GetActiveResetCode(ctx context.Context, userID string) (StoredResetCode, error) {
+	var code StoredResetCode
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT id, code_hash, attempts::int FROM password_reset_codes
+		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, userID).Scan(&code.ID, &code.CodeHash, &code.Attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return StoredResetCode{}, ErrRepositoryNotFound
+	}
+	return code, err
+}
+
+func (r *PGRepository) IncrementResetAttempts(ctx context.Context, codeID string) error {
+	_, err := r.dbPool.Exec(ctx, `UPDATE password_reset_codes SET attempts = attempts + 1 WHERE id = $1`, codeID)
+	return err
+}
+
+// CompletePasswordReset updates the password, consumes the code and revokes
+// every session so a stolen session cannot survive a password reset.
+func (r *PGRepository) CompletePasswordReset(ctx context.Context, userID, codeID, passwordHash string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
+		UPDATE password_reset_codes SET used_at = NOW()
+		WHERE id = $1 AND user_id = $2 AND used_at IS NULL
+	`, codeID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRepositoryNotFound
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// DeleteUser removes the account. Every personal row (profile, preferences,
+// photos, interests, swipes, matches, conversations membership, messages,
+// notifications, sessions, blocks) is removed through ON DELETE CASCADE;
+// reports keep their moderation record with the user reference set to NULL.
+// It returns the photo storage keys to delete and the matched members to
+// notify.
+func (r *PGRepository) DeleteUser(ctx context.Context, userID string) (DeletedUser, error) {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return DeletedUser{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	out := DeletedUser{StorageKeys: []string{}, MatchedUserIDs: []string{}}
+	rows, err := tx.Query(ctx, `SELECT storage_key, thumb_storage_key FROM photos WHERE user_id = $1`, userID)
+	if err != nil {
+		return DeletedUser{}, err
+	}
+	for rows.Next() {
+		var key, thumb string
+		if err := rows.Scan(&key, &thumb); err != nil {
+			rows.Close()
+			return DeletedUser{}, err
+		}
+		out.StorageKeys = append(out.StorageKeys, key, thumb)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return DeletedUser{}, err
+	}
+
+	matchRows, err := tx.Query(ctx, `
+		SELECT CASE WHEN user_low_id = $1 THEN user_high_id ELSE user_low_id END
+		FROM matches WHERE user_low_id = $1 OR user_high_id = $1
+	`, userID)
+	if err != nil {
+		return DeletedUser{}, err
+	}
+	for matchRows.Next() {
+		var id string
+		if err := matchRows.Scan(&id); err != nil {
+			matchRows.Close()
+			return DeletedUser{}, err
+		}
+		out.MatchedUserIDs = append(out.MatchedUserIDs, id)
+	}
+	matchRows.Close()
+	if err := matchRows.Err(); err != nil {
+		return DeletedUser{}, err
+	}
+
+	// Conversations whose membership becomes incomplete are deleted with
+	// their messages (messages from the deleted member cascade anyway).
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM conversations c
+		USING conversation_participants cp
+		WHERE cp.conversation_id = c.id AND cp.user_id = $1
+	`, userID); err != nil {
+		return DeletedUser{}, err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return DeletedUser{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return DeletedUser{}, ErrRepositoryNotFound
+	}
+	return out, tx.Commit(ctx)
 }
 
 func isUniqueViolation(err error) bool {

@@ -30,7 +30,10 @@ func (h *Handler) Register(c *gin.Context) {
 		switch {
 		case errors.Is(err, ErrEmailExists):
 			status = http.StatusConflict
-			c.JSON(status, gin.H{"error": "email already exists"})
+			c.JSON(status, gin.H{"error": "email already exists", "code": "email_exists"})
+		case errors.Is(err, ErrWeakPassword):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": err.Error(), "code": "weak_password"})
 		default:
 			c.JSON(status, gin.H{"error": "could not create user"})
 		}
@@ -181,4 +184,66 @@ func (h *Handler) Me(c *gin.Context) {
 		OrganizationID: user.OrganizationID,
 		CreatedAt:      user.CreatedAt,
 	})
+}
+
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "code": "invalid_request"})
+		return
+	}
+	if err := h.service.RequestPasswordReset(c.Request.Context(), req.Email); err != nil {
+		logger.LogHandlerError(c, "auth.forgot", http.StatusInternalServerError, err)
+	}
+	// Always the same answer: never reveal whether an account exists.
+	c.JSON(http.StatusAccepted, gin.H{"status": "if an account exists, a code has been sent"})
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "code": "invalid_request"})
+		return
+	}
+	if err := h.service.ResetPassword(c.Request.Context(), req.Email, req.Code, req.NewPassword); err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, ErrWeakPassword):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": err.Error(), "code": "weak_password"})
+		case errors.Is(err, ErrInvalidResetCode):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": err.Error(), "code": "invalid_code"})
+		default:
+			c.JSON(status, gin.H{"error": "could not reset password"})
+		}
+		logger.LogHandlerError(c, "auth.reset", status, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	var req DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "code": "invalid_request"})
+		return
+	}
+	if err := h.service.DeleteAccount(c.Request.Context(), c.GetString("userID"), req.Password); err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, ErrWrongPassword):
+			status = http.StatusForbidden
+			c.JSON(status, gin.H{"error": "wrong password", "code": "wrong_password"})
+		case errors.Is(err, ErrUserNotFound):
+			status = http.StatusUnauthorized
+			c.JSON(status, gin.H{"error": "user not found"})
+		default:
+			c.JSON(status, gin.H{"error": "could not delete account"})
+		}
+		logger.LogHandlerError(c, "auth.delete_account", status, err)
+		return
+	}
+	logger.LogHandlerEvent(c, "auth.account_deleted", http.StatusNoContent, nil)
+	c.Status(http.StatusNoContent)
 }

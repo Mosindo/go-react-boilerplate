@@ -22,7 +22,7 @@ func (h *Handler) List(c *gin.Context) {
 	userID := c.GetString("userID")
 	limit := parseBoundedLimit(c.Query("limit"), 20, 100)
 	offset := parseNonNegativeInt(c.Query("offset"), 0)
-	notifications, err := h.service.ListByUser(c.Request.Context(), userID, limit, offset)
+	notifications, unread, err := h.service.ListByUser(c.Request.Context(), userID, limit, offset)
 	if err != nil {
 		logger.LogHandlerError(c, "notifications.list", http.StatusInternalServerError, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch notifications"})
@@ -34,7 +34,8 @@ func (h *Handler) List(c *gin.Context) {
 		payload = append(payload, mapNotificationResponse(notification))
 	}
 
-	c.JSON(http.StatusOK, NotificationsResponse{Notifications: payload})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, NotificationsResponse{Notifications: payload, UnreadCount: unread})
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -109,8 +110,22 @@ func (h *Handler) MarkRead(c *gin.Context) {
 	c.JSON(http.StatusOK, mapNotificationResponse(notification))
 }
 
+func (h *Handler) MarkAllRead(c *gin.Context) {
+	if err := h.service.MarkAllRead(c.Request.Context(), c.GetString("userID")); err != nil {
+		logger.LogHandlerError(c, "notifications.mark_all_read", http.StatusInternalServerError, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not mark notifications as read"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func mapNotificationResponse(notification Notification) NotificationResponse {
+	data := notification.Data
+	if data == nil {
+		data = map[string]string{}
+	}
 	return NotificationResponse{
+		Data:      data,
 		ID:        notification.ID,
 		UserID:    notification.UserID,
 		Type:      notification.Type,
