@@ -198,4 +198,3 @@ func containsUser(users []usersfeature.User, userID string) bool {
 	}
 	return false
 }
-
