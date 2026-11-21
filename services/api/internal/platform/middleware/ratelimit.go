@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -65,9 +66,22 @@ func (l *RateLimiter) Allow(key string) (bool, time.Duration) {
 	return true, 0
 }
 
-// KeyByIP keys requests by client IP (for unauthenticated endpoints).
+// KeyByIP keys requests by client IP (for unauthenticated endpoints). IPv6
+// clients are bucketed by /64, the smallest block an end user usually gets,
+// so rotating addresses within one allocation does not bypass limits.
 func KeyByIP(c *gin.Context) string {
-	return c.ClientIP()
+	return ipBucket(c.ClientIP())
+}
+
+func ipBucket(raw string) string {
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return raw
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 // KeyByUser keys requests by authenticated user, falling back to IP.

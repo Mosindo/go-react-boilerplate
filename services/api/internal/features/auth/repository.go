@@ -44,13 +44,13 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (StoredUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
-	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
-	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
+	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) (string, error)
 	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
 	GetPasswordHash(ctx context.Context, userID string) (string, error)
 	CreateResetCode(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
-	GetActiveResetCode(ctx context.Context, userID string) (StoredResetCode, error)
-	IncrementResetAttempts(ctx context.Context, codeID string) error
+	CountRecentResetCodes(ctx context.Context, userID string, since time.Time) (int, error)
+	ConsumeResetAttempt(ctx context.Context, userID string, maxAttempts int) (StoredResetCode, error)
 	CompletePasswordReset(ctx context.Context, userID, codeID, passwordHash string) error
 	DeleteUser(ctx context.Context, userID string) (DeletedUser, error)
 }
@@ -182,7 +182,10 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 	return session, nil
 }
 
-func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
+// RotateSessionToken swaps the refresh token only if it is still the one the
+// caller presented (compare-and-swap): two concurrent refreshes with the same
+// token cannot both succeed.
+func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
 	var session StoredSession
 	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
@@ -192,9 +195,10 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 		    expires_at = $5,
 		    last_used_at = $6
 		WHERE id = $1
+		  AND token_hash = $7
 		  AND revoked_at IS NULL
 		RETURNING id, user_id, expires_at, created_at, last_used_at
-	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt).Scan(
+	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt, currentTokenHash).Scan(
 		&session.ID,
 		&session.UserID,
 		&session.ExpiresAt,
@@ -216,21 +220,20 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 	return session, nil
 }
 
-func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error {
-	tag, err := r.dbPool.Exec(ctx, `
+func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) (string, error) {
+	var sessionID string
+	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
 		SET revoked_at = $2,
 		    last_used_at = $2
 		WHERE token_hash = $1
 		  AND revoked_at IS NULL
-	`, tokenHash, revokedAt)
-	if err != nil {
-		return err
+		RETURNING id
+	`, tokenHash, revokedAt).Scan(&sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositorySessionGone
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrRepositorySessionGone
-	}
-	return nil
+	return sessionID, err
 }
 
 func (r *PGRepository) SessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
@@ -281,23 +284,34 @@ func (r *PGRepository) CreateResetCode(ctx context.Context, userID, codeHash str
 	return tx.Commit(ctx)
 }
 
-func (r *PGRepository) GetActiveResetCode(ctx context.Context, userID string) (StoredResetCode, error) {
+func (r *PGRepository) CountRecentResetCodes(ctx context.Context, userID string, since time.Time) (int, error) {
+	var count int
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM password_reset_codes WHERE user_id = $1 AND created_at > $2
+	`, userID, since).Scan(&count)
+	return count, err
+}
+
+// ConsumeResetAttempt atomically spends one attempt on the active code and
+// returns it. Concurrent guesses cannot exceed maxAttempts.
+func (r *PGRepository) ConsumeResetAttempt(ctx context.Context, userID string, maxAttempts int) (StoredResetCode, error) {
 	var code StoredResetCode
 	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, code_hash, attempts::int FROM password_reset_codes
-		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, userID).Scan(&code.ID, &code.CodeHash, &code.Attempts)
+		UPDATE password_reset_codes
+		SET attempts = attempts + 1
+		WHERE id = (
+			SELECT id FROM password_reset_codes
+			WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+			ORDER BY created_at DESC
+			LIMIT 1
+		)
+		  AND attempts < $2
+		RETURNING id, code_hash, attempts::int
+	`, userID, maxAttempts).Scan(&code.ID, &code.CodeHash, &code.Attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return StoredResetCode{}, ErrRepositoryNotFound
 	}
 	return code, err
-}
-
-func (r *PGRepository) IncrementResetAttempts(ctx context.Context, codeID string) error {
-	_, err := r.dbPool.Exec(ctx, `UPDATE password_reset_codes SET attempts = attempts + 1 WHERE id = $1`, codeID)
-	return err
 }
 
 // CompletePasswordReset updates the password, consumes the code and revokes
@@ -385,6 +399,10 @@ func (r *PGRepository) DeleteUser(ctx context.Context, userID string) (DeletedUs
 		USING conversation_participants cp
 		WHERE cp.conversation_id = c.id AND cp.user_id = $1
 	`, userID); err != nil {
+		return DeletedUser{}, err
+	}
+	// Notifications held by other members that mention this account.
+	if _, err := tx.Exec(ctx, `DELETE FROM notifications WHERE data->>'userId' = $1::text`, userID); err != nil {
 		return DeletedUser{}, err
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)

@@ -37,7 +37,14 @@ const (
 	refreshTokenTTL  = 30 * 24 * time.Hour
 	resetCodeTTL     = 15 * time.Minute
 	maxResetAttempts = 5
+	maxResetsPerHour = 3
 )
+
+// SessionCloser closes live realtime connections when sessions are revoked.
+type SessionCloser interface {
+	DisconnectUser(userID string)
+	DisconnectSession(sessionID string)
+}
 
 // dummyHash is compared against when an email is unknown so that login takes
 // the same time whether or not the account exists (no user enumeration by timing).
@@ -48,6 +55,7 @@ type Options struct {
 	Mailer    mailer.Mailer
 	Storage   storage.Storage
 	Publisher realtime.Publisher
+	Sessions  SessionCloser
 }
 
 type Service struct {
@@ -172,6 +180,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	rotatedSession, err := s.repo.RotateSessionToken(
 		ctx,
 		session.ID,
+		tokenHash,
 		hashRefreshToken(refreshSecret),
 		userAgent,
 		ipAddress,
@@ -203,9 +212,12 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return ErrInvalidRefreshToken
 	}
 
-	err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash, time.Now())
+	sessionID, err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash, time.Now())
 	if err != nil && !errors.Is(err, ErrRepositorySessionGone) {
 		return err
+	}
+	if sessionID != "" && s.opts.Sessions != nil {
+		s.opts.Sessions.DisconnectSession(sessionID)
 	}
 	return nil
 }
@@ -329,6 +341,14 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		return err
 	}
 	userID := stored.User.ID
+	// Per-account throttle (independent of the caller's IP).
+	recent, err := s.repo.CountRecentResetCodes(ctx, userID, time.Now().Add(-time.Hour))
+	if err != nil {
+		return err
+	}
+	if recent >= maxResetsPerHour {
+		return nil
+	}
 	if err := s.repo.CreateResetCode(ctx, userID, s.resetCodeHash(userID, code), time.Now().Add(resetCodeTTL)); err != nil {
 		return err
 	}
@@ -362,20 +382,14 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		return err
 	}
 	userID := stored.User.ID
-	active, err := s.repo.GetActiveResetCode(ctx, userID)
+	active, err := s.repo.ConsumeResetAttempt(ctx, userID, maxResetAttempts)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
 			return ErrInvalidResetCode
 		}
 		return err
 	}
-	if active.Attempts >= maxResetAttempts {
-		return ErrInvalidResetCode
-	}
 	if !hmac.Equal([]byte(active.CodeHash), []byte(s.resetCodeHash(userID, code))) {
-		if err := s.repo.IncrementResetAttempts(ctx, active.ID); err != nil {
-			return err
-		}
 		return ErrInvalidResetCode
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
@@ -387,6 +401,9 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 			return ErrInvalidResetCode
 		}
 		return err
+	}
+	if s.opts.Sessions != nil {
+		s.opts.Sessions.DisconnectUser(userID)
 	}
 	return nil
 }
@@ -416,6 +433,9 @@ func (s *Service) DeleteAccount(ctx context.Context, userID, password string) er
 				log.Printf(`{"event":"account_delete_file_failed","error":%q}`, err.Error())
 			}
 		}
+	}
+	if s.opts.Sessions != nil {
+		s.opts.Sessions.DisconnectUser(userID)
 	}
 	for _, other := range deleted.MatchedUserIDs {
 		s.opts.Publisher.Publish(other, realtime.Event{Type: "match.removed", Data: map[string]string{"userId": userID}})

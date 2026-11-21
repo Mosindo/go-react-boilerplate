@@ -32,6 +32,7 @@ func (r *PGRepository) LoadViewer(ctx context.Context, userID string) (Viewer, e
 		JOIN users u ON u.id = p.user_id
 		JOIN preferences pr ON pr.user_id = p.user_id
 		WHERE p.user_id = $1
+		  AND NOT p.is_suspended
 		  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id)
 	`, userID).Scan(&v.UserID, &v.OrganizationID, &v.Gender, &v.Age, &v.Latitude, &v.Longitude,
 		&v.InterestedIn, &v.MinAge, &v.MaxAge, &v.MaxDistanceKm)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -20,6 +21,7 @@ type Repository interface {
 	GetConversation(ctx context.Context, userID, otherUserID string) (Conversation, error)
 	ListMessages(ctx context.Context, conv Conversation, beforeID *string, limit int) ([]ChatMessage, error)
 	CreateMessage(ctx context.Context, conversationID, senderID, recipientID, content string) (ChatMessage, error)
+	IsSuspended(ctx context.Context, userID string) (bool, error)
 	MarkRead(ctx context.Context, conversationID, userID string) (time.Time, error)
 	Clear(ctx context.Context, conversationID, userID string) error
 }
@@ -64,7 +66,12 @@ func (r *PGRepository) ListChats(ctx context.Context, userID string, limit, offs
 				LIMIT 100
 			) capped
 		) unread ON TRUE
-		WHERE m.user_low_id = $1 OR m.user_high_id = $1
+		WHERE (m.user_low_id = $1 OR m.user_high_id = $1)
+		  AND NOT EXISTS (
+			SELECT 1 FROM blocks b
+			WHERE (b.blocker_user_id = m.user_low_id AND b.blocked_user_id = m.user_high_id)
+			   OR (b.blocker_user_id = m.user_high_id AND b.blocked_user_id = m.user_low_id)
+		  )
 		ORDER BY COALESCE(lm.created_at, m.created_at) DESC, m.id DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
@@ -203,6 +210,11 @@ func (r *PGRepository) CreateMessage(ctx context.Context, conversationID, sender
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, sender_user_id, recipient_user_id, content, created_at
 	`, conversationID, senderID, recipientID, content).Scan(&m.ID, &m.SenderUserID, &m.RecipientUserID, &m.Content, &m.CreatedAt); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			// The match (and its conversation) was removed concurrently.
+			return ChatMessage{}, ErrConversationNotFound
+		}
 		return ChatMessage{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE conversations SET updated_at = NOW() WHERE id = $1`, conversationID); err != nil {
@@ -238,4 +250,10 @@ func (r *PGRepository) Clear(ctx context.Context, conversationID, userID string)
 		WHERE conversation_id = $1 AND user_id = $2
 	`, conversationID, userID)
 	return err
+}
+
+func (r *PGRepository) IsSuspended(ctx context.Context, userID string) (bool, error) {
+	var suspended bool
+	err := r.dbPool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM profiles WHERE user_id = $1 AND is_suspended)`, userID).Scan(&suspended)
+	return suspended, err
 }

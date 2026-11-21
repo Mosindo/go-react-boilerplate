@@ -14,7 +14,7 @@ type Repository interface {
 	Block(ctx context.Context, blockerID, blockedID string) (hadMatch bool, err error)
 	Unblock(ctx context.Context, blockerID, blockedID string) error
 	ListBlocks(ctx context.Context, blockerID string, limit, offset int) ([]BlockRow, error)
-	CreateReport(ctx context.Context, reporterID, reportedID, reason, details string, threshold int) (string, error)
+	CreateReport(ctx context.Context, reporterID, reportedID, reason, details string, threshold int) (string, bool, error)
 }
 
 type PGRepository struct {
@@ -54,7 +54,21 @@ func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) (
 	return hadMatch, tx.Commit(ctx)
 }
 
+// lockPair takes the same per-pair advisory lock as matching.Swipe so that a
+// block can never interleave with a concurrent mutual like.
+func lockPair(ctx context.Context, tx pgx.Tx, a, b string) error {
+	low, high := a, b
+	if high < low {
+		low, high = high, low
+	}
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))`, low, high)
+	return err
+}
+
 func blockInTx(ctx context.Context, tx pgx.Tx, r *PGRepository, blockerID, blockedID string) error {
+	if err := lockPair(ctx, tx, blockerID, blockedID); err != nil {
+		return err
+	}
 	exists, err := r.userExistsInTenant(ctx, tx, blockerID, blockedID)
 	if err != nil {
 		return err
@@ -119,19 +133,22 @@ func (r *PGRepository) ListBlocks(ctx context.Context, blockerID string, limit, 
 // evidence after the conversation is removed), stores the report, blocks the
 // reported member and auto-suspends the profile once enough distinct members
 // reported it.
-func (r *PGRepository) CreateReport(ctx context.Context, reporterID, reportedID, reason, details string, threshold int) (string, error) {
+func (r *PGRepository) CreateReport(ctx context.Context, reporterID, reportedID, reason, details string, threshold int) (string, bool, error) {
 	tx, err := r.dbPool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockPair(ctx, tx, reporterID, reportedID); err != nil {
+		return "", false, err
+	}
 
 	exists, err := r.userExistsInTenant(ctx, tx, reporterID, reportedID)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if !exists {
-		return "", ErrUserNotFound
+		return "", false, ErrUserNotFound
 	}
 
 	var reportID string
@@ -158,7 +175,7 @@ func (r *PGRepository) CreateReport(ctx context.Context, reporterID, reportedID,
 		RETURNING id
 	`, reporterID, reportedID, reason, details).Scan(&reportID)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -166,18 +183,23 @@ func (r *PGRepository) CreateReport(ctx context.Context, reporterID, reportedID,
 		WHERE user_id = $1
 		  AND NOT is_suspended
 		  AND (
-			SELECT COUNT(DISTINCT reporter_user_id) FROM reports
-			WHERE reported_user_id = $1 AND status = 'open'
+			-- Only reporters with a complete profile count, so throwaway
+			-- accounts cannot get a member suspended.
+			SELECT COUNT(DISTINCT r.reporter_user_id) FROM reports r
+			JOIN profiles rp ON rp.user_id = r.reporter_user_id
+			WHERE r.reported_user_id = $1 AND r.status = 'open'
+			  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = r.reporter_user_id)
 		  ) >= $2
 	`, reportedID, threshold); err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if err := blockInTx(ctx, tx, r, reporterID, reportedID); err != nil {
-		return "", err
+		return "", false, err
 	}
-	if _, err := removeMatch(ctx, tx, reporterID, reportedID); err != nil {
-		return "", err
+	hadMatch, err := removeMatch(ctx, tx, reporterID, reportedID)
+	if err != nil {
+		return "", false, err
 	}
-	return reportID, tx.Commit(ctx)
+	return reportID, hadMatch, tx.Commit(ctx)
 }

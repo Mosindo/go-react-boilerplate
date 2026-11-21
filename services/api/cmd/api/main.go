@@ -47,6 +47,9 @@ type app struct {
 	communityModules bool
 	// rateLimits enables abuse protection. Tests construct the app without it.
 	rateLimits bool
+	// rateLimitScale multiplies every limit (development uses a generous scale
+	// so local end-to-end runs are not throttled). Zero means 1.
+	rateLimitScale int
 }
 
 func main() {
@@ -102,6 +105,10 @@ func main() {
 		trustedProxies:   cfg.TrustedProxies,
 		communityModules: cfg.EnableCommunityModules,
 		rateLimits:       true,
+		rateLimitScale:   1,
+	}
+	if !cfg.IsProduction() {
+		a.rateLimitScale = 20
 	}
 
 	srv := &http.Server{
@@ -133,7 +140,11 @@ func (a *app) limiter(limit int, window time.Duration, key func(*gin.Context) st
 	if !a.rateLimits {
 		return middleware.RateLimit(nil, key)
 	}
-	return middleware.RateLimit(middleware.NewRateLimiter(limit, window), key)
+	scale := a.rateLimitScale
+	if scale < 1 {
+		scale = 1
+	}
+	return middleware.RateLimit(middleware.NewRateLimiter(limit*scale, window), key)
 }
 
 func setupRouter(a *app) *gin.Engine {
@@ -160,7 +171,7 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
-	r.Use(middleware.MaxJSONBody(1 << 20))
+	r.Use(middleware.MaxJSONBody(1<<20, "/me/photos"))
 	r.MaxMultipartMemory = 12 << 20
 
 	signer := media.NewSigner(a.mediaSecret)
@@ -170,6 +181,7 @@ func setupRouter(a *app) *gin.Engine {
 		Mailer:    a.mailer,
 		Storage:   a.store,
 		Publisher: a.hub,
+		Sessions:  a.hub,
 	})
 	authHandler := authfeature.NewHandler(authService)
 	requireUser := middleware.RequireUser(a.jwtSecret, authService.SessionActive)
@@ -183,22 +195,23 @@ func setupRouter(a *app) *gin.Engine {
 	safetyService := safetyfeature.NewService(safetyfeature.NewPGRepository(a.dbPool), profilesService, a.hub)
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
-	r.GET("/realtime", a.hub.Handler(func(token string) (string, time.Time, error) {
+	r.GET("/realtime", a.hub.Handler(func(token string) (string, string, time.Time, error) {
 		identity, err := middleware.ParseAccessToken(a.jwtSecret, token)
 		if err != nil {
-			return "", time.Time{}, err
+			return "", "", time.Time{}, err
 		}
 		active, err := authService.SessionActive(context.Background(), identity.SessionID, identity.UserID)
 		if err != nil || !active {
-			return "", time.Time{}, middleware.ErrInvalidToken
+			return "", "", time.Time{}, middleware.ErrInvalidToken
 		}
-		return identity.UserID, identity.ExpiresAt, nil
+		return identity.UserID, identity.SessionID, identity.ExpiresAt, nil
 	}))
 
 	authfeature.RegisterRoutes(r, authHandler, requireUser, authfeature.RouteLimits{
-		Register: a.limiter(10, time.Hour, middleware.KeyByIP),
-		Login:    a.limiter(20, 5*time.Minute, middleware.KeyByIP),
+		Register: a.limiter(20, time.Hour, middleware.KeyByIP),
+		Login:    a.limiter(30, 5*time.Minute, middleware.KeyByIP),
 		Recovery: a.limiter(8, 15*time.Minute, middleware.KeyByIP),
+		Delete:   a.limiter(5, 15*time.Minute, middleware.KeyByUser),
 	})
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser, a.limiter(30, time.Hour, middleware.KeyByUser))

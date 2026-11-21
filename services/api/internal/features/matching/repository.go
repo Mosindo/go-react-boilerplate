@@ -59,7 +59,8 @@ func (r *PGRepository) Swipe(ctx context.Context, actorID, targetID, action stri
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM profiles p
-			WHERE p.user_id = $1 AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id)
+			WHERE p.user_id = $1 AND NOT p.is_suspended
+			  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id)
 		)
 	`, actorID).Scan(&actorReady); err != nil {
 		return SwipeResult{}, err

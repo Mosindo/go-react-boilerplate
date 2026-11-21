@@ -111,6 +111,9 @@ func (h *Handler) fail(c *gin.Context, op string, err error) {
 	case errors.Is(err, ErrConversationNotFound):
 		status = http.StatusNotFound
 		httpx.Error(c, status, "conversation_not_found", "conversation not found")
+	case errors.Is(err, ErrSenderSuspended):
+		status = http.StatusForbidden
+		httpx.Error(c, status, "account_suspended", err.Error())
 	case errors.Is(err, ErrMessageContentNeeded), errors.Is(err, ErrMessageTooLong):
 		status = http.StatusBadRequest
 		httpx.Error(c, status, "invalid_message", err.Error())

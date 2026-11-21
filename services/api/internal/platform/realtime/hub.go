@@ -30,9 +30,10 @@ type Nop struct{}
 func (Nop) Publish(string, Event) {}
 
 type client struct {
-	userID string
-	send   chan []byte
-	close  func()
+	userID    string
+	sessionID string
+	send      chan []byte
+	close     func()
 }
 
 type Hub struct {
@@ -91,4 +92,27 @@ func (h *Hub) ConnectionCount(userID string) int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.clients[userID])
+}
+
+// DisconnectUser closes every live connection of userID (account deletion,
+// password reset).
+func (h *Hub) DisconnectUser(userID string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.clients[userID] {
+		go c.close()
+	}
+}
+
+// DisconnectSession closes the connections opened with a given session (logout).
+func (h *Hub) DisconnectSession(sessionID string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, set := range h.clients {
+		for c := range set {
+			if c.sessionID == sessionID {
+				go c.close()
+			}
+		}
+	}
 }

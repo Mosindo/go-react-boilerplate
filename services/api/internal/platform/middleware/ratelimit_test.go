@@ -29,3 +29,15 @@ func TestRateLimiterAllowsWithinWindowAndResets(t *testing.T) {
 		t.Fatal("window should reset")
 	}
 }
+
+func TestIPBucket(t *testing.T) {
+	if ipBucket("203.0.113.7") != "203.0.113.7" {
+		t.Fatal("IPv4 kept as-is")
+	}
+	if ipBucket("2001:db8:1:2:aaaa::1") != ipBucket("2001:db8:1:2:ffff::9") {
+		t.Fatal("same /64 must share a bucket")
+	}
+	if ipBucket("2001:db8:1:2::1") == ipBucket("2001:db8:1:3::1") {
+		t.Fatal("different /64 must differ")
+	}
+}

@@ -318,7 +318,9 @@ Toutes les routes (hors auth publique, santé et médias signés) exigent `Autho
 - **Sessions** : jeton d'accès court (15 min) + refresh token rotatif haché ; chaque requête vérifie que la session existe toujours, donc déconnexion, réinitialisation du mot de passe et suppression de compte prennent effet immédiatement.
 - **Chat** : une conversation n'existe qu'à travers un match actif ; le même code 404 est renvoyé pour « jamais matché », « bloqué » ou « compte supprimé » afin de ne rien divulguer.
 - **Blocage silencieux** : la personne bloquée voit seulement le match disparaître. Un signalement bloque automatiquement et conserve les 30 derniers messages pour les modérateurs ; 3 signalements distincts suspendent le profil de la découverte en attendant une revue.
-- **Rate limiting** en mémoire sur l'inscription, la connexion, la récupération, l'envoi de messages, les uploads, les signalements et les swipes (plafond anti-robot de 1 000/heure, pas une limite produit).
+- **Rate limiting** en mémoire sur l'inscription, la connexion, la récupération (par IP, IPv6 regroupé par /64, et par compte), la suppression de compte, l'envoi de messages, les uploads, les signalements et les swipes (plafond anti-robot de 1 000/heure, pas une limite produit). Hors production, les seuils sont multipliés par 20 pour ne pas gêner le développement et les tests E2E. Le refresh de session n'est pas limité par IP (jetons non devinables, NAT d'opérateur).
+- **Sessions révoquées = sockets fermées** : déconnexion, réinitialisation du mot de passe et suppression de compte ferment aussi les WebSockets ouverts ; le refresh token est échangé par compare-and-swap.
+- **Concurrence modération / matching** : blocages et signalements prennent le même verrou par paire que les likes ; un membre suspendu ne peut plus découvrir, liker ni écrire ; seuls les signalements de comptes complets comptent pour la suspension automatique.
 - **Temps réel** : WebSocket authentifié par le premier message (le jeton n'apparaît jamais dans les URLs ni les logs), fermeture à l'expiration du jeton, reconnexion avec backoff et resynchronisation côté client.
 - **Web inclus** : React Native Web permet un vrai test E2E navigateur du parcours critique et une version web de l'app.
 
@@ -330,4 +332,5 @@ Toutes les routes (hors auth publique, santé et médias signés) exigent `Autho
 - **Mise à l'échelle horizontale** : le hub WebSocket et le rate limiter sont en mémoire. Pour plusieurs instances, brancher `realtime.Publisher` sur PostgreSQL `LISTEN/NOTIFY` ou Redis, et le limiter sur Redis.
 - **Stockage des photos** : disque local par défaut ; l'interface `storage.Storage` permet d'ajouter un backend S3 compatible.
 - **Modération** : les signalements sont stockés (`reports`) avec leur statut ; il n'y a pas encore d'interface d'administration (revue via SQL).
+- **Dépendances front** : `npm audit` signale des vulnérabilités dans l'outillage Expo / Metro (serveur de développement, non embarqué dans l'app) et dans React Navigation 6 ; les corriger demande de passer à Expo SDK 55+ et React Navigation 7 (`npm audit fix` casse l'arbre de dépendances Expo 54, ne pas l'utiliser).
 - **Vérification d'âge** : déclarative (date de naissance, 18+ contrôlé côté serveur). Une vérification d'identité nécessiterait un prestataire tiers.

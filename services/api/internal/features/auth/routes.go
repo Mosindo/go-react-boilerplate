@@ -7,21 +7,28 @@ type RouteLimits struct {
 	Register gin.HandlerFunc
 	Login    gin.HandlerFunc
 	Recovery gin.HandlerFunc
+	// Delete limits password attempts on account deletion, per user.
+	Delete gin.HandlerFunc
 }
 
 func passthrough(c *gin.Context) { c.Next() }
 
 func RegisterRoutes(r gin.IRouter, handler *Handler, requireUser gin.HandlerFunc, limits ...RouteLimits) {
-	l := RouteLimits{Register: passthrough, Login: passthrough, Recovery: passthrough}
+	l := RouteLimits{Register: passthrough, Login: passthrough, Recovery: passthrough, Delete: passthrough}
 	if len(limits) > 0 {
 		l = limits[0]
 	}
+	if l.Delete == nil {
+		l.Delete = passthrough
+	}
 	r.POST("/auth/register", l.Register, handler.Register)
 	r.POST("/auth/login", l.Login, handler.Login)
-	r.POST("/auth/refresh", l.Login, handler.Refresh)
+	// Refresh is not IP-limited: refresh tokens are 256-bit secrets (not
+	// guessable) and many members can share one IP behind carrier-grade NAT.
+	r.POST("/auth/refresh", handler.Refresh)
 	r.POST("/auth/logout", handler.Logout)
 	r.POST("/auth/password/forgot", l.Recovery, handler.ForgotPassword)
 	r.POST("/auth/password/reset", l.Recovery, handler.ResetPassword)
 	r.GET("/me", requireUser, handler.Me)
-	r.DELETE("/me", requireUser, l.Recovery, handler.DeleteAccount)
+	r.DELETE("/me", requireUser, l.Delete, handler.DeleteAccount)
 }

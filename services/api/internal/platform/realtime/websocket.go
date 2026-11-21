@@ -18,9 +18,9 @@ const (
 	maxInbound   = 4096
 )
 
-// Authenticator validates an access token and returns the user id and the
-// moment the token expires.
-type Authenticator func(token string) (userID string, expiresAt time.Time, err error)
+// Authenticator validates an access token and returns the user id, the
+// session id and the moment the token expires.
+type Authenticator func(token string) (userID, sessionID string, expiresAt time.Time, err error)
 
 type inbound struct {
 	Type  string `json:"type"`
@@ -56,7 +56,7 @@ func (h *Hub) Handler(authenticate Authenticator) gin.HandlerFunc {
 			closeWith(conn, websocket.ClosePolicyViolation, "auth required")
 			return
 		}
-		userID, expiresAt, err := authenticate(first.Token)
+		userID, sessionID, expiresAt, err := authenticate(first.Token)
 		if err != nil {
 			closeWith(conn, 4401, "invalid token")
 			return
@@ -64,7 +64,7 @@ func (h *Hub) Handler(authenticate Authenticator) gin.HandlerFunc {
 
 		var once sync.Once
 		done := make(chan struct{})
-		cl := &client{userID: userID, send: make(chan []byte, 64)}
+		cl := &client{userID: userID, sessionID: sessionID, send: make(chan []byte, 64)}
 		cl.close = func() {
 			once.Do(func() {
 				close(done)

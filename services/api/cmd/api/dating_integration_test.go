@@ -440,6 +440,11 @@ func TestDatingEndToEndFlow(t *testing.T) {
 	if leftovers != 0 {
 		t.Fatalf("expected all personal data removed, %d rows left", leftovers)
 	}
+	var mentions int
+	_ = pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM notifications WHERE data->>'userId' = $1`, alice.ID).Scan(&mentions)
+	if mentions != 0 {
+		t.Fatal("other members' notifications must not keep a deleted account")
+	}
 	_ = pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM reports WHERE reporter_user_id = $1 AND reported_user_id IS NULL`, chloe.ID).Scan(&reports)
 	if reports != 1 {
 		t.Fatal("moderation records are kept with the reference anonymized")
@@ -680,7 +685,7 @@ func TestRateLimitProtectsLogin(t *testing.T) {
 	router := setupRouter(&app{dbPool: pool, jwtSecret: []byte("integration-test-secret"), store: store, rateLimits: true})
 
 	limited := false
-	for i := 0; i < 25; i++ {
+	for i := 0; i < 40; i++ {
 		res := doRequest(t, router, http.MethodPost, "/auth/login", map[string]string{"email": "nobody@ratelimit.test", "password": "Password123"}, "")
 		if res.Status == http.StatusTooManyRequests {
 			limited = true
@@ -807,9 +812,24 @@ func TestHardeningDefaults(t *testing.T) {
 	expectStatus(t, doRequest(t, router, http.MethodGet, "/users", nil, m.Token), http.StatusNotFound, "users directory disabled")
 	expectStatus(t, doRequest(t, router, http.MethodGet, "/posts", nil, m.Token), http.StatusNotFound, "posts disabled")
 
-	// Oversized JSON bodies are rejected.
+	// Oversized JSON bodies are rejected, even when disguised as multipart.
 	huge := strings.Repeat("a", 2<<20)
 	expectStatus(t, doRequest(t, router, http.MethodPut, "/me/profile", map[string]string{"bio": huge}, m.Token), http.StatusBadRequest, "oversized body")
+	body, _ := json.Marshal(map[string]string{"email": "x@y.test", "password": huge})
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("multipart content type must not bypass the body limit, got %d", rec.Code)
+	}
+
+	// Suspended members cannot use discovery nor like.
+	completeProfile(t, router, m, profileSpec{FirstName: "Sam", Birthdate: "1990-01-01", Gender: "man", InterestedIn: []string{"woman"}, Lat: 48.8, Lng: 2.3})
+	if _, err := pool.Exec(context.Background(), `UPDATE profiles SET is_suspended = TRUE WHERE user_id = $1`, m.ID); err != nil {
+		t.Fatalf("suspend: %v", err)
+	}
+	expectStatus(t, doRequest(t, router, http.MethodGet, "/discovery", nil, m.Token), http.StatusConflict, "suspended discovery")
 }
 
 func TestRateLimitIgnoresSpoofedForwardedFor(t *testing.T) {
@@ -817,7 +837,7 @@ func TestRateLimitIgnoresSpoofedForwardedFor(t *testing.T) {
 	store, _ := storage.NewLocal(t.TempDir())
 	router := setupRouter(&app{dbPool: pool, jwtSecret: []byte("integration-test-secret"), store: store, rateLimits: true})
 	limited := false
-	for i := 0; i < 25; i++ {
+	for i := 0; i < 40; i++ {
 		body, _ := json.Marshal(map[string]string{"email": "nobody@ratelimit.test", "password": "Password123"})
 		req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")

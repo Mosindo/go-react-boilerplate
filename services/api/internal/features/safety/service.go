@@ -114,10 +114,10 @@ func (s *Service) Report(ctx context.Context, userID, targetID, reason, details 
 	if err != nil {
 		return ReportResponse{}, err
 	}
-	reportID, err := s.repo.CreateReport(ctx, userID, targetID, normalizedReason, normalizedDetails, AutoSuspendThreshold)
+	reportID, hadMatch, err := s.repo.CreateReport(ctx, userID, targetID, normalizedReason, normalizedDetails, AutoSuspendThreshold)
 	if err != nil {
 		return ReportResponse{}, err
 	}
-	s.notifyRemoval(userID, targetID, true)
+	s.notifyRemoval(userID, targetID, hadMatch)
 	return ReportResponse{ID: reportID, Blocked: true}, nil
 }

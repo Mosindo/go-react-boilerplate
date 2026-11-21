@@ -15,11 +15,11 @@ func TestWebSocketAuthAndDelivery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	hub := NewHub()
 	r := gin.New()
-	r.GET("/ws", hub.Handler(func(token string) (string, time.Time, error) {
+	r.GET("/ws", hub.Handler(func(token string) (string, string, time.Time, error) {
 		if token != "good" {
-			return "", time.Time{}, errors.New("bad token")
+			return "", "", time.Time{}, errors.New("bad token")
 		}
-		return "user-1", time.Now().Add(time.Minute), nil
+		return "user-1", "session-1", time.Now().Add(time.Minute), nil
 	}))
 	server := httptest.NewServer(r)
 	defer server.Close()
@@ -62,5 +62,12 @@ func TestWebSocketAuthAndDelivery(t *testing.T) {
 	data, _ := got.Data.(map[string]any)
 	if data["id"] != "m1" {
 		t.Fatalf("received someone else's event: %+v", got)
+	}
+
+	// Revoking the session closes the socket.
+	hub.DisconnectSession("session-1")
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err == nil {
+		t.Fatal("expected socket to be closed after session revocation")
 	}
 }

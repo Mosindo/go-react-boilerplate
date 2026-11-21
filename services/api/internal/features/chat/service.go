@@ -15,6 +15,7 @@ import (
 var (
 	ErrMessageContentNeeded = errors.New("message content required")
 	ErrMessageTooLong       = errors.New("message must be at most 2000 characters")
+	ErrSenderSuspended      = errors.New("your profile is under review; messaging is paused")
 )
 
 type Service struct {
@@ -136,6 +137,13 @@ func (s *Service) SendMessage(ctx context.Context, userID, otherUserID, content 
 	normalized, err := NormalizeContent(content)
 	if err != nil {
 		return ChatMessageResponse{}, err
+	}
+	suspended, err := s.repo.IsSuspended(ctx, userID)
+	if err != nil {
+		return ChatMessageResponse{}, err
+	}
+	if suspended {
+		return ChatMessageResponse{}, ErrSenderSuspended
 	}
 	conv, err := s.repo.GetConversation(ctx, userID, otherUserID)
 	if err != nil {
