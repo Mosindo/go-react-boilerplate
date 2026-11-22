@@ -3,73 +3,67 @@ package users
 import (
 	"context"
 	"errors"
-	"time"
 
+	"example.com/api/internal/features/profiles"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type StoredUser struct {
-	ID             string
-	Email          string
-	OrganizationID string
-	CreatedAt      time.Time
-}
-
 type Repository interface {
-	ListUsers(ctx context.Context, organizationID string, limit, offset int) ([]StoredUser, error)
-	GetUserByID(ctx context.Context, organizationID, userID string) (StoredUser, error)
+	ListContacts(ctx context.Context, userID string, limit, offset int) ([]User, error)
+	GetVisible(ctx context.Context, viewerID, userID string) (User, error)
 }
 
 type PGRepository struct {
-	dbPool *pgxpool.Pool
+	db *pgxpool.Pool
 }
 
-func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
-	return &PGRepository{dbPool: dbPool}
+func NewPGRepository(db *pgxpool.Pool) *PGRepository {
+	return &PGRepository{db: db}
 }
 
-func (r *PGRepository) ListUsers(ctx context.Context, organizationID string, limit, offset int) ([]StoredUser, error) {
-	rows, err := r.dbPool.Query(ctx, `
-		SELECT u.id, u.email, u.organization_id, u.created_at
-		FROM users u
-		WHERE u.organization_id = $1
-		ORDER BY u.created_at DESC, u.id DESC
+func scanUser(row pgx.CollectableRow) (User, error) {
+	var u User
+	err := row.Scan(&u.ID, &u.FirstName, &u.CreatedAt)
+	return u, err
+}
+
+// ListContacts returns the members the caller is matched with. A dating app
+// must not expose a browsable member directory.
+func (r *PGRepository) ListContacts(ctx context.Context, userID string, limit, offset int) ([]User, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id, COALESCE(p.first_name, ''), u.created_at
+		FROM matches m
+		JOIN users u ON u.id = CASE WHEN m.user_a_id = $1 THEN m.user_b_id ELSE m.user_a_id END
+		LEFT JOIN profiles p ON p.user_id = u.id
+		WHERE m.user_a_id = $1 OR m.user_b_id = $1
+		ORDER BY m.created_at DESC, u.id
 		LIMIT $2 OFFSET $3
-	`, organizationID, limit, offset)
+	`, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	users := make([]StoredUser, 0)
-	for rows.Next() {
-		var user StoredUser
-		if err := rows.Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt); err != nil {
-			return nil, err
-		}
-		users = append(users, user)
-	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return users, nil
+	return pgx.CollectRows(rows, scanUser)
 }
 
-func (r *PGRepository) GetUserByID(ctx context.Context, organizationID, userID string) (StoredUser, error) {
-	var user StoredUser
-	err := r.dbPool.QueryRow(ctx, `
-		SELECT id, email, organization_id, created_at
-		FROM users
-		WHERE organization_id = $1
-		  AND id = $2
-	`, organizationID, userID).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
+func (r *PGRepository) GetVisible(ctx context.Context, viewerID, userID string) (User, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id, COALESCE(p.first_name, ''), u.created_at
+		FROM users u
+		JOIN users viewer ON viewer.id = $1 AND viewer.organization_id = u.organization_id
+		LEFT JOIN profiles p ON p.user_id = u.id
+		WHERE u.id = $2
+		  AND (u.id = $1 OR (
+		    NOT `+profiles.SQLBlockedBetween("$1::uuid", "u.id")+`
+		    AND `+profiles.SQLMatched("$1::uuid", "u.id")+`
+		  ))
+	`, viewerID, userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return StoredUser{}, ErrUserNotFound
-		}
-		return StoredUser{}, err
+		return User{}, err
 	}
-	return user, nil
+	u, err := pgx.CollectExactlyOneRow(rows, scanUser)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrUserNotFound
+	}
+	return u, err
 }

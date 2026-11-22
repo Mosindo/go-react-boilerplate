@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -30,7 +31,13 @@ func (h *Handler) Register(c *gin.Context) {
 		switch {
 		case errors.Is(err, ErrEmailExists):
 			status = http.StatusConflict
-			c.JSON(status, gin.H{"error": "email already exists"})
+			c.JSON(status, gin.H{"error": "email already exists", "code": "email_exists"})
+		case errors.Is(err, ErrWeakPassword):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": err.Error(), "code": "weak_password"})
+		case errors.Is(err, ErrInvalidEmail):
+			status = http.StatusBadRequest
+			c.JSON(status, gin.H{"error": err.Error(), "code": "invalid_email"})
 		default:
 			c.JSON(status, gin.H{"error": "could not create user"})
 		}
@@ -181,4 +188,72 @@ func (h *Handler) Me(c *gin.Context) {
 		OrganizationID: user.OrganizationID,
 		CreatedAt:      user.CreatedAt,
 	})
+}
+
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "invalid_email", "a valid email is required")
+		return
+	}
+	if err := h.service.ForgotPassword(c.Request.Context(), req.Email); err != nil {
+		httpx.Internal(c, "auth.forgot_password", err)
+		return
+	}
+	// Same answer whether or not the account exists.
+	c.JSON(http.StatusAccepted, gin.H{"status": "if this email is registered, a code has been sent"})
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "invalid_request", "email, 6-digit code and new password are required")
+		return
+	}
+	if err := h.service.ResetPassword(c.Request.Context(), req.Email, req.Code, req.Password); err != nil {
+		h.failAccount(c, "auth.reset_password", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "invalid_request", "current and new passwords are required")
+		return
+	}
+	if err := h.service.ChangePassword(c.Request.Context(), httpx.UserID(c), c.GetString("sessionID"), req.CurrentPassword, req.NewPassword); err != nil {
+		h.failAccount(c, "auth.change_password", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	var req DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.BadRequest(c, "invalid_request", "password confirmation is required")
+		return
+	}
+	if err := h.service.DeleteAccount(c.Request.Context(), httpx.UserID(c), req.Password); err != nil {
+		h.failAccount(c, "auth.delete_account", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) failAccount(c *gin.Context, op string, err error) {
+	switch {
+	case errors.Is(err, ErrWeakPassword):
+		httpx.Fail(c, op, http.StatusBadRequest, "weak_password", err.Error(), nil)
+	case errors.Is(err, ErrInvalidResetCode):
+		httpx.Fail(c, op, http.StatusBadRequest, "invalid_code", err.Error(), nil)
+	case errors.Is(err, ErrWrongPassword):
+		httpx.Fail(c, op, http.StatusForbidden, "wrong_password", err.Error(), nil)
+	case errors.Is(err, ErrUserNotFound):
+		httpx.Fail(c, op, http.StatusUnauthorized, "user_not_found", "user not found", nil)
+	default:
+		httpx.Internal(c, op, err)
+	}
 }

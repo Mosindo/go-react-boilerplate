@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,7 +10,19 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// SessionValidator reports whether a session is still active (not revoked,
+// not expired). It lets logout, password changes and account deletion take
+// effect immediately instead of waiting for access-token expiry.
+type SessionValidator func(ctx context.Context, sessionID, userID string) (bool, error)
+
+// RequireUser validates the bearer token only (stateless).
 func RequireUser(secret []byte) gin.HandlerFunc {
+	return RequireActiveSession(secret, nil)
+}
+
+// RequireActiveSession validates the bearer token and, when sessions is not
+// nil, checks the session against the database.
+func RequireActiveSession(secret []byte, sessions SessionValidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := bearerToken(c.GetHeader("Authorization"))
 		if tokenString == "" {
@@ -54,6 +67,18 @@ func RequireUser(secret []byte) gin.HandlerFunc {
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
+		}
+
+		if sessions != nil {
+			active, err := sessions(c.Request.Context(), sessionID, userID)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "could not validate session"})
+				return
+			}
+			if !active {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "session expired", "code": "session_revoked"})
+				return
+			}
 		}
 
 		c.Set("userID", userID)

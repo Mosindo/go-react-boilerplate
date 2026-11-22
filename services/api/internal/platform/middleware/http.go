@@ -121,7 +121,7 @@ func requestLatencyFromContext(c *gin.Context) int64 {
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")
-		if requestID == "" {
+		if requestID == "" || len(requestID) > 64 || !isSafeRequestID(requestID) {
 			requestID = generateRequestID()
 		}
 		c.Set("request_id", requestID)
@@ -136,4 +136,14 @@ func generateRequestID() string {
 		return time.Now().UTC().Format("20060102150405.000000000")
 	}
 	return hex.EncodeToString(buf)
+}
+
+func isSafeRequestID(v string) bool {
+	for i := 0; i < len(v); i++ {
+		ch := v[i]
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_' || ch == '.') {
+			return false
+		}
+	}
+	return true
 }

@@ -14,12 +14,13 @@ type User struct {
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	// The address is validated after trimming/lower-casing in the service.
+	Email    string `json:"email" binding:"required,max=254"`
 	Password string `json:"password" binding:"required,min=8,max=128"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=254"`
+	Email    string `json:"email" binding:"required,max=254"`
 	Password string `json:"password" binding:"required,max=128"`
 }
 
@@ -55,4 +56,36 @@ type AccessTokenClaims struct {
 	OrganizationID string `json:"oid"`
 	SessionID      string `json:"sid"`
 	jwt.RegisteredClaims
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,max=254"`
+}
+
+type ResetPasswordRequest struct {
+	Email    string `json:"email" binding:"required,max=254"`
+	Code     string `json:"code" binding:"required,len=6,numeric"`
+	Password string `json:"password" binding:"required,min=8,max=128"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword" binding:"required,max=128"`
+	NewPassword     string `json:"newPassword" binding:"required,min=8,max=128"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,max=128"`
+}
+
+type StoredResetToken struct {
+	ID       string
+	CodeHash string
+	Attempts int
+}
+
+// DeletedAccount describes what must be cleaned up outside the database.
+type DeletedAccount struct {
+	UserID        string
+	PhotoKeys     []string
+	FormerMatches []string
 }

@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"net/mail"
 	"strings"
 	"time"
 
+	"example.com/api/internal/platform/mailer"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -19,7 +21,11 @@ var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrUserNotFound        = errors.New("user not found")
+	ErrInvalidEmail        = errors.New("invalid email address")
 )
+
+// dummyPasswordHash is computed once at start-up with the production cost.
+var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("timing-equaliser"), bcrypt.DefaultCost)
 
 const (
 	accessTokenTTL  = 15 * time.Minute
@@ -29,23 +35,45 @@ const (
 type Service struct {
 	repo      Repository
 	jwtSecret []byte
+	mailer    mailer.Mailer
+	onDeleted func(DeletedAccount)
 }
 
-func NewService(repo Repository, jwtSecret []byte) *Service {
-	return &Service{
-		repo:      repo,
-		jwtSecret: jwtSecret,
+// Option customises the auth service.
+type Option func(*Service)
+
+// WithMailer sets the transport used for account recovery e-mails.
+func WithMailer(m mailer.Mailer) Option {
+	return func(s *Service) { s.mailer = m }
+}
+
+// WithDeletionHook runs after an account is erased (file cleanup, events).
+func WithDeletionHook(fn func(DeletedAccount)) Option {
+	return func(s *Service) { s.onDeleted = fn }
+}
+
+func NewService(repo Repository, jwtSecret []byte, opts ...Option) *Service {
+	s := &Service{repo: repo, jwtSecret: jwtSecret, mailer: mailer.LogMailer{}}
+	for _, opt := range opts {
+		opt(s)
 	}
+	return s
 }
 
 func (s *Service) Register(ctx context.Context, email, password, userAgent, ipAddress string) (Tokens, User, error) {
 	normalizedEmail := normalizeEmail(email)
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if !ValidEmail(normalizedEmail) {
+		return Tokens{}, User{}, ErrInvalidEmail
+	}
+	if err := ValidatePassword(password); err != nil {
+		return Tokens{}, User{}, err
+	}
+	hash, err := hashPassword(password)
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
 
-	created, err := s.repo.CreateUser(ctx, normalizedEmail, string(hash))
+	created, err := s.repo.CreateUser(ctx, normalizedEmail, hash)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryEmailExists) {
 			return Tokens{}, User{}, ErrEmailExists
@@ -68,6 +96,9 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ipAddre
 	stored, err := s.repo.GetUserAuthByEmail(ctx, normalizedEmail)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryNotFound) {
+			// Spend the same bcrypt time as a real check so response timing
+			// does not reveal which e-mails are registered.
+			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password))
 			return Tokens{}, User{}, ErrInvalidCredentials
 		}
 		return Tokens{}, User{}, err
@@ -223,6 +254,19 @@ func hashRefreshToken(refreshToken string) string {
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// ValidEmail accepts a bare RFC 5322 address (no display name) with a dotted domain.
+func ValidEmail(email string) bool {
+	if len(email) < 3 || len(email) > 254 {
+		return false
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email || addr.Name != "" {
+		return false
+	}
+	at := strings.LastIndex(email, "@")
+	return at > 0 && strings.Contains(email[at+1:], ".")
 }
 
 func toUser(stored StoredUser) User {

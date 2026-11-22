@@ -46,6 +46,15 @@ type Repository interface {
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	GetPasswordHash(ctx context.Context, userID string) (string, error)
+	UpdatePassword(ctx context.Context, userID, passwordHash string) error
+	RevokeSessions(ctx context.Context, userID, keepSessionID string) error
+	SessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+	CreateResetToken(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
+	ActiveResetToken(ctx context.Context, userID string) (StoredResetToken, error)
+	IncrementResetAttempts(ctx context.Context, tokenID string) error
+	ConsumeResetToken(ctx context.Context, tokenID, userID, passwordHash string) error
+	DeleteUser(ctx context.Context, userID string) (DeletedAccount, error)
 }
 
 type PGRepository struct {
@@ -239,4 +248,145 @@ func nullableIP(value string) any {
 		return nil
 	}
 	return ip.String()
+}
+
+var ErrRepositoryResetTokenGone = errors.New("auth reset token not found")
+
+func (r *PGRepository) GetPasswordHash(ctx context.Context, userID string) (string, error) {
+	var hash string
+	err := r.dbPool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositoryNotFound
+	}
+	return hash, err
+}
+
+func (r *PGRepository) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+	tag, err := r.dbPool.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRepositoryNotFound
+	}
+	return nil
+}
+
+// RevokeSessions revokes every active session of the user except keepSessionID.
+func (r *PGRepository) RevokeSessions(ctx context.Context, userID, keepSessionID string) error {
+	_, err := r.dbPool.Exec(ctx, `
+		UPDATE sessions SET revoked_at = NOW()
+		WHERE user_id = $1 AND revoked_at IS NULL AND ($2 = '' OR id::text <> $2)
+	`, userID, keepSessionID)
+	return err
+}
+
+// SessionActive is used by the auth middleware for immediate revocation.
+func (r *PGRepository) SessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
+	var ok bool
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM sessions
+			WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > NOW()
+		)
+	`, sessionID, userID).Scan(&ok)
+	return ok, err
+}
+
+// CreateResetToken invalidates previous codes and stores a new one.
+func (r *PGRepository) CreateResetToken(ctx context.Context, userID, codeHash string, expiresAt time.Time) error {
+	return pgx.BeginFunc(ctx, r.dbPool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL
+		`, userID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO password_reset_tokens (user_id, code_hash, expires_at) VALUES ($1, $2, $3)
+		`, userID, codeHash, expiresAt)
+		return err
+	})
+}
+
+func (r *PGRepository) ActiveResetToken(ctx context.Context, userID string) (StoredResetToken, error) {
+	var t StoredResetToken
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT id, code_hash, attempts FROM password_reset_tokens
+		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+		ORDER BY created_at DESC LIMIT 1
+	`, userID).Scan(&t.ID, &t.CodeHash, &t.Attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return StoredResetToken{}, ErrRepositoryResetTokenGone
+	}
+	return t, err
+}
+
+func (r *PGRepository) IncrementResetAttempts(ctx context.Context, tokenID string) error {
+	_, err := r.dbPool.Exec(ctx, `UPDATE password_reset_tokens SET attempts = attempts + 1 WHERE id = $1`, tokenID)
+	return err
+}
+
+// ConsumeResetToken atomically marks the code used and sets the new password.
+func (r *PGRepository) ConsumeResetToken(ctx context.Context, tokenID, userID, passwordHash string) error {
+	return pgx.BeginFunc(ctx, r.dbPool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE password_reset_tokens SET used_at = NOW()
+			WHERE id = $1 AND user_id = $2 AND used_at IS NULL AND expires_at > NOW()
+		`, tokenID, userID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrRepositoryResetTokenGone
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID)
+		return err
+	})
+}
+
+// DeleteUser removes the account and every row that belongs to it. Most data
+// goes through ON DELETE CASCADE; match conversations are removed explicitly
+// because conversations are shared rows.
+func (r *PGRepository) DeleteUser(ctx context.Context, userID string) (DeletedAccount, error) {
+	out := DeletedAccount{UserID: userID}
+	err := pgx.BeginFunc(ctx, r.dbPool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT storage_key FROM photos WHERE user_id = $1`, userID)
+		if err != nil {
+			return err
+		}
+		out.PhotoKeys, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		rows, err = tx.Query(ctx, `
+			SELECT CASE WHEN user_a_id = $1 THEN user_b_id ELSE user_a_id END FROM matches
+			WHERE user_a_id = $1 OR user_b_id = $1
+		`, userID)
+		if err != nil {
+			return err
+		}
+		out.FormerMatches, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM conversations c
+			USING conversation_participants cp
+			WHERE cp.conversation_id = c.id AND cp.user_id = $1
+		`, userID); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrRepositoryNotFound
+		}
+		return nil
+	})
+	return out, err
 }
