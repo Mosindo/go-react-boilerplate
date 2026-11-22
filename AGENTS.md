@@ -1,6 +1,8 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur (built on go-react-saas)
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
+This repository hosts **Lueur**, a free dating app built on the `go-react-saas` fullstack boilerplate.
+Dating-specific modules live in their own features (`profiles`, `photos`, `matching`, `safety`);
+generic boilerplate modules stay domain-agnostic.
 The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
 
 ---
@@ -117,6 +119,7 @@ Secrets:
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - see `.env.example` for optional variables (`APP_ENV`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `UPLOAD_DIR`, `SMTP_*`)
 
 ---
 
@@ -136,6 +139,10 @@ Required indexes:
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
 - `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
+- `swipes (swiper_id, target_id)` and `swipes (target_id, created_at) WHERE action = 'like'`
+- `matches (user_a_id, user_b_id)` unique
+- `blocks (blocker_id, blocked_id)` and `blocks (blocked_id, blocker_id)`
 
 ---
 
@@ -146,7 +153,7 @@ Before any backend delivery:
 - `gofmt ./...`
 - `go test ./...`
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm test` healthy in `apps/mobile`
 
 If tests fail: fix them before continuing.
 
@@ -157,6 +164,7 @@ Integration tests to keep healthy:
 - Posts (`/posts`)
 - Chat (`/chats`, `/chats/:userId/messages`)
 - Notifications (`/notifications`)
+- Dating flow (`/me/profile`, `/me/photos`, `/discovery`, `/swipes`, `/matches`, `/blocks`, `/reports`, `/events`)
 
 ---
 
@@ -178,8 +186,8 @@ Mandatory rules to avoid recurring environment issues:
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
+  - onboarding (profile, photo, location)
+  - discovery, like, match
   - chat send/read
   - notifications read flow
 

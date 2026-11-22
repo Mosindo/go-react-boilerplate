@@ -29,12 +29,7 @@ function Run-Step([string]$name, [scriptblock]$action) {
 
 Push-Location $repoRoot
 try {
-  Run-Step "Smoke API automatise (checklist MVP courte)" {
-    & (Join-Path $repoRoot "scripts/smoke-api.ps1") -ApiBaseUrl $ApiBaseUrl
-    if ($LASTEXITCODE -ne 0) { throw "smoke-api exited with code $LASTEXITCODE" }
-  }
-
-  Run-Step "Smoke mobile e2e (parcours critique)" {
+  Run-Step "Smoke API: register -> profile -> photo -> discovery -> match -> chat -> notifications" {
     Push-Location ".\apps\mobile"
     try {
       $previousMobileApi = $env:MOBILE_E2E_API_URL
@@ -70,7 +65,7 @@ finally {
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $header = @(
-  "go-react-saas Smoke Report",
+  "Lueur Smoke Report",
   "Generated: $stamp",
   "API Base URL: $ApiBaseUrl",
   ""

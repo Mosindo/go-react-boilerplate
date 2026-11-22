@@ -58,8 +58,19 @@ type limits struct {
 }
 
 // defaultLimits are anti-abuse ceilings, not product quotas: likes and
-// messages stay unlimited for normal human usage.
-func defaultLimits() limits {
+// messages stay unlimited for normal human usage. APP_ENV=test relaxes them
+// so automated end-to-end suites can create many accounts from one IP.
+func defaultLimits(env string) limits {
+	if env == "test" {
+		relaxed := func() *middleware.RateLimiter { return middleware.NewRateLimiter(10_000, time.Minute, 1_000) }
+		return limits{
+			auth:     authfeature.Limiters{Credentials: relaxed(), Recovery: relaxed()},
+			swipes:   relaxed(),
+			messages: relaxed(),
+			reports:  relaxed(),
+			uploads:  relaxed(),
+		}
+	}
 	return limits{
 		auth:     authfeature.DefaultLimiters(),
 		swipes:   middleware.NewRateLimiter(120, time.Minute, 60),
@@ -111,7 +122,7 @@ func main() {
 		storage:        storage,
 		mailer:         mail,
 		hub:            realtime.NewHub(),
-		limits:         defaultLimits(),
+		limits:         defaultLimits(cfg.Env),
 	}
 
 	srv := &http.Server{
