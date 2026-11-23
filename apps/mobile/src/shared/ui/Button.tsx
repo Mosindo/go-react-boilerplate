@@ -1,170 +1,94 @@
 import React, { type ReactNode } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  View,
-  type PressableProps,
-  type StyleProp,
-  type TextStyle,
-  type ViewStyle
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { Text } from "./Text";
-import { colors, controls, radii, shadows, spacing } from "./tokens";
+import { colors, controls, radii, spacing } from "./tokens";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "success";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export type ButtonProps = Omit<PressableProps, "children" | "style"> & {
-  children?: ReactNode;
-  label?: string;
+  label: string;
+  icon?: ReactNode;
   loading?: boolean;
   variant?: ButtonVariant;
   size?: ButtonSize;
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
-  textStyle?: StyleProp<TextStyle>;
 };
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  fullWidth: {
-    width: "100%"
-  },
-  small: {
-    minHeight: controls.button.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
-  },
-  medium: {
-    minHeight: controls.button.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md
-  },
-  large: {
-    minHeight: controls.button.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg
-  },
-  primary: {
-    backgroundColor: colors.text,
-    ...shadows.card
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder
-  },
-  destructive: {
-    backgroundColor: colors.danger,
-    borderWidth: 1,
-    borderColor: colors.danger
-  },
-  success: {
-    backgroundColor: colors.success,
-    borderWidth: 1,
-    borderColor: colors.success
-  },
-  outline: {
-    backgroundColor: colors.backgroundElevated,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  ghost: {
-    backgroundColor: "transparent"
-  },
-  disabled: {
-    opacity: 0.55
-  },
-  pressed: {
-    opacity: 0.9
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm
-  }
-});
-
-const sizeStyles: Record<ButtonSize, ViewStyle> = {
-  sm: styles.small,
-  md: styles.medium,
-  lg: styles.large
+const containerByVariant: Record<ButtonVariant, ViewStyle> = {
+  primary: { backgroundColor: colors.primary },
+  secondary: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border },
+  ghost: { backgroundColor: "transparent" },
+  danger: { backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.dangerBorder }
 };
 
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: styles.primary,
-  secondary: styles.secondary,
-  destructive: styles.destructive,
-  success: styles.success,
-  outline: styles.outline,
-  ghost: styles.ghost
-};
-
-const textToneByVariant: Record<ButtonVariant, "default" | "inverse" | "primary" | "secondary"> = {
-  primary: "inverse",
-  secondary: "primary",
-  destructive: "inverse",
-  success: "inverse",
-  outline: "default",
-  ghost: "secondary"
-};
-
-const spinnerColorByVariant: Record<ButtonVariant, string> = {
-  primary: colors.inverse,
-  secondary: colors.primary,
-  destructive: colors.inverse,
-  success: colors.inverse,
-  outline: colors.secondary,
-  ghost: colors.secondary
-};
+const toneByVariant = {
+  primary: "onPrimary",
+  secondary: "default",
+  ghost: "primary",
+  danger: "danger"
+} as const;
 
 export function Button({
-  children,
   disabled,
   fullWidth = false,
+  icon,
   label,
   loading = false,
   size = "md",
   style,
-  textStyle,
   variant = "primary",
   ...props
 }: ButtonProps) {
-  const buttonDisabled = disabled || loading;
-  const textTone = textToneByVariant[variant];
-  const labelNode = typeof children === "string" ? children : label;
-
+  const isDisabled = disabled || loading;
   return (
     <Pressable
+      accessibilityLabel={label}
       accessibilityRole="button"
-      disabled={buttonDisabled}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      disabled={isDisabled}
+      hitSlop={controls.hitSlop}
       style={({ pressed }) => [
         styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
+        { minHeight: controls.button[size], paddingHorizontal: size === "sm" ? spacing.lg : spacing.xl },
+        containerByVariant[variant],
         fullWidth ? styles.fullWidth : null,
-        buttonDisabled ? styles.disabled : null,
-        pressed ? styles.pressed : null,
+        pressed && variant === "primary" ? { backgroundColor: colors.primaryPressed } : null,
+        pressed && variant !== "primary" ? styles.pressed : null,
+        isDisabled ? styles.disabled : null,
         style
       ]}
       {...props}
     >
       <View style={styles.content}>
-        {loading ? <ActivityIndicator color={spinnerColorByVariant[variant]} size="small" /> : null}
-        {labelNode ? (
-          <Text style={textStyle} tone={textTone} variant="button" weight="bold">
-            {labelNode}
-          </Text>
-        ) : (
-          children
-        )}
+        {loading ? <ActivityIndicator color={variant === "primary" ? colors.onPrimary : colors.primary} size="small" /> : icon}
+        <Text tone={toneByVariant[variant]} variant={size === "sm" ? "label" : "button"} weight="semibold">
+          {label}
+        </Text>
       </View>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  base: {
+    borderRadius: radii.pill,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  fullWidth: {
+    alignSelf: "stretch"
+  },
+  pressed: {
+    opacity: 0.75
+  },
+  disabled: {
+    opacity: 0.45
+  },
+  content: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm
+  }
+});

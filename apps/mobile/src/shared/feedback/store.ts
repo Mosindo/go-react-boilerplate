@@ -1,90 +1,57 @@
 import { useSyncExternalStore } from "react";
 
+type Toast = { id: number; message: string; tone: "default" | "success" | "danger" };
+
 type FeedbackState = {
   error: string | null;
-  errors: string[];
-  loadingCount: number;
-  loadingLabel: string | null;
-  loadingLabels: string[];
+  toast: Toast | null;
 };
 
-type Listener = () => void;
+let state: FeedbackState = { error: null, toast: null };
+let toastSeq = 0;
+const listeners = new Set<() => void>();
 
-let state: FeedbackState = {
-  error: null,
-  errors: [],
-  loadingCount: 0,
-  loadingLabel: null,
-  loadingLabels: []
-};
-
-const listeners = new Set<Listener>();
-
-function emit() {
+function emit(next: FeedbackState) {
+  state = next;
   listeners.forEach((listener) => listener());
 }
 
-function subscribe(listener: Listener) {
+function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-function getSnapshot(): FeedbackState {
-  return state;
-}
-
-export function beginGlobalLoading(label = "Working...") {
-  const nextLabels = [...state.loadingLabels, label];
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
-export function endGlobalLoading() {
-  const nextLabels = state.loadingLabels.slice(0, -1);
-  state = {
-    ...state,
-    loadingCount: nextLabels.length,
-    loadingLabel: nextLabels.at(-1) ?? null,
-    loadingLabels: nextLabels
-  };
-  emit();
-}
-
+/** Global, blocking-free error banner (network / server issues). */
 export function showGlobalError(message: string) {
-  if (!message) {
-    return;
+  if (message && state.error !== message) {
+    emit({ ...state, error: message });
   }
-
-  const nextErrors = state.errors.at(-1) === message ? state.errors : [...state.errors, message];
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
-  emit();
 }
 
 export function clearGlobalError() {
-  if (state.errors.length === 0) {
-    return;
+  if (state.error) {
+    emit({ ...state, error: null });
   }
-
-  const nextErrors = state.errors.slice(0, -1);
-  state = {
-    ...state,
-    error: nextErrors.at(-1) ?? null,
-    errors: nextErrors
-  };
-  emit();
 }
 
-export function useGlobalFeedback() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+/** Short confirmation after an action ("Photo ajoutée"). */
+export function showToast(message: string, tone: Toast["tone"] = "default") {
+  toastSeq += 1;
+  emit({ ...state, toast: { id: toastSeq, message, tone } });
+}
+
+export function dismissToast(id: number) {
+  if (state.toast?.id === id) {
+    emit({ ...state, toast: null });
+  }
+}
+
+export function useGlobalFeedback(): FeedbackState {
+  return useSyncExternalStore(
+    subscribe,
+    () => state,
+    () => state
+  );
 }

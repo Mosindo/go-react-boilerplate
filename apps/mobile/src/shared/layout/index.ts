@@ -1,5 +1,3 @@
-export * from "./BottomNavigation";
-export * from "./Header";
 export * from "./SafeAreaLayout";
-export * from "./ScreenContainer";
-export * from "./Section";
+export * from "./Screen";
+export * from "./ScreenHeader";

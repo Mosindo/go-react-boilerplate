@@ -1,49 +1,59 @@
 import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { Button, Card, Text, spacing } from "../ui";
+import { StyleSheet, View } from "react-native";
+import { Button, Text, colors, spacing } from "../ui";
 
 type EmptyViewProps = {
-  actionLabel?: string;
-  message?: string;
-  onAction?: () => void;
-  style?: StyleProp<ViewStyle>;
-  testID?: string;
+  glyph?: string;
   title: string;
+  message?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  testID?: string;
 };
 
-export function EmptyView({ actionLabel, message, onAction, style, testID, title }: EmptyViewProps) {
+export function EmptyView({ actionLabel, glyph = "✦", message, onAction, testID, title }: EmptyViewProps) {
   return (
-    <View style={[styles.wrap, style]} testID={testID}>
-      <Card padding="lg" style={styles.card} variant="muted">
-        <Text style={styles.title} variant="heading" weight="bold">
-          {title}
+    <View style={styles.wrap} testID={testID}>
+      <View style={styles.glyph}>
+        <Text style={styles.glyphText} tone="primary">
+          {glyph}
         </Text>
-        {message ? (
-          <Text style={styles.message} tone="muted">
-            {message}
-          </Text>
-        ) : null}
-        {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="secondary" /> : null}
-      </Card>
+      </View>
+      <Text align="center" variant="heading">
+        {title}
+      </Text>
+      {message ? (
+        <Text align="center" style={styles.message} tone="muted">
+          {message}
+        </Text>
+      ) : null}
+      {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} size="sm" variant="secondary" /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    width: "100%"
-  },
-  card: {
-    width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
+    flex: 1,
     alignItems: "center",
-    gap: spacing.sm
+    justifyContent: "center",
+    padding: spacing.xxl,
+    gap: spacing.md
   },
-  title: {
-    textAlign: "center"
+  glyph: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.sm
+  },
+  glyphText: {
+    fontSize: 30,
+    lineHeight: 36
   },
   message: {
-    textAlign: "center"
+    maxWidth: 340
   }
 });

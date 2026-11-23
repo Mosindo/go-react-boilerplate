@@ -1,32 +1,35 @@
+/**
+ * Hearth design tokens — a warm, low-glare dark theme.
+ * Text/background pairs meet WCAG AA contrast (≥ 4.5:1 for body text).
+ */
 export const colors = {
-  primary: "#4c6fff",
-  primarySoft: "#e8edff",
-  primaryBorder: "#cad5ff",
-  primaryForeground: "#ffffff",
-  secondary: "#475467",
-  secondarySoft: "#eef2f6",
-  background: "#f6f8fc",
-  backgroundElevated: "#ffffff",
-  surface: "#ffffff",
-  surfaceMuted: "#f8fafc",
-  surfaceSubtle: "#eef2f6",
-  surfaceAccent: "#eef3ff",
-  border: "#e3e8f2",
-  borderStrong: "#c9d3e1",
-  text: "#101828",
-  textMuted: "#667085",
-  textSubtle: "#98a2b3",
-  success: "#027a48",
-  successSoft: "#ecfdf3",
-  successBorder: "#abefc6",
-  warning: "#b54708",
-  warningSoft: "#fff6e0",
-  warningBorder: "#fedf89",
-  danger: "#d92d20",
-  dangerSoft: "#fef3f2",
-  dangerBorder: "#fecdca",
-  inverse: "#ffffff",
-  overlay: "rgba(15, 23, 42, 0.38)"
+  background: "#14110F",
+  backgroundElevated: "#1C1815",
+  surface: "#211C19",
+  surfaceRaised: "#2A2420",
+  surfaceMuted: "#191513",
+  border: "#3A322C",
+  borderStrong: "#54483F",
+  text: "#F6EFE9",
+  textMuted: "#BCAEA2",
+  textSubtle: "#8F8278",
+  primary: "#EE8466",
+  primaryPressed: "#D9694B",
+  primarySoft: "rgba(238, 132, 102, 0.14)",
+  primaryBorder: "rgba(238, 132, 102, 0.45)",
+  onPrimary: "#1A0E09",
+  accent: "#E9BD7B",
+  accentSoft: "rgba(233, 189, 123, 0.14)",
+  success: "#86CFA3",
+  successSoft: "rgba(134, 207, 163, 0.14)",
+  danger: "#F27A72",
+  dangerSoft: "rgba(242, 122, 114, 0.14)",
+  dangerBorder: "rgba(242, 122, 114, 0.45)",
+  warning: "#E9BD7B",
+  inverse: "#14110F",
+  overlay: "rgba(8, 6, 5, 0.72)",
+  scrim: "rgba(10, 8, 7, 0.0)",
+  scrimStrong: "rgba(10, 8, 7, 0.88)"
 } as const;
 
 export const spacing = {
@@ -37,26 +40,16 @@ export const spacing = {
   lg: 18,
   xl: 24,
   xxl: 32,
-  xxxl: 40
+  xxxl: 44
 } as const;
 
 export const radii = {
   xs: 8,
-  sm: 10,
-  md: 14,
-  lg: 20,
-  xl: 28,
-  pill: 999
-} as const;
-
-export const fontSizes = {
-  xxs: 11,
-  xs: 12,
-  sm: 14,
+  sm: 12,
   md: 16,
   lg: 20,
   xl: 28,
-  xxl: 36
+  pill: 999
 } as const;
 
 export const fontWeights = {
@@ -67,95 +60,41 @@ export const fontWeights = {
 } as const;
 
 export const typography = {
-  body: {
-    fontSize: 15,
-    lineHeight: 24,
-    letterSpacing: -0.1
-  },
-  label: {
-    fontSize: 13,
-    lineHeight: 18,
-    letterSpacing: 0.1
-  },
-  title: {
-    fontSize: fontSizes.xxl,
-    lineHeight: 40,
-    letterSpacing: -1
-  },
-  heading: {
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.5
-  },
-  caption: {
-    fontSize: fontSizes.xs,
-    lineHeight: 16,
-    letterSpacing: 0
-  },
-  eyebrow: {
-    fontSize: fontSizes.xxs,
-    lineHeight: 16,
-    letterSpacing: 1.3,
-    textTransform: "uppercase" as const
-  },
-  button: {
-    fontSize: 15,
-    lineHeight: 20,
-    letterSpacing: -0.2
-  }
+  display: { fontSize: 40, lineHeight: 46, letterSpacing: -1.2 },
+  title: { fontSize: 30, lineHeight: 36, letterSpacing: -0.8 },
+  heading: { fontSize: 21, lineHeight: 27, letterSpacing: -0.4 },
+  body: { fontSize: 16, lineHeight: 23, letterSpacing: -0.1 },
+  label: { fontSize: 14, lineHeight: 19, letterSpacing: 0 },
+  caption: { fontSize: 12.5, lineHeight: 17, letterSpacing: 0.1 },
+  eyebrow: { fontSize: 11.5, lineHeight: 15, letterSpacing: 1.4, textTransform: "uppercase" as const },
+  button: { fontSize: 16, lineHeight: 20, letterSpacing: -0.1 }
 } as const;
 
 export const controls = {
-  button: {
-    sm: 40,
-    md: 50,
-    lg: 56
-  },
-  input: {
-    md: 52,
-    multiline: 128
-  },
-  avatar: {
-    sm: 40,
-    md: 44,
-    lg: 56
-  }
+  button: { sm: 40, md: 50, lg: 56 },
+  input: { md: 52, multiline: 120 },
+  hitSlop: { top: 8, bottom: 8, left: 8, right: 8 }
 } as const;
 
 export const shadows = {
   card: {
-    shadowColor: "#0b1220",
-    shadowOpacity: 0.08,
+    shadowColor: "#000000",
+    shadowOpacity: 0.35,
     shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6
   },
   floating: {
-    shadowColor: "#0b1220",
-    shadowOpacity: 0.12,
+    shadowColor: "#000000",
+    shadowOpacity: 0.45,
     shadowRadius: 30,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8
-  },
-  focus: {
-    shadowColor: "#4c6fff",
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10
   }
 } as const;
 
-export const ui = {
-  colors,
-  spacing,
-  radii,
-  fontSizes,
-  fontWeights,
-  typography,
-  controls,
-  shadows
+export const motion = {
+  fast: 140,
+  normal: 220,
+  slow: 360
 } as const;
-
-export type ColorToken = keyof typeof colors;
-export type TypographyToken = keyof typeof typography;

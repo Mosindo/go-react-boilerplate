@@ -9,11 +9,7 @@ type SafeAreaLayoutProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-export function SafeAreaLayout({
-  children,
-  edges = ["top", "right", "bottom", "left"],
-  style
-}: SafeAreaLayoutProps) {
+export function SafeAreaLayout({ children, edges = ["top", "right", "bottom", "left"], style }: SafeAreaLayoutProps) {
   return (
     <SafeAreaView edges={edges} style={[styles.safeArea, style]}>
       {children}
