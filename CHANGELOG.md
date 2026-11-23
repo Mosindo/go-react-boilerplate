@@ -1,4 +1,4 @@
-# go-react-saas Changelog
+# Hearth Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,8 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-23
+
 ### Added
-- Placeholder for upcoming unreleased changes.
+- Hearth, a free dating app on the go-react-saas foundation.
+- API features: profiles, preferences, privacy settings, approximate location, interests,
+  photos (validated, re-encoded, signed URLs), mutual discovery, swipes, race-free matching,
+  match-scoped realtime chat with read receipts, blocks, reports with auto-suspension,
+  notifications, password recovery by email, password change, account deletion.
+- Platform: tracked migrations, rate limiting, local object storage, SMTP mailer, WebSocket hub,
+  session revocation checks, uniform error payloads.
+- Mobile app: original dark design system, onboarding, discovery deck, matches, chat, activity,
+  profile and settings screens.
+- Quality: integration suite against PostgreSQL, ESLint/Prettier, API smoke, Playwright web E2E,
+  consolidated CI, `scripts/qa.js`, demo seed command.
+
+### Removed
+- Stripe billing, posts, comments, votes, metadata-only files, `/users` directory, Tamagui,
+  PowerShell QA scripts and Maestro flow tied to the removed modules.
 
 ## [0.1.0] - 2026-03-17
 

@@ -55,7 +55,10 @@ func Handler(hub *Hub, auth *middleware.Authenticator) gin.HandlerFunc {
 				cancel()
 			})
 		}
-		hub.register(cl)
+		if !hub.register(cl) {
+			_ = conn.Close(websocket.StatusTryAgainLater, "too many connections")
+			return
+		}
 		defer hub.unregister(cl)
 
 		ready, _ := json.Marshal(Event{Type: "ready", Data: gin.H{"userId": identity.UserID}})

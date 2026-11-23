@@ -27,6 +27,9 @@ type client struct {
 	close  func()
 }
 
+// MaxConnectionsPerUser bounds sockets per account (several devices/tabs).
+const MaxConnectionsPerUser = 8
+
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]map[*client]struct{}
@@ -36,7 +39,7 @@ func NewHub() *Hub {
 	return &Hub{clients: make(map[string]map[*client]struct{})}
 }
 
-func (h *Hub) register(c *client) {
+func (h *Hub) register(c *client) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	set, ok := h.clients[c.userID]
@@ -44,7 +47,11 @@ func (h *Hub) register(c *client) {
 		set = make(map[*client]struct{})
 		h.clients[c.userID] = set
 	}
+	if len(set) >= MaxConnectionsPerUser {
+		return false
+	}
 	set[c] = struct{}{}
+	return true
 }
 
 func (h *Hub) unregister(c *client) {

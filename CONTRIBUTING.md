@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Hearth (built on the `go-react-saas` foundation).
 
 ## Ground Rules
 
@@ -35,7 +35,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cleanup`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -73,24 +73,20 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
+One command runs the same gate as CI (Go format/vet/tests/build, TypeScript,
+ESLint, Prettier). Point `DATABASE_URL` at a PostgreSQL so integration tests
+run instead of being skipped:
 
 ```bash
-cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/app?sslmode=disable node scripts/qa.js
 ```
+
+If the change touches integrated flows, start the stack and also run the API
+smoke and the browser E2E:
 
 ```bash
-cd apps/mobile
-npx tsc --noEmit
-```
-
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+node scripts/qa.js --smoke
+cd apps/mobile && EXPO_PUBLIC_API_URL=http://localhost:18080 npm run build:web && npm run e2e:web
 ```
 
 ## Documentation Expectations

@@ -1,30 +1,25 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Hearth (built on go-react-saas)
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
-The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
+This repository hosts **Hearth**, a free dating app, built on the `go-react-saas` fullstack foundation.
+The architecture must remain scalable, secure, maintainable, and easy to evolve.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+The founder explicitly requested a dating product: a 100% free dating app (no subscription,
+no paywall, no paid boost, no artificial like limits, no mandatory ads).
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Keep the `platform` layer domain-agnostic. Dating-specific language belongs in `features`.
 
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- profiles (profile, preferences, privacy settings, location, interests)
+- photos
+- matching (discovery, swipes, matches)
 - chat
+- safety (blocks, reports)
 - notifications
-- files
 
 ---
 
@@ -63,13 +58,14 @@ Target structure:
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `httpx/`, `ratelimit/`, `storage/`, `media/`, `mailer/`, `realtime/`
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
+  - `safety/`
   - `notifications/`
 
 Each feature should contain:
@@ -113,10 +109,16 @@ User input:
 
 Secrets:
 - Never hardcode secrets
-- Expected environment variables:
+- Expected environment variables (see `.env.example`):
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - `APP_ENV`, `UPLOAD_DIR`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*`
+
+Privacy:
+- Never return exact coordinates; store them snapped (~1 km) and expose whole-km distances only
+- Photos are re-encoded (metadata stripped) and served through signed, expiring URLs
+- Chat access requires participation in an active match and no block in either direction
 
 ---
 
@@ -130,12 +132,14 @@ Secrets:
 
 Required indexes:
 - `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `swipes (swiper_id, target_id)` and `swipes (target_id, action, swiper_id)`
+- `matches (user_a_id, user_b_id)` unique
+- `blocks (blocker_id, blocked_id)` and `blocks (blocked_id, blocker_id)`
+- `photos (user_id, position)` unique
+- `reports (reported_id, created_at)`
 
 ---
 
@@ -143,20 +147,24 @@ Required indexes:
 
 Before any backend delivery:
 
-- `gofmt ./...`
-- `go test ./...`
+- `gofmt -l .` (must print nothing)
+- `go vet ./...`
+- `go test ./...` with `DATABASE_URL` set so integration tests run
 - `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- Frontend/API changes must also keep `npm ci`, `npx tsc --noEmit`, `npm run lint` and `npm run format:check` healthy in `apps/mobile`
+- Shortcut: `node scripts/qa.js` (add `--smoke` with a running API)
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`services/api/cmd/api/integration_test.go`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/*`, `/me`, password recovery, account deletion)
+- Profiles and photos (`/profile`, `/profile/photos`, `/media/photos/:id`)
+- Discovery and matching (`/discover`, `/swipes`, `/matches`)
+- Chat (`/conversations/:id/messages`, `/conversations/:id/read`, `/realtime`)
+- Safety (`/blocks`, `/reports`)
 - Notifications (`/notifications`)
+- Browser E2E: `apps/mobile/e2e/web-critical-flow.js`
 
 ---
 
@@ -171,16 +179,17 @@ Mandatory rules to avoid recurring environment issues:
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
 - If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
-  - mobile API fallback
-  - startup scripts
+  - `docker-compose.yml`
+  - mobile API fallback (`apps/mobile/src/api/client.ts`)
+  - startup scripts (`apps/mobile/scripts/start-phone.js`)
   - README
 - A frontend is only "ready" after a real smoke test:
   - register
   - login
-  - users load
-  - posts load
-  - chat send/read
+  - onboarding (photo + location)
+  - discovery loads
+  - like → match
+  - chat send/read (realtime)
   - notifications read flow
 
 ---
@@ -207,7 +216,8 @@ Mandatory rules to avoid recurring environment issues:
 - File deletion without validation
 - Implicit architecture change
 - Mixing `net/http` and Gin
-- Reintroducing product-specific naming into shared modules without approval
+- Reintroducing product-specific naming into `platform` modules without approval
+- Paywalls, quotas or paid features (the product is free by founder decision)
 
 ---
 
