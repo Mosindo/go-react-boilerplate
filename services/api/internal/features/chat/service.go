@@ -4,167 +4,129 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"example.com/api/internal/platform/realtime"
 )
 
 var (
-	ErrUserNotFound         = errors.New("user not found")
-	ErrValidateChatTarget   = errors.New("could not validate chat target")
-	ErrMessageContentNeeded = errors.New("message content required")
+	ErrEmptyMessage   = errors.New("message cannot be empty")
+	ErrMessageTooLong = errors.New("message must be at most 2000 characters")
 )
+
+type Notifier interface {
+	Notify(ctx context.Context, userID, kind, title, body string, data map[string]string)
+	MarkConversationRead(ctx context.Context, userID, conversationID string)
+}
+
+// NameResolver gives the sender's first name for notification copy.
+type NameResolver interface {
+	FirstName(ctx context.Context, userID string) string
+}
 
 type Service struct {
-	repo Repository
+	repo      Repository
+	publisher realtime.Publisher
+	notifier  Notifier
+	names     NameResolver
 }
 
-const (
-	defaultChatsLimit        = 20
-	maxChatsLimit            = 100
-	defaultChatMessagesLimit = 200
-	maxChatMessagesLimit     = 500
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, publisher realtime.Publisher, notifier Notifier, names NameResolver) *Service {
+	return &Service{repo: repo, publisher: publisher, notifier: notifier, names: names}
 }
 
-func (s *Service) ListChats(ctx context.Context, organizationID, userID string) ([]ChatSummary, error) {
-	chats, err := s.repo.ListChats(ctx, organizationID, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
+// NormalizeContent trims a message and strips control characters other than
+// newlines and tabs.
+func NormalizeContent(raw string) (string, error) {
+	cleaned := strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
 		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
+		if unicode.IsControl(r) {
+			return -1
 		}
-		payload = append(payload, item)
+		return r
+	}, raw)
+	cleaned = strings.TrimSpace(cleaned)
+	if cleaned == "" {
+		return "", ErrEmptyMessage
 	}
-
-	return payload, nil
+	if utf8.RuneCountInString(cleaned) > MaxMessageRunes {
+		return "", ErrMessageTooLong
+	}
+	return cleaned, nil
 }
 
-func (s *Service) ListChatsWithPagination(ctx context.Context, organizationID, userID string, limit, offset int) ([]ChatSummary, error) {
-	normalizedLimit := normalizeChatsLimit(limit)
-	normalizedOffset := normalizeChatsOffset(offset)
-	chats, err := s.repo.ListChatsWithPagination(ctx, organizationID, userID, normalizedLimit, normalizedOffset)
+func (s *Service) ListMessages(ctx context.Context, userID, conversationID, beforeID string, limit int) (MessagesResponse, error) {
+	membership, err := s.repo.GetMembership(ctx, userID, conversationID)
 	if err != nil {
-		return nil, err
+		return MessagesResponse{}, err
 	}
-
-	payload := make([]ChatSummary, 0, len(chats))
-	for _, chat := range chats {
-		item := ChatSummary{
-			UserID:        chat.UserID,
-			UserEmail:     chat.UserEmail,
-			UserCreatedAt: chat.UserCreatedAt,
-		}
-		if chat.LastMessage != nil {
-			item.LastMessage = &ChatMessagePreview{
-				Content:   chat.LastMessage.Content,
-				CreatedAt: chat.LastMessage.CreatedAt,
-			}
-		}
-		payload = append(payload, item)
-	}
-
-	return payload, nil
-}
-
-func (s *Service) ListMessages(ctx context.Context, organizationID, userID, otherUserID string) ([]ChatMessage, error) {
-	return s.ListMessagesWithLimit(ctx, organizationID, userID, otherUserID, defaultChatMessagesLimit)
-}
-
-func (s *Service) ListMessagesWithLimit(ctx context.Context, organizationID, userID, otherUserID string, limit int) ([]ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return nil, err
-	}
-
-	normalizedLimit := normalizeChatMessagesLimit(limit)
-	messages, err := s.repo.ListMessages(ctx, userID, otherUserID, normalizedLimit)
+	messages, err := s.repo.ListMessages(ctx, conversationID, beforeID, limit+1)
 	if err != nil {
-		return nil, err
+		return MessagesResponse{}, err
 	}
-	payload := make([]ChatMessage, 0, len(messages))
-	for _, message := range messages {
-		payload = append(payload, ChatMessage{
-			ID:              message.ID,
-			SenderUserID:    message.SenderUserID,
-			RecipientUserID: message.RecipientUserID,
-			Content:         message.Content,
-			CreatedAt:       message.CreatedAt,
-		})
+	hasMore := len(messages) > limit
+	if hasMore {
+		messages = messages[:limit]
 	}
-	return payload, nil
-}
-
-func (s *Service) SendMessage(ctx context.Context, organizationID, userID, otherUserID, content string) (ChatMessage, error) {
-	if err := s.ensureCanChat(ctx, organizationID, userID, otherUserID); err != nil {
-		return ChatMessage{}, err
-	}
-
-	normalizedContent := strings.TrimSpace(content)
-	if normalizedContent == "" {
-		return ChatMessage{}, ErrMessageContentNeeded
-	}
-
-	message, err := s.repo.CreateMessage(ctx, userID, otherUserID, normalizedContent)
-	if err != nil {
-		return ChatMessage{}, err
-	}
-
-	return ChatMessage{
-		ID:              message.ID,
-		SenderUserID:    message.SenderUserID,
-		RecipientUserID: message.RecipientUserID,
-		Content:         message.Content,
-		CreatedAt:       message.CreatedAt,
+	return MessagesResponse{
+		Messages:        messages,
+		HasMore:         hasMore,
+		OtherUserID:     membership.OtherUserID,
+		OtherLastReadAt: membership.OtherLastReadAt,
 	}, nil
 }
 
-func (s *Service) ensureCanChat(ctx context.Context, organizationID, userID, otherUserID string) error {
-	exists, err := s.repo.UserExists(ctx, organizationID, otherUserID)
+func (s *Service) Send(ctx context.Context, userID, conversationID, content string) (Message, error) {
+	normalized, err := NormalizeContent(content)
 	if err != nil {
-		return ErrValidateChatTarget
+		return Message{}, err
 	}
-	if !exists {
-		return ErrUserNotFound
+	membership, err := s.repo.GetMembership(ctx, userID, conversationID)
+	if err != nil {
+		return Message{}, err
+	}
+	msg, err := s.repo.CreateMessage(ctx, conversationID, userID, membership.OtherUserID, normalized)
+	if err != nil {
+		return Message{}, err
 	}
 
-	return nil
+	if s.publisher != nil {
+		s.publisher.Publish([]string{userID, membership.OtherUserID}, realtime.Event{Type: "message.created", Data: msg})
+	}
+	if s.notifier != nil {
+		name := "Quelqu'un"
+		if s.names != nil {
+			if n := s.names.FirstName(ctx, userID); n != "" {
+				name = n
+			}
+		}
+		s.notifier.Notify(ctx, membership.OtherUserID, "message", "Nouveau message", name+" t'a écrit.", map[string]string{
+			"conversationId": conversationID,
+			"userId":         userID,
+			"collapseKey":    "conversation:" + conversationID,
+		})
+	}
+	return msg, nil
 }
 
-func normalizeChatMessagesLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatMessagesLimit
+func (s *Service) MarkRead(ctx context.Context, userID, conversationID string) (ReadReceipt, error) {
+	membership, err := s.repo.GetMembership(ctx, userID, conversationID)
+	if err != nil {
+		return ReadReceipt{}, err
 	}
-	if limit > maxChatMessagesLimit {
-		return maxChatMessagesLimit
+	readAt, err := s.repo.MarkRead(ctx, userID, conversationID)
+	if err != nil {
+		return ReadReceipt{}, err
 	}
-	return limit
-}
-
-func normalizeChatsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultChatsLimit
+	receipt := ReadReceipt{ConversationID: conversationID, UserID: userID, LastReadAt: readAt}
+	if s.notifier != nil {
+		s.notifier.MarkConversationRead(ctx, userID, conversationID)
 	}
-	if limit > maxChatsLimit {
-		return maxChatsLimit
+	if s.publisher != nil {
+		s.publisher.Publish([]string{membership.OtherUserID, userID}, realtime.Event{Type: "conversation.read", Data: receipt})
 	}
-	return limit
-}
-
-func normalizeChatsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+	return receipt, nil
 }

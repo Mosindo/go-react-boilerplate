@@ -46,6 +46,21 @@ type Repository interface {
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
+	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
+	GetPasswordHash(ctx context.Context, userID string) (string, error)
+	UpdatePasswordAndRevokeSessions(ctx context.Context, userID, passwordHash string, keepSessionID string) error
+	CreatePasswordReset(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
+	CountRecentPasswordResets(ctx context.Context, userID string, since time.Time) (int, error)
+	GetActivePasswordReset(ctx context.Context, userID string) (StoredPasswordReset, error)
+	IncrementPasswordResetAttempts(ctx context.Context, resetID string) error
+	ConsumePasswordReset(ctx context.Context, resetID, userID, passwordHash string) error
+	DeleteUser(ctx context.Context, userID string) error
+}
+
+type StoredPasswordReset struct {
+	ID       string
+	CodeHash string
+	Attempts int
 }
 
 type PGRepository struct {
@@ -59,13 +74,20 @@ func NewPGRepository(dbPool *pgxpool.Pool) *PGRepository {
 func (r *PGRepository) CreateUser(ctx context.Context, email, passwordHash string) (StoredUser, error) {
 	var user StoredUser
 	err := r.dbPool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, organization_id)
-		VALUES (
-			$1,
-			$2,
-			(SELECT id FROM organizations WHERE slug = 'default')
+		WITH created AS (
+			INSERT INTO users (email, password_hash, organization_id)
+			VALUES (
+				$1,
+				$2,
+				(SELECT id FROM organizations WHERE slug = 'default')
+			)
+			RETURNING id, email, organization_id, created_at
+		), profile AS (
+			INSERT INTO profiles (user_id) SELECT id FROM created
+		), prefs AS (
+			INSERT INTO preferences (user_id) SELECT id FROM created
 		)
-		RETURNING id, email, organization_id, created_at
+		SELECT id, email, organization_id, created_at FROM created
 	`, email, passwordHash).Scan(&user.ID, &user.Email, &user.OrganizationID, &user.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -213,6 +235,166 @@ func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash s
 		return ErrRepositorySessionGone
 	}
 	return nil
+}
+
+func (r *PGRepository) IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error) {
+	var active bool
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM sessions
+			WHERE id = $1::uuid
+			  AND user_id = $2::uuid
+			  AND revoked_at IS NULL
+			  AND expires_at > NOW()
+		)
+	`, sessionID, userID).Scan(&active)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "22P02" {
+			return false, nil
+		}
+		return false, err
+	}
+	return active, nil
+}
+
+func (r *PGRepository) GetPasswordHash(ctx context.Context, userID string) (string, error) {
+	var hash string
+	err := r.dbPool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrRepositoryNotFound
+	}
+	return hash, err
+}
+
+func (r *PGRepository) UpdatePasswordAndRevokeSessions(ctx context.Context, userID, passwordHash string, keepSessionID string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRepositoryNotFound
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE sessions
+		SET revoked_at = NOW()
+		WHERE user_id = $1
+		  AND revoked_at IS NULL
+		  AND ($2 = '' OR id::text <> $2)
+	`, userID, keepSessionID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *PGRepository) CreatePasswordReset(ctx context.Context, userID, codeHash string, expiresAt time.Time) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// Only the latest code is valid.
+	if _, err := tx.Exec(ctx, `UPDATE password_resets SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO password_resets (user_id, code_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, codeHash, expiresAt); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *PGRepository) CountRecentPasswordResets(ctx context.Context, userID string, since time.Time) (int, error) {
+	var count int
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM password_resets WHERE user_id = $1 AND created_at >= $2
+	`, userID, since).Scan(&count)
+	return count, err
+}
+
+func (r *PGRepository) GetActivePasswordReset(ctx context.Context, userID string) (StoredPasswordReset, error) {
+	var reset StoredPasswordReset
+	err := r.dbPool.QueryRow(ctx, `
+		SELECT id, code_hash, attempts
+		FROM password_resets
+		WHERE user_id = $1
+		  AND used_at IS NULL
+		  AND expires_at > NOW()
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, userID).Scan(&reset.ID, &reset.CodeHash, &reset.Attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return StoredPasswordReset{}, ErrRepositoryNotFound
+	}
+	return reset, err
+}
+
+func (r *PGRepository) IncrementPasswordResetAttempts(ctx context.Context, resetID string) error {
+	_, err := r.dbPool.Exec(ctx, `UPDATE password_resets SET attempts = attempts + 1 WHERE id = $1`, resetID)
+	return err
+}
+
+func (r *PGRepository) ConsumePasswordReset(ctx context.Context, resetID, userID, passwordHash string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE password_resets SET used_at = NOW()
+		WHERE id = $1 AND user_id = $2 AND used_at IS NULL AND expires_at > NOW()
+	`, resetID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRepositoryNotFound
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, userID, passwordHash); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// DeleteUser removes the account. Every user-owned row (profile, preferences,
+// photos metadata, swipes, matches, messages, blocks, sessions, notifications)
+// is removed by ON DELETE CASCADE; reports filed by the user are kept with a
+// NULL reporter for moderation history. Conversations they took part in are
+// removed explicitly since conversations are not owned by a single user.
+func (r *PGRepository) DeleteUser(ctx context.Context, userID string) error {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM conversations
+		WHERE id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = $1)
+	`, userID); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRepositoryNotFound
+	}
+	return tx.Commit(ctx)
 }
 
 func isUniqueViolation(err error) bool {

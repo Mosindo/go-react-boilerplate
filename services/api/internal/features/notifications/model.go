@@ -1,35 +1,32 @@
 package notifications
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
+
+const (
+	TypeMatch   = "match"
+	TypeMessage = "message"
+)
 
 type Notification struct {
-	ID        string
-	UserID    string
-	Type      string
-	Title     string
-	Body      string
-	IsRead    bool
-	CreatedAt time.Time
-	ReadAt    *time.Time
-}
-
-type NotificationResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"userId"`
-	Type      string     `json:"type"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	IsRead    bool       `json:"isRead"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ReadAt    *time.Time `json:"readAt,omitempty"`
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Title     string          `json:"title"`
+	Body      string          `json:"body"`
+	Data      json.RawMessage `json:"data"`
+	IsRead    bool            `json:"isRead"`
+	CreatedAt time.Time       `json:"createdAt"`
+	ReadAt    *time.Time      `json:"readAt,omitempty"`
 }
 
 type NotificationsResponse struct {
-	Notifications []NotificationResponse `json:"notifications"`
+	Notifications []Notification `json:"notifications"`
+	UnreadCount   int            `json:"unreadCount"`
+	HasMore       bool           `json:"hasMore"`
 }
 
-type CreateNotificationRequest struct {
-	Type  string `json:"type" binding:"required,max=64"`
-	Title string `json:"title" binding:"required,max=160"`
-	Body  string `json:"body" binding:"required,max=1000"`
+type UnreadCountResponse struct {
+	UnreadCount int `json:"unreadCount"`
 }
