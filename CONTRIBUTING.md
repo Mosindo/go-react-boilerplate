@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Lueur.
 
 ## Ground Rules
 
@@ -91,6 +91,8 @@ If the change touches integrated flows, also run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+# or, on Linux/macOS
+scripts/qa.sh
 ```
 
 ## Documentation Expectations

@@ -34,7 +34,7 @@ func TestSignerRoundTripAndExpiry(t *testing.T) {
 		t.Fatal("URLs must be stable within a window for caching")
 	}
 
-	current = current.Add(13 * time.Hour)
+	current = current.Add(3 * time.Hour)
 	if s.Verify("photo-1", exp, sig) {
 		t.Fatal("expired URL must fail")
 	}

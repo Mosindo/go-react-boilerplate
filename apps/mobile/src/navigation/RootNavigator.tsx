@@ -123,12 +123,12 @@ function SignedOutStack() {
 }
 
 export function RootNavigator() {
-  const { status, account } = useAuth();
+  const { status, account, bootError, retryBoot } = useAuth();
   return (
     <NavigationContainer ref={navigationRef} theme={theme} documentTitle={{ formatter: () => "Lueur" }}>
       {status === "booting" ? (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <LoadingState />
+          {bootError ? <ErrorState message="Impossible de joindre le serveur. Vérifie ta connexion." onRetry={retryBoot} /> : <LoadingState />}
         </View>
       ) : status === "signedIn" && account ? (
         <RealtimeProvider userId={account.id}>

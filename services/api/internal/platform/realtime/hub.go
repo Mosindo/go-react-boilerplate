@@ -23,8 +23,9 @@ type Publisher interface {
 
 // Client is one live connection.
 type Client struct {
-	UserID string
-	Send   chan []byte
+	UserID    string
+	SessionID string
+	Send      chan []byte
 }
 
 type Hub struct {
@@ -40,8 +41,8 @@ const maxConnectionsPerUser = 5
 
 // Register adds a connection. The oldest connection is dropped when a user
 // exceeds the per-user limit.
-func (h *Hub) Register(userID string) *Client {
-	client := &Client{UserID: userID, Send: make(chan []byte, 32)}
+func (h *Hub) Register(userID, sessionID string) *Client {
+	client := &Client{UserID: userID, SessionID: sessionID, Send: make(chan []byte, 32)}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	set, ok := h.clients[userID]
@@ -91,6 +92,21 @@ func (h *Hub) Publish(userID string, event Event) {
 		select {
 		case client.Send <- payload:
 		default:
+			delete(h.clients[userID], client)
+			close(client.Send)
+		}
+	}
+	if len(h.clients[userID]) == 0 {
+		delete(h.clients, userID)
+	}
+}
+
+// DisconnectSession closes the connections opened with one session (logout).
+func (h *Hub) DisconnectSession(userID, sessionID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for client := range h.clients[userID] {
+		if client.SessionID == sessionID {
 			delete(h.clients[userID], client)
 			close(client.Send)
 		}

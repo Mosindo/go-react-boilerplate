@@ -26,7 +26,7 @@ const messages: Record<string, string> = {
   invalid_location: "Position invalide.",
   profile_required: "Crée d'abord ton profil.",
   invalid_age_range: "La tranche d'âge doit être comprise entre 18 et 99 ans.",
-  invalid_distance: "La distance doit être comprise entre 1 et 300 km.",
+  invalid_distance: "La distance doit être comprise entre 5 et 300 km.",
   invalid_interested_in: "Choisis au moins un genre recherché.",
   too_many_interests: "Choisis 10 centres d'intérêt maximum.",
   unsupported_image: "Formats acceptés : JPEG, PNG ou WebP.",

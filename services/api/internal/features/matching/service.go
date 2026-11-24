@@ -81,17 +81,13 @@ func (s *Service) Swipe(ctx context.Context, userID, targetID, decision string) 
 		}
 		return SwipeResponse{}, err
 	}
-	ok, err := s.repo.CanSwipe(ctx, userID, targetID)
-	if err != nil {
-		return SwipeResponse{}, err
-	}
-	if !ok {
-		return SwipeResponse{}, ErrTargetUnavailable
-	}
-	match, err := s.repo.Swipe(ctx, userID, targetID, decision)
+	match, err := s.repo.Swipe(ctx, userID, targetID, decision, s.includeDemo)
 	if err != nil {
 		if errors.Is(err, ErrRepositoryAlreadySwiped) {
 			return SwipeResponse{}, ErrAlreadySwiped
+		}
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return SwipeResponse{}, ErrTargetUnavailable
 		}
 		return SwipeResponse{}, err
 	}

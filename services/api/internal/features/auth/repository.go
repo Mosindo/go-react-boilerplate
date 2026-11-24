@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -39,7 +41,7 @@ type Repository interface {
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	RotateSessionToken(ctx context.Context, sessionID, currentHash, nextHash, userAgent, ipAddress string, expiresAt time.Time) error
-	RevokeSessionByTokenHash(ctx context.Context, tokenHash string) error
+	RevokeSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
 	IsSessionActive(ctx context.Context, userID, sessionID string) (bool, error)
 	TouchUser(ctx context.Context, userID string) error
 	CountRecentResets(ctx context.Context, userID string, since time.Time) (int, error)
@@ -149,18 +151,17 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, curren
 	return nil
 }
 
-func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) error {
-	tag, err := r.db.Exec(ctx, `
+func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error) {
+	var session StoredSession
+	err := r.db.QueryRow(ctx, `
 		UPDATE sessions SET revoked_at = NOW()
 		WHERE token_hash = $1 AND revoked_at IS NULL
-	`, tokenHash)
-	if err != nil {
-		return err
+		RETURNING id, user_id
+	`, tokenHash).Scan(&session.ID, &session.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return StoredSession{}, ErrRepositoryNotFound
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrRepositoryNotFound
-	}
-	return nil
+	return session, err
 }
 
 func (r *PGRepository) IsSessionActive(ctx context.Context, userID, sessionID string) (bool, error) {
@@ -278,11 +279,17 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// truncate cuts to at most max bytes without splitting a UTF-8 sequence.
 func truncate(value string, max int) string {
-	if len(value) > max {
-		return value[:max]
+	value = strings.ToValidUTF8(value, "")
+	if len(value) <= max {
+		return value
 	}
-	return value
+	cut := max
+	for cut > 0 && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut]
 }
 
 func nullableString(value string) any {

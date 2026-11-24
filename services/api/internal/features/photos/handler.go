@@ -125,7 +125,7 @@ func (h *Handler) Serve(c *gin.Context) {
 	defer file.Close()
 	headers := c.Writer.Header()
 	headers.Set("Content-Type", "image/jpeg")
-	headers.Set("Cache-Control", "private, max-age=21600")
+	headers.Set("Cache-Control", "private, max-age=3600")
 	headers.Set("Cross-Origin-Resource-Policy", "cross-origin")
 	headers.Set("Content-Security-Policy", "default-src 'none'")
 	http.ServeContent(c.Writer, c.Request, "", photo.CreatedAt.Truncate(time.Second), file)

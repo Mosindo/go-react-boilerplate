@@ -21,8 +21,7 @@ type ViewerContext struct {
 type Repository interface {
 	Viewer(ctx context.Context, userID string) (ViewerContext, error)
 	CandidatePool(ctx context.Context, userID string, includeDemo bool, poolSize int) ([]Candidate, error)
-	CanSwipe(ctx context.Context, userID, targetID string) (bool, error)
-	Swipe(ctx context.Context, userID, targetID, decision string) (*Match, error)
+	Swipe(ctx context.Context, userID, targetID, decision string, includeDemo bool) (*Match, error)
 	Unmatch(ctx context.Context, userID, matchID string) (otherUserID string, err error)
 	TouchUser(ctx context.Context, userID string) error
 }
@@ -97,7 +96,9 @@ func (r *PGRepository) CandidatePool(ctx context.Context, userID string, include
 				   OR (b.blocker_id = c.user_id AND b.blocked_id = me.user_id)
 			  )
 			  AND (SELECT COUNT(DISTINCT r.reporter_id) FROM reports r
-			       WHERE r.reported_user_id = c.user_id AND r.status = 'open') < 3
+			       JOIN users ru ON ru.id = r.reporter_id
+			       WHERE r.reported_user_id = c.user_id AND r.status = 'open'
+			         AND ru.created_at < NOW() - INTERVAL '1 day') < 3
 		)
 		SELECT pool.user_id, pool.dist,
 		       (SELECT COUNT(*) FROM user_interests a
@@ -106,7 +107,7 @@ func (r *PGRepository) CandidatePool(ctx context.Context, userID string, include
 		       EXISTS (SELECT 1 FROM swipes s WHERE s.swiper_id = pool.user_id AND s.target_id = $1 AND s.decision = 'like') AS liked_me,
 		       pool.last_active_at
 		FROM pool, me
-		WHERE pool.dist <= me.max_distance_km AND pool.dist <= pool.their_max_distance
+		WHERE GREATEST(pool.dist, 5) <= me.max_distance_km AND GREATEST(pool.dist, 5) <= pool.their_max_distance
 		ORDER BY pool.last_active_at DESC, pool.user_id
 		LIMIT $3
 	`, userID, includeDemo, poolSize)
@@ -125,26 +126,10 @@ func (r *PGRepository) CandidatePool(ctx context.Context, userID string, include
 	return out, rows.Err()
 }
 
-// CanSwipe checks the target exists, is discoverable and no block exists.
-func (r *PGRepository) CanSwipe(ctx context.Context, userID, targetID string) (bool, error) {
-	var ok bool
-	err := r.db.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM profiles p
-			WHERE p.user_id = $2 AND p.is_discoverable
-			  AND NOT EXISTS (
-				SELECT 1 FROM blocks b
-				WHERE (b.blocker_id = $1 AND b.blocked_id = $2) OR (b.blocker_id = $2 AND b.blocked_id = $1)
-			  )
-		)
-	`, userID, targetID).Scan(&ok)
-	return ok, err
-}
-
 // Swipe records a decision and atomically creates the match (plus its
 // conversation) when the like is mutual. A per-pair advisory lock removes
 // the race where two simultaneous likes would each miss the other.
-func (r *PGRepository) Swipe(ctx context.Context, userID, targetID, decision string) (*Match, error) {
+func (r *PGRepository) Swipe(ctx context.Context, userID, targetID, decision string, includeDemo bool) (*Match, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -152,8 +137,18 @@ func (r *PGRepository) Swipe(ctx context.Context, userID, targetID, decision str
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	low, high := OrderedPair(userID, targetID)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('pair:' || $1::text || ':' || $2::text, 0))`, low, high); err != nil {
+	if err := LockPair(ctx, tx, userID, targetID); err != nil {
 		return nil, err
+	}
+
+	// Eligibility is checked under the pair lock, so a concurrent block
+	// (which takes the same lock) can never be bypassed.
+	var eligible bool
+	if err := tx.QueryRow(ctx, swipeEligibilitySQL, userID, targetID, includeDemo).Scan(&eligible); err != nil {
+		return nil, err
+	}
+	if !eligible {
+		return nil, ErrRepositoryNotFound
 	}
 
 	tag, err := tx.Exec(ctx, `
@@ -229,3 +224,47 @@ func (r *PGRepository) TouchUser(ctx context.Context, userID string) error {
 	_, err := r.db.Exec(ctx, `UPDATE users SET last_active_at = NOW() WHERE id = $1 AND last_active_at < NOW() - INTERVAL '5 minutes'`, userID)
 	return err
 }
+
+// LockPair serialises every write touching the relationship between two
+// members (swipes, matches, blocks) for the current transaction.
+func LockPair(ctx context.Context, tx pgx.Tx, a, b string) error {
+	low, high := OrderedPair(a, b)
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('pair:' || $1::text || ':' || $2::text, 0))`, low, high)
+	return err
+}
+
+// swipeEligibilitySQL mirrors the discovery rules (except distance, which
+// legitimately changes when members move): visible and complete target,
+// mutually compatible gender and age, no block either way, not on moderation
+// hold, demo accounts hidden in production.
+const swipeEligibilitySQL = `
+	SELECT EXISTS (
+		SELECT 1
+		FROM profiles me
+		JOIN preferences mp ON mp.user_id = me.user_id
+		JOIN profiles t ON t.user_id = $2
+		JOIN preferences tp ON tp.user_id = t.user_id
+		JOIN users tu ON tu.id = t.user_id
+		WHERE me.user_id = $1
+		  AND t.is_discoverable
+		  AND t.latitude IS NOT NULL
+		  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = t.user_id)
+		  AND ($3 OR NOT tu.is_demo)
+		  AND t.gender = ANY(mp.interested_in)
+		  AND me.gender = ANY(tp.interested_in)
+		  AND t.birthdate <= (CURRENT_DATE - make_interval(years => mp.min_age::int))
+		  AND t.birthdate > (CURRENT_DATE - make_interval(years => mp.max_age::int + 1))
+		  AND me.birthdate <= (CURRENT_DATE - make_interval(years => tp.min_age::int))
+		  AND me.birthdate > (CURRENT_DATE - make_interval(years => tp.max_age::int + 1))
+		  AND NOT EXISTS (
+			SELECT 1 FROM blocks b
+			WHERE (b.blocker_id = $1 AND b.blocked_id = $2) OR (b.blocker_id = $2 AND b.blocked_id = $1)
+		  )
+		  AND ` + moderationHoldClear + `
+	)`
+
+// moderationHoldClear excludes members reported by 3+ distinct accounts that
+// are at least a day old, so throwaway accounts cannot shadow-ban someone.
+const moderationHoldClear = `(SELECT COUNT(DISTINCT r.reporter_id) FROM reports r
+	JOIN users ru ON ru.id = r.reporter_id
+	WHERE r.reported_user_id = $2 AND r.status = 'open' AND ru.created_at < NOW() - INTERVAL '1 day') < 3`

@@ -8,6 +8,8 @@ type Status = "booting" | "signedOut" | "signedIn";
 
 type AuthContextValue = {
   status: Status;
+  bootError: boolean;
+  retryBoot: () => void;
   account: Account | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
@@ -20,6 +22,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("booting");
   const [account, setAccount] = useState<Account | null>(null);
+  const [bootError, setBootError] = useState(false);
+  const [bootAttempt, setBootAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -33,16 +37,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await authApi.me();
         if (active) {
           setAccount(me);
+          setBootError(false);
           setStatus("signedIn");
         }
       } catch {
-        // The client already cleared tokens if the session is no longer valid.
-        if (active) setStatus(getTokens() ? "signedIn" : "signedOut");
+        if (!active) return;
+        // An invalid session clears the tokens (handled by the client);
+        // otherwise the server is unreachable: offer a retry.
+        if (getTokens()) setBootError(true);
+        else setStatus("signedOut");
       }
     })();
     return () => {
       active = false;
     };
+  }, [bootAttempt]);
+
+  const retryBoot = useCallback(() => {
+    setBootError(false);
+    setBootAttempt((n) => n + 1);
   }, []);
 
   // Any place that clears the tokens (failed refresh, revoked session) signs out.
@@ -91,8 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, account, signIn, signUp, signOut, deleteAccount }),
-    [status, account, signIn, signUp, signOut, deleteAccount]
+    () => ({ status, bootError, retryBoot, account, signIn, signUp, signOut, deleteAccount }),
+    [status, bootError, retryBoot, account, signIn, signUp, signOut, deleteAccount]
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -53,6 +53,7 @@ type AccountEraser interface {
 
 type Disconnector interface {
 	DisconnectUser(userID string)
+	DisconnectSession(userID, sessionID string)
 }
 
 type Service struct {
@@ -206,8 +207,15 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	if tokenHash == "" {
 		return ErrInvalidRefreshToken
 	}
-	if err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash); err != nil && !errors.Is(err, ErrRepositoryNotFound) {
+	session, err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash)
+	if err != nil {
+		if errors.Is(err, ErrRepositoryNotFound) {
+			return nil
+		}
 		return err
+	}
+	if s.disconnect != nil {
+		s.disconnect.DisconnectSession(session.UserID, session.ID)
 	}
 	return nil
 }

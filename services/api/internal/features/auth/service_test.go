@@ -62,3 +62,14 @@ func TestParseEmail(t *testing.T) {
 		}
 	}
 }
+
+func TestTruncateKeepsValidUTF8(t *testing.T) {
+	value := string(make([]byte, 254)) + "é" + "x"
+	got := truncate(value, 255)
+	if len(got) != 254 {
+		t.Fatalf("expected cut before the multibyte rune, got %d bytes", len(got))
+	}
+	if got := truncate("ok\xff", 255); got != "ok" {
+		t.Fatalf("invalid bytes must be dropped, got %q", got)
+	}
+}

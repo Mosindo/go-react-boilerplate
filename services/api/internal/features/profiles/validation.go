@@ -23,7 +23,7 @@ var (
 	ErrInvalidHeight     = apperr.BadRequest("invalid_height", "height must be between 120 and 230 cm")
 	ErrInvalidLocation   = apperr.BadRequest("invalid_location", "latitude/longitude are out of range")
 	ErrInvalidAgeRange   = apperr.BadRequest("invalid_age_range", "age range must be within 18-99 and min <= max")
-	ErrInvalidDistance   = apperr.BadRequest("invalid_distance", "distance must be between 1 and 300 km")
+	ErrInvalidDistance   = apperr.BadRequest("invalid_distance", "distance must be between 5 and 300 km")
 	ErrInvalidInterested = apperr.BadRequest("invalid_interested_in", "interestedIn must list woman, man and/or nonbinary")
 	ErrTooManyInterests  = apperr.BadRequest("too_many_interests", "choose up to 10 interests")
 	ErrUnknownInterest   = apperr.BadRequest("unknown_interest", "one of the interests does not exist")
@@ -159,7 +159,7 @@ func NormalizePreferences(req UpdatePreferencesRequest) (Preferences, error) {
 	if req.MinAge < MinAge || req.MaxAge > MaxAge || req.MinAge > req.MaxAge {
 		return Preferences{}, ErrInvalidAgeRange
 	}
-	if req.MaxDistanceKm < 1 || req.MaxDistanceKm > 300 {
+	if req.MaxDistanceKm < MinDistanceKm || req.MaxDistanceKm > 300 {
 		return Preferences{}, ErrInvalidDistance
 	}
 	return Preferences{InterestedIn: interested, MinAge: req.MinAge, MaxAge: req.MaxAge, MaxDistanceKm: req.MaxDistanceKm}, nil
@@ -169,7 +169,7 @@ func NormalizeInterestIDs(ids []int) ([]int, error) {
 	seen := map[int]bool{}
 	out := make([]int, 0, len(ids))
 	for _, id := range ids {
-		if id <= 0 {
+		if id <= 0 || id > 32767 {
 			return nil, ErrUnknownInterest
 		}
 		if !seen[id] {

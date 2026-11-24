@@ -574,8 +574,10 @@ func TestDiscoveryLikeMatchAndChatJourney(t *testing.T) {
 	if containsCard(h.discover(alice), bob.ID) {
 		t.Fatal("swiped profiles must not reappear")
 	}
-	resp, _ = h.swipe(bob, far.ID, "pass")
+	resp, _ = h.swipe(alice, far.ID, "pass")
 	h.expect(resp, http.StatusCreated, "pass")
+	resp, _ = h.swipe(bob, carl.ID, "like")
+	h.expect(resp, http.StatusNotFound, "liking an incompatible profile by id")
 
 	resp, result = h.swipe(bob, alice.ID, "like")
 	h.expect(resp, http.StatusCreated, "bob likes alice")
@@ -874,5 +876,58 @@ func TestRealtimeDeliversMessages(t *testing.T) {
 	data, _ := event["data"].(map[string]any)
 	if data["body"] != "En temps réel !" || data["conversationId"] != result.Match.ConversationID {
 		t.Fatalf("unexpected realtime payload %v", event)
+	}
+}
+
+func TestBlockRacingWithLikeNeverCreatesAMatch(t *testing.T) {
+	h := setup(t)
+	lat, lng := spot(6)
+	for round := 0; round < 5; round++ {
+		a := h.onboard("blockrace_a", profileSpec{Name: "Ama", Gender: "woman", InterestedIn: []string{"man"}, Lat: lat, Lng: lng})
+		b := h.onboard("blockrace_b", profileSpec{Name: "Bao", Gender: "man", InterestedIn: []string{"woman"}, Lat: lat, Lng: lng})
+		h.swipe(b, a.ID, "like")
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); h.swipe(a, b.ID, "like") }()
+		go func() {
+			defer wg.Done()
+			h.do(http.MethodPost, "/blocks", map[string]string{"userId": a.ID}, b.AccessToken)
+		}()
+		wg.Wait()
+		var matches int
+		h.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM matches WHERE user_low_id = LEAST($1::uuid, $2::uuid) AND user_high_id = GREATEST($1::uuid, $2::uuid)`, a.ID, b.ID).Scan(&matches)
+		if matches != 0 {
+			t.Fatalf("round %d: a block must always win over a concurrent like", round)
+		}
+	}
+}
+
+func TestConversationCursorSurvivesHiddenConversation(t *testing.T) {
+	h := setup(t)
+	lat, lng := spot(7)
+	me := h.onboard("cursor_me", profileSpec{Name: "Mia", Gender: "woman", InterestedIn: []string{"man"}, Lat: lat, Lng: lng})
+	var convIDs []string
+	for i := 0; i < 3; i++ {
+		other := h.onboard("cursor_other", profileSpec{Name: "Max", Gender: "man", InterestedIn: []string{"woman"}, Lat: lat, Lng: lng})
+		h.swipe(other, me.ID, "like")
+		_, result := h.swipe(me, other.ID, "like")
+		convIDs = append(convIDs, result.Match.ConversationID)
+	}
+	type page struct {
+		Conversations []struct {
+			ID string `json:"id"`
+		} `json:"conversations"`
+		NextCursor *string `json:"nextCursor"`
+	}
+	var first page
+	h.do(http.MethodGet, "/conversations?limit=1", nil, me.AccessToken).decode(t, &first)
+	if first.NextCursor == nil {
+		t.Fatal("expected a cursor")
+	}
+	h.expect(h.do(http.MethodDelete, "/conversations/"+*first.NextCursor, nil, me.AccessToken), http.StatusNoContent, "hide cursor conversation")
+	var second page
+	h.do(http.MethodGet, "/conversations?limit=5&before="+*first.NextCursor, nil, me.AccessToken).decode(t, &second)
+	if len(second.Conversations) != 2 {
+		t.Fatalf("pagination must continue after the cursor is hidden, got %d", len(second.Conversations))
 	}
 }

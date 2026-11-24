@@ -162,8 +162,10 @@ func setupRouter(a *app) (*gin.Engine, error) {
 		UploadBody:  middleware.MaxBodyBytes(photosfeature.MaxUploadBytes + 1<<20),
 		JSONBody:    middleware.MaxBodyBytes(64 << 10),
 	})
-	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
-	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, limit(120, 60, middleware.KeyByUser))
+	// Location changes are throttled so a member cannot "walk" a fake
+	// position around someone to triangulate them.
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser, limit(6, 6, middleware.KeyByUser))
+	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, limit(30, 15, middleware.KeyByUser), limit(120, 60, middleware.KeyByUser))
 	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser, limit(40, 20, middleware.KeyByUser))
 	notificationsfeature.RegisterRoutes(r, notificationsfeature.NewHandler(notificationsService), requireUser)
 	safetyfeature.RegisterRoutes(r, safetyfeature.NewHandler(safetyService), requireUser, limit(10, 5, middleware.KeyByUser))

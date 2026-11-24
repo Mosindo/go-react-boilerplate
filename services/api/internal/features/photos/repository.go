@@ -128,7 +128,7 @@ func (r *PGRepository) ReplaceFile(ctx context.Context, userID, photoID, storage
 		return "", Photo{}, err
 	}
 	p, err := scanPhoto(tx.QueryRow(ctx, `
-		UPDATE photos SET storage_key = $3, width = $4, height = $5, size_bytes = $6, created_at = NOW()
+		UPDATE photos SET id = gen_random_uuid(), storage_key = $3, width = $4, height = $5, size_bytes = $6, created_at = NOW()
 		WHERE id = $1 AND user_id = $2
 		RETURNING `+photoColumns, photoID, userID, storageKey, width, height, size))
 	if err != nil {

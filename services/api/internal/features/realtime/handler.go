@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -14,6 +15,8 @@ const (
 	pongWait   = 60 * time.Second
 	pingPeriod = 25 * time.Second
 	maxInbound = 512
+	// 10 pings x 25 s ≈ every 4 minutes.
+	sessionCheckEvery = 10
 )
 
 type Handler struct {
@@ -45,7 +48,7 @@ func (h *Handler) Ticket(c *gin.Context) {
 }
 
 func (h *Handler) Connect(c *gin.Context) {
-	userID, err := h.service.Authenticate(c.Request.Context(), c.Query("ticket"))
+	claims, err := h.service.Authenticate(c.Request.Context(), c.Query("ticket"))
 	if err != nil {
 		httpx.Fail(c, "realtime.connect", err)
 		return
@@ -55,7 +58,7 @@ func (h *Handler) Connect(c *gin.Context) {
 		return
 	}
 	hub := h.service.Hub()
-	client := hub.Register(userID)
+	client := hub.Register(claims.UserID, claims.SessionID)
 
 	// Reader: only used for pong / close detection; clients send nothing else.
 	go func() {
@@ -78,6 +81,7 @@ func (h *Handler) Connect(c *gin.Context) {
 	// Writer: forwards hub events and keeps the connection alive.
 	go func() {
 		ticker := time.NewTicker(pingPeriod)
+		pings := 0
 		defer func() {
 			ticker.Stop()
 			conn.Close()
@@ -98,6 +102,18 @@ func (h *Handler) Connect(c *gin.Context) {
 					return
 				}
 			case <-ticker.C:
+				pings++
+				// Re-check the session every few minutes so expired or
+				// revoked sessions stop receiving events.
+				if pings%sessionCheckEvery == 0 {
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					active, err := h.service.SessionActive(ctx, claims.UserID, claims.SessionID)
+					cancel()
+					if err == nil && !active {
+						hub.Unregister(client)
+						return
+					}
+				}
 				_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 					return

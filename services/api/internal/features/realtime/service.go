@@ -38,19 +38,24 @@ func (s *Service) IssueTicket(userID, sessionID string) (TicketResponse, error) 
 	return TicketResponse{Ticket: ticket, ExpiresIn: int(TicketTTL.Seconds())}, nil
 }
 
-func (s *Service) Authenticate(ctx context.Context, ticket string) (string, error) {
+func (s *Service) Authenticate(ctx context.Context, ticket string) (tokens.Claims, error) {
 	claims, err := s.tokens.Parse(ticket, tokens.AudienceRealtime)
 	if err != nil {
-		return "", ErrInvalidTicket
+		return tokens.Claims{}, ErrInvalidTicket
 	}
-	active, err := s.sessions.IsSessionActive(ctx, claims.UserID, claims.SessionID)
+	active, err := s.SessionActive(ctx, claims.UserID, claims.SessionID)
 	if err != nil {
-		return "", err
+		return tokens.Claims{}, err
 	}
 	if !active {
-		return "", ErrInvalidTicket
+		return tokens.Claims{}, ErrInvalidTicket
 	}
-	return claims.UserID, nil
+	return claims, nil
+}
+
+// SessionActive lets long-lived sockets re-check their session.
+func (s *Service) SessionActive(ctx context.Context, userID, sessionID string) (bool, error) {
+	return s.sessions.IsSessionActive(ctx, userID, sessionID)
 }
 
 func (s *Service) Hub() *platformrealtime.Hub {

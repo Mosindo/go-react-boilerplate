@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { matchingApi } from "../../api/endpoints";
 import type { ProfileCard, SwipeDecision } from "../../api/types";
 import { SwipeCard, type SwipeCardHandle } from "../../components/discover/SwipeCard";
@@ -19,22 +19,39 @@ const BATCH = 10;
 export default function DiscoverScreen() {
   const navigation = useNavigation();
   const topCard = useRef<SwipeCardHandle>(null);
+  const client = useQueryClient();
   const swipe = useSwipe();
+  // Size of the last batch returned by the server: a short batch means the
+  // pool is exhausted, so we stop prefetching until the member refreshes.
+  const lastBatch = useRef(BATCH);
   const deck = useQuery({
     queryKey: queryKeys.discovery,
-    queryFn: async () => (await matchingApi.discover(BATCH)).profiles,
+    queryFn: async () => {
+      const fresh = (await matchingApi.discover(BATCH)).profiles;
+      lastBatch.current = fresh.length;
+      // Keep the cards already on screen in place and append the new ones.
+      const current = client.getQueryData<ProfileCard[]>(queryKeys.discovery) ?? [];
+      const known = new Set(current.map((c) => c.userId));
+      return [...current, ...fresh.filter((c) => !known.has(c.userId))];
+    },
     staleTime: 5 * 60_000
   });
 
   const cards: ProfileCard[] = deck.data ?? [];
+  const { isSuccess, isFetching, refetch } = deck;
 
   // Prefetch the next batch while a couple of cards remain. The server never
   // returns profiles that were already swiped.
   useEffect(() => {
-    if (deck.isSuccess && !deck.isFetching && cards.length > 0 && cards.length <= 2 && !swipe.isPending) {
-      void deck.refetch();
+    if (isSuccess && !isFetching && !swipe.isPending && cards.length <= 2 && lastBatch.current === BATCH) {
+      void refetch();
     }
-  }, [cards.length, deck, swipe.isPending]);
+  }, [cards.length, isSuccess, isFetching, refetch, swipe.isPending]);
+
+  const refresh = () => {
+    lastBatch.current = BATCH;
+    void client.resetQueries({ queryKey: queryKeys.discovery });
+  };
 
   const onSwiped = (card: ProfileCard, decision: SwipeDecision) => swipe.mutate({ card, decision });
 
@@ -62,9 +79,9 @@ export default function DiscoverScreen() {
       <EmptyState
         icon="compass-outline"
         title="Plus personne pour le moment"
-        message="Tu as vu tous les profils correspondant à tes critères. Élargis ta distance ou ta tranche d'âge, ou reviens plus tard."
-        actionLabel="Ajuster mes préférences"
-        onAction={() => navigation.navigate("Preferences")}
+        message="Tu as vu tous les profils correspondant à tes critères. Élargis ta distance ou ta tranche d'âge (icône en haut à droite), ou reviens plus tard."
+        actionLabel="Actualiser"
+        onAction={refresh}
         testID="discover-empty"
       />
     );

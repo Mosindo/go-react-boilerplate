@@ -10,6 +10,9 @@ const (
 	MinAge              = 18
 	MaxAge              = 99
 	MaxInterestsPerUser = 10
+	// MinDistanceKm is also the floor applied to distances when filtering
+	// discovery, so a tiny radius cannot be used to pinpoint a member.
+	MinDistanceKm = 5
 )
 
 var (

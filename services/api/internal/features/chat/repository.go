@@ -41,7 +41,12 @@ func (r *PGRepository) ListConversations(ctx context.Context, userID, beforeID s
 			  AND (me.hidden_at IS NULL OR c.last_message_at > me.hidden_at)
 		),
 		cursor AS (
-			SELECT activity, id FROM mine WHERE id = $2::uuid
+			-- Looked up without the hidden filter so a cursor that became
+			-- hidden still paginates correctly.
+			SELECT COALESCE(c.last_message_at, c.created_at) AS activity, c.id
+			FROM conversations c
+			JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = $1
+			WHERE c.id = $2::uuid
 		)
 		SELECT mine.id, mine.match_id, mine.created_at,
 		       other.user_id, p.first_name, p.birthdate,
@@ -154,7 +159,7 @@ func (r *PGRepository) CreateMessage(ctx context.Context, userID, conversationID
 	if err != nil {
 		return Message{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE conversations SET last_message_at = $2 WHERE id = $1`, conversationID, msg.CreatedAt); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE conversations SET last_message_at = GREATEST(COALESCE(last_message_at, $2), $2) WHERE id = $1`, conversationID, msg.CreatedAt); err != nil {
 		return Message{}, err
 	}
 	if _, err := tx.Exec(ctx, `

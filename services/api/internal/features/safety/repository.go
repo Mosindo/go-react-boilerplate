@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"example.com/api/internal/features/matching"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -40,6 +41,11 @@ func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) (
 		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// Same per-pair lock as swipes: a like racing with this block either
+	// commits first (and its match is deleted below) or sees the block.
+	if err := matching.LockPair(ctx, tx, blockerID, blockedID); err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING
 	`, blockerID, blockedID); err != nil {

@@ -13,7 +13,7 @@ import (
 
 // window controls URL stability: URLs stay identical within a window so
 // clients can cache images, and remain valid for at least one full window.
-const window = 6 * time.Hour
+const window = time.Hour
 
 type Signer struct {
 	key []byte

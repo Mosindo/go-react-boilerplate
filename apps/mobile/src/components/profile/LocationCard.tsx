@@ -25,7 +25,7 @@ export function LocationCard({ hasLocation, city, onUpdated }: Props) {
       const location = await getApproximateLocation();
       const profile = await profileApi.setLocation(location.latitude, location.longitude, location.city);
       client.setQueryData(queryKeys.myProfile, profile);
-      void client.invalidateQueries({ queryKey: queryKeys.discovery });
+      void client.resetQueries({ queryKey: queryKeys.discovery });
       showToast("Position mise à jour.", "success");
       onUpdated?.();
     } catch (e) {
