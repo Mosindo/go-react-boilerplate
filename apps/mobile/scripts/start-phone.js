@@ -20,7 +20,7 @@ function getLanIp() {
 }
 
 const ip = getLanIp();
-const apiUrl = `http://${ip}:18080`;
+const apiUrl = process.env.EXPO_PUBLIC_API_URL || `http://${ip}:18080`;
 
 console.log(`[mobile] Using API: ${apiUrl}`);
 

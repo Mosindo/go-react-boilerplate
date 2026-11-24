@@ -127,6 +127,7 @@ func (s *Service) announceMatch(ctx context.Context, userID, targetID string, ma
 			"matchId":        match.ID,
 			"conversationId": match.ConversationID,
 			"userId":         other,
+			"firstName":      otherCard.FirstName,
 		}); err != nil {
 			log.Printf(`{"event":"match_notification_failed","error":%q}`, err.Error())
 		}
