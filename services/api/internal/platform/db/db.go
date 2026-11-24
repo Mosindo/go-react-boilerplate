@@ -3,9 +3,11 @@ package db
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,33 +60,83 @@ func ConnectWithRetry(ctx context.Context, databaseURL string, maxWait, retryInt
 	}
 }
 
+// migrationsLockID serialises migrations across concurrently starting replicas.
+const migrationsLockID = 727_431_001
+
+// RunMigrations applies embedded SQL migrations exactly once each, in
+// lexical order, inside a transaction per file. Applied versions are tracked
+// in schema_migrations.
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	entries, err := fs.ReadDir(migrationsFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("read embedded migrations: %w", err)
 	}
-
 	var files []string
 	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if len(name) > 4 && name[len(name)-4:] == ".sql" {
-			files = append(files, "migrations/"+name)
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
 		}
 	}
 	sort.Strings(files)
 
-	for _, file := range files {
-		sqlBytes, err := migrationsFS.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("read embedded migration %s: %w", file, err)
-		}
-		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
-			return fmt.Errorf("exec migration %s: %w", file, err)
-		}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationsLockID); err != nil {
+		return fmt.Errorf("lock migrations: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationsLockID)
+	}()
+
+	if _, err := conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
+	var legacy bool
+	if err := conn.QueryRow(ctx, `SELECT to_regclass('public.organizations') IS NOT NULL`).Scan(&legacy); err != nil {
+		return fmt.Errorf("inspect schema: %w", err)
+	}
+	if legacy {
+		return errors.New("legacy boilerplate schema detected (organizations table): recreate the database, e.g. `docker compose down -v`")
+	}
+
+	for _, name := range files {
+		version := strings.TrimSuffix(name, ".sql")
+		var applied bool
+		if err := conn.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&applied); err != nil {
+			return fmt.Errorf("check migration %s: %w", version, err)
+		}
+		if applied {
+			continue
+		}
+		sqlBytes, err := migrationsFS.ReadFile("migrations/" + name)
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", name, err)
+		}
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", version, err)
+		}
+		if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("exec migration %s: %w", version, err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("record migration %s: %w", version, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %s: %w", version, err)
+		}
+	}
 	return nil
 }

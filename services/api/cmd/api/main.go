@@ -2,34 +2,43 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	authfeature "example.com/api/internal/features/auth"
-	billingfeature "example.com/api/internal/features/billing"
 	chatfeature "example.com/api/internal/features/chat"
-	commentsfeature "example.com/api/internal/features/comments"
-	filesfeature "example.com/api/internal/features/files"
+	matchingfeature "example.com/api/internal/features/matching"
 	notificationsfeature "example.com/api/internal/features/notifications"
-	postsfeature "example.com/api/internal/features/posts"
-	usersfeature "example.com/api/internal/features/users"
+	photosfeature "example.com/api/internal/features/photos"
+	profilesfeature "example.com/api/internal/features/profiles"
+	realtimefeature "example.com/api/internal/features/realtime"
+	safetyfeature "example.com/api/internal/features/safety"
 	"example.com/api/internal/platform/config"
 	"example.com/api/internal/platform/db"
-	platformhandlers "example.com/api/internal/platform/handlers"
+	"example.com/api/internal/platform/health"
+	"example.com/api/internal/platform/mailer"
+	"example.com/api/internal/platform/media"
 	"example.com/api/internal/platform/middleware"
+	"example.com/api/internal/platform/ratelimit"
+	"example.com/api/internal/platform/realtime"
+	"example.com/api/internal/platform/storage"
+	"example.com/api/internal/platform/tokens"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// app holds the dependencies shared by every feature.
 type app struct {
-	dbPool              *pgxpool.Pool
-	jwtSecret           []byte
-	stripeSecretKey     string
-	stripeWebhookSecret string
-	stripePriceID       string
-	appBaseURL          string
-	allowedOrigins      []string
+	cfg    config.Config
+	dbPool *pgxpool.Pool
+	store  storage.Store
+	mailer mailer.Mailer
+	hub    *realtime.Hub
 }
 
 func main() {
@@ -37,9 +46,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if cfg.IsProduction() {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
 	ctx := context.Background()
-	pool, err := db.ConnectWithRetry(ctx, cfg.DatabaseURL, 10*time.Second, time.Second)
+	pool, err := db.ConnectWithRetry(ctx, cfg.DatabaseURL, 30*time.Second, time.Second)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,74 +61,112 @@ func main() {
 		log.Fatal(err)
 	}
 
-	a := &app{
-		dbPool:              pool,
-		jwtSecret:           []byte(cfg.JWTSecret),
-		stripeSecretKey:     cfg.StripeSecretKey,
-		stripeWebhookSecret: cfg.StripeWebhookSecret,
-		stripePriceID:       cfg.StripePriceID,
-		appBaseURL:          cfg.AppBaseURL,
-		allowedOrigins:      cfg.AllowedOrigins,
+	store, err := storage.NewLocal(cfg.UploadDir)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	r := setupRouter(a)
-
-	addr := ":" + cfg.Port
-	log.Printf("api listening on %s", addr)
-	if err := r.Run(addr); err != nil {
+	a := &app{cfg: cfg, dbPool: pool, store: store, mailer: buildMailer(cfg), hub: realtime.NewHub()}
+	router, err := setupRouter(a)
+	if err != nil {
 		log.Fatal(err)
+	}
+
+	server := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	go func() {
+		log.Printf("api listening on %s (env=%s)", server.Addr, cfg.Env)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
 	}
 }
 
-func setupRouter(a *app) *gin.Engine {
+func buildMailer(cfg config.Config) mailer.Mailer {
+	switch {
+	case cfg.SMTP.Enabled():
+		return mailer.SMTPMailer{Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, Username: cfg.SMTP.Username, Password: cfg.SMTP.Password, From: cfg.SMTP.From}
+	case cfg.IsProduction():
+		log.Printf("warning: SMTP is not configured; password reset emails will not be delivered")
+		return mailer.DiscardMailer{}
+	default:
+		return mailer.LogMailer{}
+	}
+}
+
+func setupRouter(a *app) (*gin.Engine, error) {
 	r := gin.New()
+	if err := r.SetTrustedProxies(a.cfg.TrustedProxies); err != nil {
+		return nil, err
+	}
+	r.MaxMultipartMemory = 12 << 20
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
-	r.Use(middleware.CORS(a.allowedOrigins))
+	r.Use(middleware.CORS(a.cfg.AllowedOrigins))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
-	authRepo := authfeature.NewPGRepository(a.dbPool)
-	authService := authfeature.NewService(authRepo, a.jwtSecret)
-	authHandler := authfeature.NewHandler(authService)
-	usersRepo := usersfeature.NewPGRepository(a.dbPool)
-	usersService := usersfeature.NewService(usersRepo)
-	usersHandler := usersfeature.NewHandler(usersService)
-	chatRepo := chatfeature.NewPGRepository(a.dbPool)
-	chatService := chatfeature.NewService(chatRepo)
-	chatHandler := chatfeature.NewHandler(chatService)
-	postsRepo := postsfeature.NewPGRepository(a.dbPool)
-	postsService := postsfeature.NewService(postsRepo)
-	postsHandler := postsfeature.NewHandler(postsService)
-	commentsRepo := commentsfeature.NewPGRepository(a.dbPool)
-	commentsService := commentsfeature.NewService(commentsRepo)
-	commentsHandler := commentsfeature.NewHandler(commentsService)
-	notificationsRepo := notificationsfeature.NewPGRepository(a.dbPool)
-	notificationsService := notificationsfeature.NewService(notificationsRepo)
-	notificationsHandler := notificationsfeature.NewHandler(notificationsService)
-	filesRepo := filesfeature.NewPGRepository(a.dbPool)
-	filesService := filesfeature.NewService(filesRepo)
-	filesHandler := filesfeature.NewHandler(filesService)
-	billingRepo := billingfeature.NewPGRepository(a.dbPool)
-	billingService := billingfeature.NewService(billingRepo, billingfeature.Config{
-		StripeSecretKey:     a.stripeSecretKey,
-		StripeWebhookSecret: a.stripeWebhookSecret,
-		StripePriceID:       a.stripePriceID,
-		AppBaseURL:          a.appBaseURL,
-		HTTPClient:          &http.Client{Timeout: 10 * time.Second},
-	})
-	billingHandler := billingfeature.NewHandler(billingService)
-	requireUser := middleware.RequireUser(a.jwtSecret)
 
-	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
-	authfeature.RegisterRoutes(r, authHandler, requireUser)
-	usersfeature.RegisterRoutes(r, usersHandler, requireUser)
-	chatfeature.RegisterRoutes(r, chatHandler, requireUser)
-	postsfeature.RegisterRoutes(r, postsHandler, requireUser)
-	commentsfeature.RegisterRoutes(r, commentsHandler, requireUser)
-	notificationsfeature.RegisterRoutes(r, notificationsHandler, requireUser)
-	filesfeature.RegisterRoutes(r, filesHandler, requireUser)
-	billingfeature.RegisterRoutes(r, billingHandler, requireUser)
-	return r
+	secret := []byte(a.cfg.JWTSecret)
+	tokenManager := tokens.NewManager(secret)
+	signer := media.NewSigner(secret)
+
+	// Repositories & services. Dependencies flow one way:
+	// matching -> profiles -> photos; chat -> photos; everything -> notifications/realtime.
+	photosService := photosfeature.NewService(photosfeature.NewPGRepository(a.dbPool), a.store, signer)
+	authService := authfeature.NewService(authfeature.NewPGRepository(a.dbPool), tokenManager, a.mailer, photosService, a.hub)
+	profilesService := profilesfeature.NewService(profilesfeature.NewPGRepository(a.dbPool), photosService)
+	notificationsService := notificationsfeature.NewService(notificationsfeature.NewPGRepository(a.dbPool), a.hub)
+	matchingService := matchingfeature.NewService(
+		matchingfeature.NewPGRepository(a.dbPool), profilesService, notificationsService, a.hub,
+		matchingfeature.DefaultRanker(), !a.cfg.IsProduction(),
+	)
+	chatService := chatfeature.NewService(chatfeature.NewPGRepository(a.dbPool), photosService, a.hub)
+	safetyService := safetyfeature.NewService(safetyfeature.NewPGRepository(a.dbPool), a.hub)
+	realtimeService := realtimefeature.NewService(tokenManager, authService, a.hub)
+
+	// Guards. Limits are anti-abuse ceilings, far above human usage: likes are
+	// never artificially capped.
+	requireUser := middleware.RequireUser(tokenManager, authService)
+	limit := func(perMinute, burst int, key func(*gin.Context) string) gin.HandlerFunc {
+		return middleware.RateLimit(ratelimit.New(perMinute, burst), key)
+	}
+
+	r.GET("/health", health.NewHandler(a.dbPool))
+	r.Use(middleware.MaxBodyBytes(64<<10, "/me/photos"))
+
+	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), authfeature.Guards{
+		RequireUser:   requireUser,
+		CredentialsRL: limit(10, 10, middleware.KeyByIP),
+		RecoveryRL:    limit(5, 5, middleware.KeyByIP),
+	})
+	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), photosfeature.Guards{
+		RequireUser: requireUser,
+		UploadRL:    limit(20, 10, middleware.KeyByUser),
+		UploadBody:  middleware.MaxBodyBytes(photosfeature.MaxUploadBytes + 1<<20),
+		JSONBody:    middleware.MaxBodyBytes(64 << 10),
+	})
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
+	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser, limit(120, 60, middleware.KeyByUser))
+	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser, limit(40, 20, middleware.KeyByUser))
+	notificationsfeature.RegisterRoutes(r, notificationsfeature.NewHandler(notificationsService), requireUser)
+	safetyfeature.RegisterRoutes(r, safetyfeature.NewHandler(safetyService), requireUser, limit(10, 5, middleware.KeyByUser))
+	realtimefeature.RegisterRoutes(r, realtimefeature.NewHandler(realtimeService), requireUser, limit(30, 10, middleware.KeyByIP))
+	return r, nil
 }

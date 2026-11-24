@@ -9,49 +9,69 @@ import (
 
 const minJWTSecretLength = 32
 
+type SMTP struct {
+	Host     string
+	Port     string
+	Username string
+	Password string
+	From     string
+}
+
+func (s SMTP) Enabled() bool {
+	return s.Host != "" && s.From != ""
+}
+
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	StripeSecretKey     string
-	StripeWebhookSecret string
-	StripePriceID       string
-	AppBaseURL          string
-	AllowedOrigins      []string
+	Env            string
+	Port           string
+	DatabaseURL    string
+	JWTSecret      string
+	AllowedOrigins []string
+	TrustedProxies []string
+	UploadDir      string
+	SMTP           SMTP
+}
+
+// IsProduction reports whether the API runs with production safeguards.
+func (c Config) IsProduction() bool {
+	return c.Env == "production"
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Port:                getenv("PORT", "8080"),
-		DatabaseURL:         strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		JWTSecret:           strings.TrimSpace(os.Getenv("JWT_SECRET")),
-		StripeSecretKey:     strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
-		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
-		StripePriceID:       strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID")),
-		AppBaseURL:          strings.TrimSpace(os.Getenv("APP_BASE_URL")),
-		AllowedOrigins:      splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		Env:            strings.ToLower(getenv("APP_ENV", "development")),
+		Port:           getenv("PORT", "8080"),
+		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		JWTSecret:      strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		AllowedOrigins: splitCSV(os.Getenv("ALLOWED_ORIGINS")),
+		TrustedProxies: splitCSV(os.Getenv("TRUSTED_PROXIES")),
+		UploadDir:      getenv("UPLOAD_DIR", "./data/uploads"),
+		SMTP: SMTP{
+			Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
+			Port:     getenv("SMTP_PORT", "587"),
+			Username: strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     strings.TrimSpace(os.Getenv("SMTP_FROM")),
+		},
 	}
 
+	if cfg.Env != "development" && cfg.Env != "production" && cfg.Env != "test" {
+		return Config{}, fmt.Errorf("APP_ENV must be development, test or production (got %q)", cfg.Env)
+	}
 	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("DATABASE_URL is required (for Docker/CI use postgres://postgres:postgres@postgres:5432/app?sslmode=disable)")
+		return Config{}, errors.New("DATABASE_URL is required (e.g. postgres://postgres:postgres@localhost:5432/lueur?sslmode=disable)")
 	}
 	if err := validateJWTSecret(cfg.JWTSecret); err != nil {
 		return Config{}, err
 	}
-	if cfg.StripeSecretKey != "" {
-		if cfg.StripePriceID == "" {
-			return Config{}, errors.New("STRIPE_PRICE_ID is required when STRIPE_SECRET_KEY is set")
-		}
-		if cfg.AppBaseURL == "" {
-			return Config{}, errors.New("APP_BASE_URL is required when STRIPE_SECRET_KEY is set")
-		}
+	if strings.TrimSpace(cfg.UploadDir) == "" {
+		return Config{}, errors.New("UPLOAD_DIR must not be empty")
 	}
-
 	return cfg, nil
 }
 
 func getenv(key, fallback string) string {
-	v := os.Getenv(key)
+	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
 		return fallback
 	}
@@ -66,14 +86,12 @@ func validateJWTSecret(secret string) error {
 	if len(trimmed) < minJWTSecretLength {
 		return fmt.Errorf("JWT_SECRET must be at least %d characters", minJWTSecretLength)
 	}
-
 	lower := strings.ToLower(trimmed)
-	for _, fragment := range []string{"change-me", "replace-me", "example", "placeholder", "dev-secret", "test-secret"} {
+	for _, fragment := range []string{"change-me", "replace-me", "replace-with", "example", "placeholder", "dev-secret", "test-secret"} {
 		if strings.Contains(lower, fragment) {
 			return errors.New("JWT_SECRET must be a strong random secret, not a placeholder value")
 		}
 	}
-
 	return nil
 }
 
@@ -81,8 +99,7 @@ func splitCSV(raw string) []string {
 	parts := strings.Split(raw, ",")
 	values := make([]string, 0, len(parts))
 	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
 			values = append(values, trimmed)
 		}
 	}

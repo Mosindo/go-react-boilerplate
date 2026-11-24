@@ -1,59 +1,65 @@
 package chat
 
-import "time"
+import (
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+	"example.com/api/internal/features/photos"
+)
+
+const (
+	DefaultConversationsLimit = 20
+	MaxConversationsLimit     = 50
+	DefaultMessagesLimit      = 30
+	MaxMessagesLimit          = 100
+	MaxMessageRunes           = 2000
+)
+
+type Message struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
+	IsRead         bool      `json:"isRead"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type Participant struct {
+	UserID    string                `json:"userId"`
+	FirstName string                `json:"firstName"`
+	Age       int                   `json:"age"`
+	Photo     *photos.PhotoResponse `json:"photo"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
+type Conversation struct {
+	ID            string      `json:"id"`
+	MatchID       string      `json:"matchId"`
+	MatchedAt     time.Time   `json:"matchedAt"`
+	LastMessage   *Message    `json:"lastMessage"`
+	UnreadCount   int         `json:"unreadCount"`
+	OtherUser     Participant `json:"otherUser"`
+	otherBirthday time.Time
 }
 
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
+type ConversationsResponse struct {
+	Conversations []Conversation `json:"conversations"`
+	NextCursor    *string        `json:"nextCursor"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type MessagesResponse struct {
+	Messages        []Message  `json:"messages"`
+	NextCursor      *string    `json:"nextCursor"`
+	OtherLastReadAt *time.Time `json:"otherLastReadAt"`
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Body string `json:"body" binding:"required,max=8000"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
-}
-
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+// Membership describes the caller's seat in a conversation.
+type Membership struct {
+	ConversationID  string
+	OtherUserID     string
+	HiddenAt        *time.Time
+	OtherLastReadAt *time.Time
+	MyLastReadAt    *time.Time
 }
