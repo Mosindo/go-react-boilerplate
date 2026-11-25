@@ -250,10 +250,10 @@ Toutes les réponses d'erreur ont la forme `{"error": "message", "code": "code_s
 
 ## Sécurité et confidentialité
 
-- **Authentification** : bcrypt ; JWT HS256 de 15 min avec validation stricte (`alg`, `iss`, `aud`, `exp`, `sub`, `sid`) ; refresh tokens aléatoires stockés hachés (SHA-256), rotation à chaque usage, réutilisation refusée ; **chaque requête vérifie que la session n'est pas révoquée** (déconnexion, changement/réinitialisation du mot de passe et suppression de compte coupent l'accès immédiatement) ; comparaison à temps constant contre l'énumération d'e-mails.
+- **Authentification** : bcrypt ; JWT HS256 de 15 min avec validation stricte (`alg`, `iss`, `aud`, `exp`, `sub`, `sid`) ; refresh tokens aléatoires stockés hachés (SHA-256), rotation à chaque usage, réutilisation refusée ; **chaque requête vérifie que la session n'est pas révoquée** (déconnexion, changement/réinitialisation du mot de passe et suppression de compte coupent l'accès immédiatement ; les WebSocket ouverts revérifient leur session toutes les 25 s et sont fermés si elle est révoquée) ; comparaison à temps constant contre l'énumération d'e-mails.
 - **Autorisations côté serveur** : seuls les participants d'un match actif lisent/écrivent la conversation (404 sinon, sans révéler l'existence) ; les notifications ne peuvent pas être créées par les clients ; les profils bloqués/masqués ne sont pas visibles ; chaque mutation de photo est limitée à son propriétaire.
-- **Validation** : e-mail normalisé, mot de passe (8+ caractères, lettre + chiffre), âge ≥ 18 (vérifié côté serveur et en base), énumérations, longueurs, caractères de contrôle supprimés, pagination bornée, corps JSON ≤ 1 Mo.
-- **Fichiers** : type détecté par décodage réel (JPEG/PNG), taille ≤ 10 Mo, dimensions ≤ 40 Mpx (anti « decompression bomb »), **ré-encodage JPEG** (supprime EXIF/GPS et neutralise les fichiers polyglottes), noms de stockage aléatoires non devinables, clés validées (pas de path traversal), servis via URL HMAC expirantes.
+- **Validation** : e-mail normalisé, mot de passe (8 à 72 octets — limite de bcrypt —, lettre + chiffre), âge ≥ 18 (vérifié côté serveur et en base), énumérations, longueurs, caractères de contrôle supprimés, pagination bornée, corps JSON ≤ 1 Mo.
+- **Fichiers** : type détecté par décodage réel (JPEG/PNG), taille ≤ 10 Mo, dimensions ≤ 40 Mpx (anti « decompression bomb »), **ré-encodage JPEG** avec budget mémoire et décodages simultanés limités (supprime EXIF/GPS et neutralise les fichiers polyglottes), noms de stockage aléatoires non devinables, clés validées (pas de path traversal), servis via URL HMAC expirantes.
 - **Localisation** : coordonnées arrondies à 0,01° (~1 km) **avant** stockage, jamais renvoyées ; distance affichée arrondie (« À moins de 2 km », pas de 5 km au-delà de 20 km) ; affichage désactivable. Sur Android, seule la permission de localisation approximative est demandée.
 - **Abus** : rate limiting (auth, récupération, upload, swipes anti-bot, messages, signalements), `ReadHeaderTimeout`, en-têtes de sécurité, CORS par liste blanche, proxys de confiance explicites, journaux sans secrets.
 - **Suppression** : la suppression du compte efface en cascade toutes les données personnelles et les fichiers photo. Les signalements sont conservés anonymisés (`ON DELETE SET NULL`) pour la modération.
@@ -281,6 +281,7 @@ Toutes les réponses d'erreur ont la forme `{"error": "message", "code": "code_s
 
 - **Mise à l'échelle horizontale** : hub temps réel et rate limiting en mémoire → une seule instance. Pour plusieurs instances : `LISTEN/NOTIFY` PostgreSQL ou Redis derrière l'interface `realtime.Publisher`, limiter partagé.
 - **Modération** : les signalements sont stockés (`reports`, statut `open`) mais il n'existe pas encore d'interface d'administration ; la revue se fait en base.
+- **Réutilisation d'un refresh token** : elle est refusée, mais ne révoque pas encore toute la session (détection de vol à ajouter).
 - **Push natifs** (Expo Notifications) et **stockage objet** pour les photos : non activés par défaut.
 - **Découverte** : le calcul des intérêts communs est fait pour tous les candidats filtrés ; pour de très gros volumes, pré-calculer ou utiliser PostGIS.
 
