@@ -84,6 +84,11 @@ func (r *PGRepository) Membership(ctx context.Context, conversationID, userID st
 		JOIN matches mt ON mt.id = c.match_id AND mt.ended_at IS NULL
 		JOIN conversation_participants other ON other.conversation_id = c.id AND other.user_id <> my.user_id
 		WHERE my.conversation_id = $1 AND my.user_id = $2
+		  AND NOT EXISTS (
+		    SELECT 1 FROM blocks b
+		    WHERE (b.blocker_id = my.user_id AND b.blocked_id = other.user_id)
+		       OR (b.blocker_id = other.user_id AND b.blocked_id = my.user_id)
+		  )
 	`, conversationID, userID).Scan(&m.PeerID, &m.ClearedAt, &m.PeerLastReadAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return membership{}, errRepoNotFound

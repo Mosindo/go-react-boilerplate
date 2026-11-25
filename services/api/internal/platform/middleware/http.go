@@ -39,7 +39,8 @@ func RequestMetrics() gin.HandlerFunc {
 
 		path := c.FullPath()
 		if path == "" {
-			path = c.Request.URL.Path
+			// Never key metrics on raw unmatched URLs: that map would grow forever.
+			path = "<unmatched>"
 		}
 		latency := time.Since(start).Milliseconds()
 		status := c.Writer.Status()

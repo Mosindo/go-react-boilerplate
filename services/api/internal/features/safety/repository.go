@@ -30,6 +30,13 @@ func NewPGRepository(db *pgxpool.Pool) *PGRepository {
 func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) (string, error) {
 	var endedMatchID string
 	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		// Same pair lock as matching.Swipe so a concurrent like cannot create
+		// a match that survives this block.
+		if _, err := tx.Exec(ctx, `
+			SELECT pg_advisory_xact_lock(hashtext('pair:' || LEAST($1::text, $2::text) || ':' || GREATEST($1::text, $2::text)))
+		`, blockerID, blockedID); err != nil {
+			return err
+		}
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)`, blockedID).Scan(&exists); err != nil {
 			return err

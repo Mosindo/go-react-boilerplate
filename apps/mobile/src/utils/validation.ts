@@ -9,8 +9,13 @@ export function validateEmail(value: string): string | null {
 }
 
 export function validatePassword(value: string): string | null {
-  if (value.length < 8 || value.length > 128) {
+  // The API (bcrypt) accepts at most 72 bytes.
+  const bytes = new TextEncoder().encode(value).length;
+  if (value.length < 8) {
     return "8 caractères minimum.";
+  }
+  if (bytes > 72) {
+    return "72 caractères maximum.";
   }
   if (!/\p{L}/u.test(value) || !/\d/.test(value)) {
     return "Ajoutez au moins une lettre et un chiffre.";

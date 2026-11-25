@@ -11,6 +11,7 @@ describe("validation", () => {
     expect(validatePassword("Password123")).toBeNull();
     expect(validatePassword("short1")).not.toBeNull();
     expect(validatePassword("onlyletters")).not.toBeNull();
+    expect(validatePassword("a1".repeat(37))).toBe("72 caractères maximum.");
   });
 
   it("parses birthdates and enforces the minimum age", () => {

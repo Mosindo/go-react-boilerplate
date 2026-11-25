@@ -39,6 +39,12 @@ func Fail(c *gin.Context, operation string, err error) {
 
 // BindJSON decodes the request body and answers 400 on failure.
 func BindJSON(c *gin.Context, operation string, dst any) bool {
+	// JSON endpoints only accept JSON: this also guarantees the global body
+	// size limit (skipped for multipart uploads) applies to them.
+	if c.ContentType() != "application/json" {
+		c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, ErrorBody{Error: "content type must be application/json", Code: "unsupported_media_type"})
+		return false
+	}
 	if err := c.ShouldBindJSON(dst); err != nil {
 		logger.LogHandlerError(c, operation+".bind", http.StatusBadRequest, err)
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorBody{Error: "invalid request body", Code: "invalid_request"})

@@ -26,7 +26,7 @@ import (
 var (
 	ErrEmailExists         = apperr.New(http.StatusConflict, "email_exists", "an account already exists with this email")
 	ErrInvalidEmail        = apperr.Validation("invalid_email", "invalid email address")
-	ErrWeakPassword        = apperr.Validation("weak_password", "password must be 8 to 128 characters and contain a letter and a digit")
+	ErrWeakPassword        = apperr.Validation("weak_password", "password must be 8 to 72 bytes long and contain a letter and a digit")
 	ErrInvalidCredentials  = apperr.New(http.StatusUnauthorized, "invalid_credentials", "invalid email or password")
 	ErrInvalidRefreshToken = apperr.New(http.StatusUnauthorized, "invalid_refresh_token", "session expired, please sign in again")
 	ErrInvalidResetCode    = apperr.Validation("invalid_reset_code", "this code is invalid or expired")
@@ -98,7 +98,8 @@ func (s *Service) Login(ctx context.Context, email, password, userAgent, ip stri
 	if err != nil {
 		return Tokens{}, User{}, err
 	}
-	if stored.IsDemo || bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(password)) != nil {
+	// Always run the comparison so demo accounts are not distinguishable by timing.
+	if bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(password)) != nil || stored.IsDemo {
 		return Tokens{}, User{}, ErrInvalidCredentials
 	}
 	tokens, err := s.issue(ctx, stored.ID, userAgent, ip)
@@ -176,9 +177,14 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 		"Bonjour,\n\nVoici votre code de réinitialisation Lueur : %s\n\nIl est valable 30 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n",
 		formatResetCode(code),
 	)
-	if err := s.mailer.Send(ctx, stored.Email, "Votre code de réinitialisation", body); err != nil {
-		log.Printf(`{"event":"reset_mail_failed","error":%q}`, err.Error())
-	}
+	// Sent asynchronously so the response time does not reveal registered emails.
+	go func(to string) {
+		sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if err := s.mailer.Send(sendCtx, to, "Votre code de réinitialisation", body); err != nil {
+			log.Printf(`{"event":"reset_mail_failed","error":%q}`, err.Error())
+		}
+	}(stored.Email)
 	return nil
 }
 
@@ -284,7 +290,8 @@ func NormalizeEmail(raw string) (string, error) {
 
 // ValidatePassword enforces the password policy.
 func ValidatePassword(password string) error {
-	if len(password) < 8 || len(password) > 128 {
+	// bcrypt only accepts up to 72 bytes.
+	if len(password) < 8 || len(password) > 72 {
 		return ErrWeakPassword
 	}
 	var hasLetter, hasDigit bool

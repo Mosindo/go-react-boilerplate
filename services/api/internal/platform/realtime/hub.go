@@ -11,12 +11,15 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 )
+
+var errTooManyTickets = errors.New("realtime ticket store full")
 
 type Event struct {
 	Type string `json:"type"`
@@ -32,7 +35,18 @@ type client struct {
 	send   chan []byte
 }
 
+// SessionChecker lets the hub close sockets whose session was revoked
+// (logout, password change/reset, account deletion).
+type SessionChecker interface {
+	IsSessionActive(ctx context.Context, userID, sessionID string) (bool, error)
+}
+
 type Hub struct {
+	sessions SessionChecker
+	// PingInterval is how often connections are pinged and their session
+	// re-validated.
+	PingInterval time.Duration
+
 	mu      sync.RWMutex
 	clients map[string]map[*client]struct{}
 
@@ -42,6 +56,7 @@ type Hub struct {
 
 type ticket struct {
 	userID    string
+	sessionID string
 	expiresAt time.Time
 }
 
@@ -51,10 +66,30 @@ const (
 	writeTimeout   = 10 * time.Second
 	pingInterval   = 25 * time.Second
 	maxConnsByUser = 5
+	maxTickets     = 50_000
 )
 
-func NewHub() *Hub {
-	return &Hub{clients: make(map[string]map[*client]struct{}), tickets: make(map[string]ticket)}
+func NewHub(sessions SessionChecker) *Hub {
+	h := &Hub{sessions: sessions, PingInterval: pingInterval, clients: make(map[string]map[*client]struct{}), tickets: make(map[string]ticket)}
+	go h.pruneTickets()
+	return h
+}
+
+// pruneTickets removes expired tickets periodically (instead of scanning the
+// whole store on every issue).
+func (h *Hub) pruneTickets() {
+	ticker := time.NewTicker(ticketTTL)
+	defer ticker.Stop()
+	for range ticker.C {
+		now := time.Now()
+		h.ticketsMu.Lock()
+		for k, t := range h.tickets {
+			if now.After(t.expiresAt) {
+				delete(h.tickets, k)
+			}
+		}
+		h.ticketsMu.Unlock()
+	}
 }
 
 // Publish delivers event to every live connection of userID. Slow clients are
@@ -77,7 +112,7 @@ func (h *Hub) Publish(userID string, event Event) {
 
 // IssueTicket returns a single-use, short-lived ticket that authenticates a
 // WebSocket upgrade. Tickets avoid putting long-lived tokens in URLs.
-func (h *Hub) IssueTicket(userID string) (string, time.Time, error) {
+func (h *Hub) IssueTicket(userID, sessionID string) (string, time.Time, error) {
 	buf := make([]byte, 24)
 	if _, err := rand.Read(buf); err != nil {
 		return "", time.Time{}, err
@@ -87,29 +122,26 @@ func (h *Hub) IssueTicket(userID string) (string, time.Time, error) {
 
 	h.ticketsMu.Lock()
 	defer h.ticketsMu.Unlock()
-	now := time.Now()
-	for k, t := range h.tickets {
-		if now.After(t.expiresAt) {
-			delete(h.tickets, k)
-		}
+	if len(h.tickets) >= maxTickets {
+		return "", time.Time{}, errTooManyTickets
 	}
-	h.tickets[value] = ticket{userID: userID, expiresAt: expiresAt}
+	h.tickets[value] = ticket{userID: userID, sessionID: sessionID, expiresAt: expiresAt}
 	return value, expiresAt, nil
 }
 
-// RedeemTicket consumes a ticket and returns its user id.
-func (h *Hub) RedeemTicket(value string) (string, bool) {
+// RedeemTicket consumes a ticket and returns its user and session ids.
+func (h *Hub) RedeemTicket(value string) (string, string, bool) {
 	h.ticketsMu.Lock()
 	defer h.ticketsMu.Unlock()
 	t, ok := h.tickets[value]
 	if !ok {
-		return "", false
+		return "", "", false
 	}
 	delete(h.tickets, value)
 	if time.Now().After(t.expiresAt) {
-		return "", false
+		return "", "", false
 	}
-	return t.userID, true
+	return t.userID, t.sessionID, true
 }
 
 // ConnectionCount returns the number of live connections for userID.
@@ -146,7 +178,7 @@ func (h *Hub) unregister(c *client) {
 }
 
 // Serve runs the read/write loops of an accepted connection until it closes.
-func (h *Hub) Serve(ctx context.Context, conn *websocket.Conn, userID string) {
+func (h *Hub) Serve(ctx context.Context, conn *websocket.Conn, userID, sessionID string) {
 	c := &client{userID: userID, send: make(chan []byte, sendBuffer)}
 	if !h.register(c) {
 		conn.Close(websocket.StatusPolicyViolation, "too many connections")
@@ -159,9 +191,11 @@ func (h *Hub) Serve(ctx context.Context, conn *websocket.Conn, userID string) {
 	conn.SetReadLimit(512)
 	ctx = conn.CloseRead(ctx)
 
-	h.Publish(userID, Event{Type: "ready", Data: map[string]string{}})
+	if ready, err := json.Marshal(Event{Type: "ready", Data: map[string]string{}}); err == nil {
+		c.send <- ready
+	}
 
-	ticker := time.NewTicker(pingInterval)
+	ticker := time.NewTicker(h.PingInterval)
 	defer ticker.Stop()
 
 	for {
@@ -177,8 +211,16 @@ func (h *Hub) Serve(ctx context.Context, conn *websocket.Conn, userID string) {
 				return
 			}
 		case <-ticker.C:
+			// Close the socket as soon as its session is revoked.
+			checkCtx, cancelCheck := context.WithTimeout(ctx, writeTimeout)
+			active, err := h.sessions.IsSessionActive(checkCtx, userID, sessionID)
+			cancelCheck()
+			if err == nil && !active {
+				conn.Close(websocket.StatusPolicyViolation, "session revoked")
+				return
+			}
 			pingCtx, cancel := context.WithTimeout(ctx, writeTimeout)
-			err := conn.Ping(pingCtx)
+			err = conn.Ping(pingCtx)
 			cancel()
 			if err != nil {
 				return

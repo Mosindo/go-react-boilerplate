@@ -33,6 +33,7 @@ type Limits struct {
 	Swipe    *middleware.RateLimiter
 	Message  *middleware.RateLimiter
 	Report   *middleware.RateLimiter
+	Ticket   *middleware.RateLimiter
 }
 
 func DefaultLimits() Limits {
@@ -44,6 +45,7 @@ func DefaultLimits() Limits {
 		Swipe:   middleware.NewRateLimiter(300, time.Minute),
 		Message: middleware.NewRateLimiter(60, time.Minute),
 		Report:  middleware.NewRateLimiter(10, time.Hour),
+		Ticket:  middleware.NewRateLimiter(30, time.Minute),
 	}
 }
 
@@ -84,9 +86,8 @@ func New(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, error) {
 	secret := []byte(cfg.JWTSecret)
 	tokens := token.NewManager(secret, auth.AccessTokenTTL)
 	signer := urlsign.New(secret, time.Hour)
-	hub := realtime.NewHub()
-
 	authService := auth.NewService(auth.NewPGRepository(pool), tokens, mail, store)
+	hub := realtime.NewHub(authService)
 	photoService := photos.NewService(photos.NewPGRepository(pool), store, signer)
 	profileService := profiles.NewService(profiles.NewPGRepository(pool), photoService)
 	notificationService := notifications.NewService(notifications.NewPGRepository(pool), hub)
@@ -121,7 +122,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, error) {
 	chat.RegisterRoutes(r, chat.NewHandler(chatService), requireUser, limits.Message.ByUser("message"))
 	notifications.RegisterRoutes(r, notifications.NewHandler(notificationService), requireUser)
 	safety.RegisterRoutes(r, safety.NewHandler(safetyService), requireUser, limits.Report.ByUser("report"))
-	realtime.RegisterRoutes(r, hub, requireUser)
+	realtime.RegisterRoutes(r, hub, requireUser, limits.Ticket.ByUser("ticket"))
 
 	return &App{Engine: r, Hub: hub}, nil
 }

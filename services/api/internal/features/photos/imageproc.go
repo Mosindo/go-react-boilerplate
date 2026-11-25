@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/jpeg"
 	_ "image/png" // register PNG decoder
@@ -12,9 +13,12 @@ import (
 
 const (
 	maxSourcePixels = 40_000_000
-	maxOutputSide   = 1440
-	minSourceSide   = 200
-	jpegQuality     = 82
+	// maxDecodeBytes bounds the memory needed to decode one image (decoded
+	// buffer + RGBA working copy), whatever the compressed file size is.
+	maxDecodeBytes = 192 << 20
+	maxOutputSide  = 1440
+	minSourceSide  = 200
+	jpegQuality    = 82
 )
 
 var (
@@ -34,6 +38,13 @@ func processImage(data []byte) ([]byte, int, int, error) {
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > maxSourcePixels {
 		return nil, 0, 0, errImageTooLarge
 	}
+	if int64(cfg.Width)*int64(cfg.Height)*(bytesPerPixel(cfg.ColorModel)+4) > maxDecodeBytes {
+		return nil, 0, 0, errImageTooLarge
+	}
+
+	// Only a couple of images are decoded at the same time to cap memory.
+	decodeSlots <- struct{}{}
+	defer func() { <-decodeSlots }()
 	if cfg.Width < minSourceSide || cfg.Height < minSourceSide {
 		return nil, 0, 0, errImageTooSmall
 	}
@@ -56,6 +67,22 @@ func processImage(data []byte) ([]byte, int, int, error) {
 		return nil, 0, 0, err
 	}
 	return buf.Bytes(), out.Bounds().Dx(), out.Bounds().Dy(), nil
+}
+
+var decodeSlots = make(chan struct{}, 2)
+
+// bytesPerPixel estimates the decoded size of one pixel for a colour model.
+func bytesPerPixel(m color.Model) int64 {
+	switch m {
+	case color.RGBA64Model, color.NRGBA64Model:
+		return 8
+	case color.Gray16Model:
+		return 2
+	case color.GrayModel:
+		return 1
+	default:
+		return 4
+	}
 }
 
 // downscale reduces img so its longest side is at most maxSide, using an

@@ -46,6 +46,17 @@ func TestProcessImageRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestProcessImageRejectsDecompressionBombs(t *testing.T) {
+	img := image.NewNRGBA64(image.Rect(0, 0, 6320, 6320))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := processImage(buf.Bytes()); err != errImageTooLarge {
+		t.Fatalf("expected errImageTooLarge for a 16-bit 40MP image, got %v", err)
+	}
+}
+
 func TestApplyOrientationRotates(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 4, 2))
 	img.Set(0, 0, color.RGBA{255, 0, 0, 255})

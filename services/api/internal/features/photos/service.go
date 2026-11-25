@@ -124,9 +124,6 @@ func (s *Service) Reorder(ctx context.Context, userID string, ids []string) ([]P
 
 // FilePath verifies a signed photo URL and returns the file to serve.
 func (s *Service) FilePath(ctx context.Context, photoID, exp, sig string) (string, error) {
-	if !s.signer.Verify(photoID, exp, sig) {
-		return "", ErrPhotoNotFound
-	}
 	key, err := s.repo.StorageKey(ctx, photoID)
 	if errors.Is(err, errRepoNotFound) {
 		return "", ErrPhotoNotFound
@@ -134,7 +131,16 @@ func (s *Service) FilePath(ctx context.Context, photoID, exp, sig string) (strin
 	if err != nil {
 		return "", err
 	}
+	// The signature covers the stored file version: replacing or deleting a
+	// photo invalidates every URL previously handed out.
+	if !s.signer.Verify(signedResource(photoID, key), exp, sig) {
+		return "", ErrPhotoNotFound
+	}
 	return s.storage.Path(key)
+}
+
+func signedResource(photoID, storageKey string) string {
+	return photoID + ":" + storageKey
 }
 
 func (s *Service) store(ctx context.Context, data []byte) (string, []byte, int, int, error) {
@@ -182,7 +188,7 @@ func (s *Service) toPhoto(p storedPhoto) Photo {
 		Position: p.Position,
 		Width:    p.Width,
 		Height:   p.Height,
-		URL:      "/photos/" + p.ID + "?" + s.signer.Query(p.ID),
+		URL:      "/photos/" + p.ID + "?" + s.signer.Query(signedResource(p.ID, p.StorageKey)),
 	}
 }
 

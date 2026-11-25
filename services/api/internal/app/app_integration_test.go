@@ -61,6 +61,7 @@ func (m *captureMailer) code(t *testing.T, to string) string {
 
 type env struct {
 	t       *testing.T
+	app     *App
 	server  *httptest.Server
 	pool    *pgxpool.Pool
 	mail    *captureMailer
@@ -94,6 +95,7 @@ func setup(t *testing.T) *env {
 		Swipe:    middleware.NewRateLimiter(10_000, time.Minute),
 		Message:  middleware.NewRateLimiter(10_000, time.Minute),
 		Report:   middleware.NewRateLimiter(10_000, time.Minute),
+		Ticket:   middleware.NewRateLimiter(10_000, time.Minute),
 	}
 	mail := &captureMailer{last: map[string]string{}}
 	a, err := New(cfg, pool, Options{Limits: limits, Mailer: mail})
@@ -105,7 +107,7 @@ func setup(t *testing.T) *env {
 		server.Close()
 		pool.Close()
 	})
-	return &env{t: t, server: server, pool: pool, mail: mail, uploads: uploads}
+	return &env{t: t, app: a, server: server, pool: pool, mail: mail, uploads: uploads}
 }
 
 type resp struct {
@@ -755,5 +757,65 @@ func TestDeleteAccountRemovesData(t *testing.T) {
 	r := e.do("GET", "/conversations", b.access, nil)
 	if !strings.Contains(string(r.body), `"conversations":[]`) {
 		t.Fatalf("conversation with deleted user still listed: %s", string(r.body))
+	}
+}
+
+func TestSecurityRegressions(t *testing.T) {
+	e := setup(t)
+
+	// JSON endpoints refuse other content types (the body cap cannot be bypassed).
+	req, _ := http.NewRequest("POST", e.server.URL+"/auth/login", strings.NewReader(`{"email":"a@b.co","password":"x"}`))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("expected 415, got %d", res.StatusCode)
+	}
+
+	// Passwords longer than bcrypt's 72 bytes are a validation error, not a 500.
+	e.expect(e.do("POST", "/auth/register", "", map[string]string{"email": "long@example.test", "password": strings.Repeat("a1", 46)}), http.StatusBadRequest, "long password")
+
+	u := e.register("sec")
+	e.onboard(u, profileSpec{"Lou", "woman", "1993-01-01", []string{"man"}, 45.0, 5.0, nil})
+
+	// Replacing a photo invalidates previously issued URLs.
+	r := e.do("GET", "/me/photos", u.access, nil)
+	var list struct {
+		Photos []photo `json:"photos"`
+	}
+	r.decode(t, &list)
+	oldURL := list.Photos[0].URL
+	e.expect(e.upload("PUT", "/me/photos/"+list.Photos[0].ID, u.access, testImage(t, 10)), http.StatusOK, "replace")
+	res, _ = http.Get(e.server.URL + oldURL)
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("old photo URL still served after replace: %d", res.StatusCode)
+	}
+
+	// Revoked sessions lose their realtime socket.
+	e.app.Hub.PingInterval = 100 * time.Millisecond
+	ticket := e.do("POST", "/realtime/ticket", u.access, nil)
+	var tk struct {
+		Ticket string `json:"ticket"`
+	}
+	ticket.decode(t, &tk)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(e.server.URL, "http")+"/realtime?ticket="+tk.Ticket, nil)
+	if err != nil {
+		t.Fatalf("ws dial: %v", err)
+	}
+	defer conn.CloseNow()
+	e.expect(e.do("POST", "/auth/logout", "", map[string]string{"refreshToken": u.refresh}), http.StatusNoContent, "logout")
+	for {
+		if _, _, err := conn.Read(ctx); err != nil {
+			if websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+				t.Fatalf("expected policy-violation close after logout, got %v", err)
+			}
+			break
+		}
 	}
 }

@@ -1,6 +1,9 @@
 package auth
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeEmail(t *testing.T) {
 	got, err := NormalizeEmail("  Alice.Doe@Example.COM ")
@@ -18,7 +21,7 @@ func TestValidatePassword(t *testing.T) {
 	if err := ValidatePassword("Password123"); err != nil {
 		t.Fatalf("valid password rejected: %v", err)
 	}
-	for _, bad := range []string{"short1", "onlyletters", "1234567890"} {
+	for _, bad := range []string{"short1", "onlyletters", "1234567890", strings.Repeat("a1", 37)} {
 		if err := ValidatePassword(bad); err == nil {
 			t.Fatalf("expected %q to be rejected", bad)
 		}

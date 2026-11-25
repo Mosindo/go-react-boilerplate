@@ -164,7 +164,7 @@ export function errorMessage(error: unknown, fallback = "Une erreur est survenue
 const messagesByCode: Record<string, string> = {
   email_exists: "Un compte existe déjà avec cet e-mail.",
   invalid_email: "Adresse e-mail invalide.",
-  weak_password: "Le mot de passe doit contenir 8 caractères minimum, dont une lettre et un chiffre.",
+  weak_password: "Le mot de passe doit contenir 8 à 72 caractères, dont une lettre et un chiffre.",
   invalid_credentials: "E-mail ou mot de passe incorrect.",
   invalid_reset_code: "Ce code est invalide ou expiré.",
   wrong_password: "Mot de passe incorrect.",

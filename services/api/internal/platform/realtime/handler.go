@@ -17,9 +17,9 @@ type TicketResponse struct {
 // RegisterRoutes exposes:
 //   - POST /realtime/ticket (authenticated): returns a single-use ticket
 //   - GET  /realtime?ticket=...: upgrades to a WebSocket stream of events
-func RegisterRoutes(r gin.IRouter, hub *Hub, requireUser gin.HandlerFunc) {
-	r.POST("/realtime/ticket", requireUser, func(c *gin.Context) {
-		value, expiresAt, err := hub.IssueTicket(httpx.UserID(c))
+func RegisterRoutes(r gin.IRouter, hub *Hub, requireUser, ticketLimit gin.HandlerFunc) {
+	r.POST("/realtime/ticket", requireUser, ticketLimit, func(c *gin.Context) {
+		value, expiresAt, err := hub.IssueTicket(httpx.UserID(c), c.GetString("sessionID"))
 		if err != nil {
 			httpx.Fail(c, "realtime.ticket", err)
 			return
@@ -29,7 +29,7 @@ func RegisterRoutes(r gin.IRouter, hub *Hub, requireUser gin.HandlerFunc) {
 	})
 
 	r.GET("/realtime", func(c *gin.Context) {
-		userID, ok := hub.RedeemTicket(strings.TrimSpace(c.Query("ticket")))
+		userID, sessionID, ok := hub.RedeemTicket(strings.TrimSpace(c.Query("ticket")))
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, httpx.ErrorBody{Error: "invalid ticket", Code: "invalid_ticket"})
 			return
@@ -41,6 +41,6 @@ func RegisterRoutes(r gin.IRouter, hub *Hub, requireUser gin.HandlerFunc) {
 		if err != nil {
 			return
 		}
-		hub.Serve(c.Request.Context(), conn, userID)
+		hub.Serve(c.Request.Context(), conn, userID, sessionID)
 	})
 }
