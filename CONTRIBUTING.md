@@ -1,11 +1,12 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Lueur.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Lueur must stay 100% free: never add paywalls, paid boosts or artificial limits.
+- Keep `platform/` generic; product logic belongs to `features/` and the mobile app.
+- Never trust the client: every business rule is enforced by the API.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -73,28 +74,9 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
-
 ```bash
-cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+./scripts/qa.sh                                   # Linux/macOS
+powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1   # Windows
 ```
 
-```bash
-cd apps/mobile
-npx tsc --noEmit
-```
-
-If the change touches integrated flows, also run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
-```
-
-## Documentation Expectations
-
-- Keep `README.md` accurate for onboarding.
-- Update `docs/ARCHITECTURE.md` when structure or module boundaries change.
-- Record user-facing or release-relevant changes in `CHANGELOG.md`.
+Set `DATABASE_URL_TEST` to a disposable database to run the API integration tests, and `API_URL` to also run the end-to-end API smoke test.

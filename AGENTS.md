@@ -1,30 +1,28 @@
-# AGENTS.md - go-react-saas
+# AGENTS.md - Lueur
 
-This repository is `go-react-saas`, a reusable fullstack boilerplate.
+This repository is Lueur, a free dating app built on the former `go-react-saas` boilerplate.
 The architecture must remain scalable, secure, maintainable, and easy to evolve across product types.
 
 ---
 
 # PRODUCT GOAL
 
-This boilerplate must support building:
-- social networks
-- forums
-- SaaS products
-- marketplaces
-- community apps
+This repository now hosts **Lueur**, a free dating app (founder decision, see README).
+The platform layer stays generic; product language belongs to `features/` and the mobile app.
 
-Keep the repository domain-agnostic by default.
-Avoid hardcoding product language tied to a single vertical unless explicitly requested.
+Non-negotiable product rules:
+- 100% free: no subscription, paywall, paid boost, artificial like limit or mandatory ads
+- 18+ only, enforced server-side
+- privacy by default: approximate location only, no exact coordinates stored or returned
 
-Core reusable modules:
+Core modules:
 - auth
-- users
-- posts
-- comments
+- profiles
+- photos
+- matching
 - chat
 - notifications
-- files
+- safety (blocks, reports)
 
 ---
 
@@ -63,14 +61,16 @@ Target structure:
   - `middleware/`
   - `logger/`
   - `errors/`
+  - `httpx/`, `token/`, `urlsign/`, `storage/`, `mailer/`, `realtime/`
+- `app/` (composition root)
 - `features/`
   - `auth/`
-  - `users/`
-  - `files/`
+  - `profiles/`
+  - `photos/`
+  - `matching/`
   - `chat/`
-  - `posts/`
-  - `comments/`
   - `notifications/`
+  - `safety/`
 
 Each feature should contain:
 - `handler.go`
@@ -117,6 +117,7 @@ Secrets:
   - `DATABASE_URL`
   - `JWT_SECRET`
   - `PORT` (default `8080`)
+  - optional: `APP_ENV`, `UPLOAD_DIR`, `ALLOWED_ORIGINS`, `TRUSTED_PROXIES`, `SMTP_*` (see `.env.example`)
 
 ---
 
@@ -129,34 +130,35 @@ Secrets:
 - Keep common API paths O(n) over page size
 
 Required indexes:
-- `users.email`
-- `posts (author_id, created_at)`
-- `comments (post_id, created_at)`
+- `users.email` (unique)
+- `swipes (swiper_id, target_id)` (primary key) and `swipes (target_id, action)`
+- `matches (user_a_id, user_b_id)` (unique)
 - `conversation_participants (conversation_id, user_id)`
 - `messages (conversation_id, created_at)`
 - `notifications (user_id, created_at)`
-- `files (owner_user_id, created_at)`
+- `photos (user_id, position)`
 
 ---
 
 # TESTS
 
-Before any backend delivery:
+Before any delivery run `./scripts/qa.sh` (or `scripts/qa-lite.ps1` on Windows), which covers:
 
-- `gofmt ./...`
-- `go test ./...`
-- `go build ./cmd/api`
-- Frontend/API changes must also keep `npm ci` and `npx tsc --noEmit` healthy in `apps/mobile`
+- `gofmt -l .` (must be empty), `go vet ./...`, `go test ./...`, `go build ./cmd/api`
+- `apps/mobile`: `npm ci`, `npx tsc --noEmit`, `npx eslint .`, `npx prettier --check .`, `npx jest`
 
 If tests fail: fix them before continuing.
 
-Integration tests to keep healthy:
+Integration tests to keep healthy (`internal/app/app_integration_test.go`, needs `DATABASE_URL_TEST`):
 - Health (`/health`)
-- Auth (`/auth/register`, `/auth/login`, `/me`)
-- Users (`/users`)
-- Posts (`/posts`)
-- Chat (`/chats`, `/chats/:userId/messages`)
+- Auth (`/auth/*`, `/me`)
+- Profiles and photos (`/me/profile`, `/me/photos`)
+- Matching (`/discover`, `/swipes`)
+- Chat (`/conversations`, `/conversations/:id/messages`)
 - Notifications (`/notifications`)
+- Safety (`/blocks`, `/reports`), account deletion
+
+End-to-end: `apps/mobile/scripts/e2e-smoke.js` (API) and `apps/mobile/e2e/web/critical-flow.js` (UI).
 
 ---
 
@@ -170,18 +172,17 @@ Mandatory rules to avoid recurring environment issues:
   - `docker compose ps`
   - `netstat -ano | findstr :<PORT_HOST_API>`
   - `curl http://<LAN_IP>:<PORT_HOST_API>/health`
-- If a conflict is detected, change the Docker host port (example: `18080:8080`) and align:
-  - `infra/docker-compose.yml`
+- If a conflict is detected, change the Docker host port (`API_HOST_PORT`, `POSTGRES_HOST_PORT`) and align:
+  - `docker-compose.yml` / `.env`
   - mobile API fallback
   - startup scripts
   - README
 - A frontend is only "ready" after a real smoke test:
-  - register
-  - login
-  - users load
-  - posts load
+  - register and onboarding (profile, photo, location)
+  - discover, like, match
   - chat send/read
   - notifications read flow
+  - block and account deletion
 
 ---
 

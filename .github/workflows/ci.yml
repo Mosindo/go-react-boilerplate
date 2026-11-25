@@ -5,104 +5,167 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  api:
+    name: API (Go)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgresql://app:app@localhost:5432/app_test?sslmode=disable
+    defaults:
+      run:
+        working-directory: services/api
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: services/api/go.mod
-          cache: true
           cache-dependency-path: services/api/go.sum
-
-      - name: Install Go dependencies
-        working-directory: services/api
-        run: go mod download
-
-      - name: Run Go tests
-        working-directory: services/api
-        run: go test ./...
-
-      - name: Run Go vet static checks
-        working-directory: services/api
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
         run: go vet ./...
+      - name: Unit and integration tests
+        run: go test -p 1 -count=1 ./...
+      - name: Build
+        run: go build ./cmd/api && go build ./cmd/seed
 
-      - name: Build the backend
-        working-directory: services/api
-        run: go build ./cmd/api
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+  mobile:
+    name: Mobile (Expo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20.19.4
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npx eslint .
+      - name: Format
+        run: npx prettier --check .
+      - name: Unit tests
+        run: npx jest --ci
+      - name: Web build
+        run: npx expo export --platform web --output-dir dist
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18080
 
-      - name: Install frontend dependencies
+  e2e:
+    name: End-to-end (API + web UI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [api, mobile]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - name: Start API
+        working-directory: services/api
+        env:
+          DATABASE_URL: postgresql://app:app@localhost:5432/app?sslmode=disable
+          JWT_SECRET: ${{ github.run_id }}-ci-only-random-signing-key-value
+          ALLOWED_ORIGINS: http://localhost:8081
+          UPLOAD_DIR: ${{ runner.temp }}/uploads
+          PORT: "18080"
+        run: |
+          go build -o "$RUNNER_TEMP/api" ./cmd/api
+          nohup "$RUNNER_TEMP/api" > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://localhost:18080/health && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/api.log"; exit 1
+      - name: Install mobile dependencies
         working-directory: apps/mobile
         run: npm ci
-
-      - name: Verify TypeScript
+      - name: API smoke (register → match → chat → block → delete)
         working-directory: apps/mobile
-        run: npx tsc --noEmit
-
-      - name: Build Docker image
-        run: docker build -t api-test ./services/api
-
-      - name: Verify Docker runtime (/health=200)
-        shell: bash
+        run: node scripts/e2e-smoke.js
+        env:
+          E2E_API_URL: http://localhost:18080
+      - name: Build and serve the web app
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:18080
         run: |
-          set -euo pipefail
+          npx expo export --platform web --output-dir dist
+          nohup python3 -m http.server 8081 --directory dist > /dev/null 2>&1 &
+      - name: Install Playwright
+        working-directory: apps/mobile
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: UI end-to-end (Playwright)
+        working-directory: apps/mobile
+        env:
+          E2E_API_URL: http://localhost:18080
+          E2E_WEB_URL: http://localhost:8081
+        run: node e2e/web/critical-flow.js
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: apps/mobile/e2e/web/.output
+          if-no-files-found: ignore
+      - name: API logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/api.log" || true
 
-          cleanup() {
-            docker rm -f api-test-run postgres-test >/dev/null 2>&1 || true
-            docker network rm api-test-network >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker network create api-test-network >/dev/null
-
-          echo "Starting Postgres for container health verification..."
-          docker run -d --name postgres-test \
-            --network api-test-network \
-            --network-alias postgres \
-            -e POSTGRES_USER=postgres \
-            -e POSTGRES_PASSWORD=postgres \
-            -e POSTGRES_DB=app \
-            postgres:15-alpine >/dev/null
-
-          echo "Waiting for Postgres readiness..."
-          for i in {1..30}; do
-            if docker exec postgres-test pg_isready -U postgres -d app >/dev/null 2>&1; then
-              break
-            fi
-            sleep 1
-          done
-
-          echo "Starting API container..."
-          docker run -d --name api-test-run \
-            --network api-test-network \
-            -p 18081:8080 \
-            -e DATABASE_URL="postgres://postgres:postgres@postgres:5432/app?sslmode=disable" \
-            -e JWT_SECRET="ci-jwt-secret-32-chars-minimum-value" \
-            -e PORT="8080" \
-            api-test >/dev/null
-
-          echo "Waiting for /health=200..."
-          for i in {1..30}; do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:18081/health || true)"
-            if [ "$code" = "200" ]; then
-              echo "Health OK."
-              exit 0
-            fi
-            sleep 1
-          done
-
-          echo "Container logs (api-test-run):"
-          docker logs api-test-run || true
-          exit 1
-
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run with compose
+        env:
+          JWT_SECRET: ${{ github.run_id }}-ci-only-random-signing-key-value
+        run: |
+          docker compose up --build -d
+          for i in $(seq 1 60); do curl -fsS http://localhost:18080/health && break; sleep 2; done
+          curl -fsS http://localhost:18080/health
+          docker compose run --rm api ./seed -count 5
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs api
+      - name: Shutdown
+        if: always()
+        run: docker compose down -v
