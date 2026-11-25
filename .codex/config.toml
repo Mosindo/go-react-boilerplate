@@ -1,6 +1,0 @@
-# Project reference for Codex MCP servers.
-# Codex reads the shared configuration from ~/.codex/config.toml.
-# Mirror the block below there if you want this MCP available globally.
-
-[mcp_servers.stripe]
-url = "https://mcp.stripe.com"

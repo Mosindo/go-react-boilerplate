@@ -1,63 +1,49 @@
 package middleware
 
 import (
-	"errors"
+	"context"
 	"net/http"
 	"strings"
 
+	"example.com/api/internal/platform/httpx"
+	"example.com/api/internal/platform/logger"
+	"example.com/api/internal/platform/token"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
-func RequireUser(secret []byte) gin.HandlerFunc {
+// SessionChecker reports whether the session referenced by an access token is
+// still active. It lets logout, password changes and account deletion revoke
+// access immediately instead of waiting for the access token to expire.
+type SessionChecker interface {
+	IsSessionActive(ctx context.Context, userID, sessionID string) (bool, error)
+}
+
+func RequireUser(tokens *token.Manager, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tokenString := bearerToken(c.GetHeader("Authorization"))
-		if tokenString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+		raw := bearerToken(c.GetHeader("Authorization"))
+		if raw == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, httpx.ErrorBody{Error: "missing token", Code: "unauthorized"})
 			return
 		}
 
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-				return nil, errors.New("unexpected signing method")
-			}
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method type")
-			}
-			return secret, nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		userID, sessionID, err := tokens.Parse(raw)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, httpx.ErrorBody{Error: "invalid token", Code: "invalid_token"})
 			return
 		}
 
-		expiresAt, err := claims.GetExpirationTime()
-		if err != nil || expiresAt == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		active, err := sessions.IsSessionActive(c.Request.Context(), userID, sessionID)
+		if err != nil {
+			logger.LogHandlerError(c, "auth.session_check", http.StatusInternalServerError, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, httpx.ErrorBody{Error: "internal server error", Code: "internal_error"})
+			return
+		}
+		if !active {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, httpx.ErrorBody{Error: "session expired", Code: "invalid_token"})
 			return
 		}
 
-		userID, ok := stringClaim(claims, "uid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		organizationID, ok := stringClaim(claims, "oid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		sessionID, ok := stringClaim(claims, "sid")
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		c.Set("userID", userID)
-		c.Set("organizationID", organizationID)
+		httpx.SetUserID(c, userID)
 		c.Set("sessionID", sessionID)
 		c.Next()
 	}
@@ -69,12 +55,4 @@ func bearerToken(header string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
-}
-
-func stringClaim(claims jwt.MapClaims, key string) (string, bool) {
-	value, ok := claims[key].(string)
-	if !ok || strings.TrimSpace(value) == "" {
-		return "", false
-	}
-	return value, true
 }

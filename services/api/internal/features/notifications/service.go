@@ -2,118 +2,71 @@ package notifications
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"strings"
-	"unicode/utf8"
+	"log"
+	"net/http"
+
+	apperr "example.com/api/internal/platform/errors"
+	"example.com/api/internal/platform/realtime"
 )
 
-var (
-	ErrTypeRequired  = errors.New("notification type required")
-	ErrTitleRequired = errors.New("notification title required")
-	ErrBodyRequired  = errors.New("notification body required")
-	ErrTypeTooLong   = errors.New("notification type too long")
-	ErrTitleTooLong  = errors.New("notification title too long")
-	ErrBodyTooLong   = errors.New("notification body too long")
-)
+var ErrNotificationNotFound = apperr.New(http.StatusNotFound, "notification_not_found", "notification not found")
 
 type Service struct {
 	repo Repository
+	pub  realtime.Publisher
 }
 
-const (
-	defaultNotificationsLimit = 20
-	maxNotificationsLimit     = 100
-	maxNotificationTypeRunes  = 64
-	maxNotificationTitleRunes = 160
-	maxNotificationBodyRunes  = 1000
-)
-
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, pub realtime.Publisher) *Service {
+	return &Service{repo: repo, pub: pub}
 }
 
-func (s *Service) ListByUser(ctx context.Context, userID string, limit, offset int) ([]Notification, error) {
-	normalizedLimit := normalizeNotificationsLimit(limit)
-	normalizedOffset := normalizeNotificationsOffset(offset)
-	notifications, err := s.repo.ListNotifications(ctx, userID, normalizedLimit, normalizedOffset)
+// Notify stores a notification and pushes it in real time. Notifications are
+// only ever produced by the server (matches, system events); clients cannot
+// create them.
+func (s *Service) Notify(ctx context.Context, userID, typ, title, body string, data map[string]string) {
+	raw, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		raw = []byte("{}")
 	}
-
-	payload := make([]Notification, 0, len(notifications))
-	for _, notification := range notifications {
-		payload = append(payload, mapStoredNotification(notification))
-	}
-	return payload, nil
-}
-
-func (s *Service) Create(ctx context.Context, userID, kind, title, body string) (Notification, error) {
-	normalizedType := strings.TrimSpace(kind)
-	if normalizedType == "" {
-		return Notification{}, ErrTypeRequired
-	}
-	if utf8.RuneCountInString(normalizedType) > maxNotificationTypeRunes {
-		return Notification{}, ErrTypeTooLong
-	}
-	normalizedTitle := strings.TrimSpace(title)
-	if normalizedTitle == "" {
-		return Notification{}, ErrTitleRequired
-	}
-	if utf8.RuneCountInString(normalizedTitle) > maxNotificationTitleRunes {
-		return Notification{}, ErrTitleTooLong
-	}
-	normalizedBody := strings.TrimSpace(body)
-	if normalizedBody == "" {
-		return Notification{}, ErrBodyRequired
-	}
-	if utf8.RuneCountInString(normalizedBody) > maxNotificationBodyRunes {
-		return Notification{}, ErrBodyTooLong
-	}
-
-	notification, err := s.repo.CreateNotification(ctx, userID, normalizedType, normalizedTitle, normalizedBody)
+	n, err := s.repo.Create(ctx, userID, typ, title, body, raw)
 	if err != nil {
-		return Notification{}, err
+		log.Printf(`{"event":"notification_create_failed","type":%q,"error":%q}`, typ, err.Error())
+		return
 	}
-	return mapStoredNotification(notification), nil
+	s.pub.Publish(userID, realtime.Event{Type: "notification.created", Data: n})
 }
 
-func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (Notification, error) {
-	notification, err := s.repo.MarkRead(ctx, userID, notificationID)
+func (s *Service) List(ctx context.Context, userID, beforeID string, limit int) (ListResponse, error) {
+	list, err := s.repo.List(ctx, userID, beforeID, limit+1)
 	if err != nil {
-		if errors.Is(err, ErrNotificationNotFound) {
-			return Notification{}, ErrNotificationNotFound
-		}
-		return Notification{}, err
+		return ListResponse{}, err
 	}
-	return mapStoredNotification(notification), nil
+	resp := ListResponse{Notifications: list}
+	if len(list) > limit {
+		resp.Notifications = list[:limit]
+		cursor := list[limit-1].ID
+		resp.NextCursor = &cursor
+	}
+	if resp.UnreadCount, err = s.repo.UnreadCount(ctx, userID); err != nil {
+		return ListResponse{}, err
+	}
+	return resp, nil
 }
 
-func mapStoredNotification(notification StoredNotification) Notification {
-	return Notification{
-		ID:        notification.ID,
-		UserID:    notification.UserID,
-		Type:      notification.Type,
-		Title:     notification.Title,
-		Body:      notification.Body,
-		IsRead:    notification.IsRead,
-		CreatedAt: notification.CreatedAt,
-		ReadAt:    notification.ReadAt,
-	}
+func (s *Service) UnreadCount(ctx context.Context, userID string) (int, error) {
+	return s.repo.UnreadCount(ctx, userID)
 }
 
-func normalizeNotificationsLimit(limit int) int {
-	if limit <= 0 {
-		return defaultNotificationsLimit
+func (s *Service) MarkRead(ctx context.Context, userID, id string) (Notification, error) {
+	n, err := s.repo.MarkRead(ctx, userID, id)
+	if errors.Is(err, errRepoNotFound) {
+		return Notification{}, ErrNotificationNotFound
 	}
-	if limit > maxNotificationsLimit {
-		return maxNotificationsLimit
-	}
-	return limit
+	return n, err
 }
 
-func normalizeNotificationsOffset(offset int) int {
-	if offset < 0 {
-		return 0
-	}
-	return offset
+func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
+	return s.repo.MarkAllRead(ctx, userID)
 }

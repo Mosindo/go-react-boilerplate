@@ -1,59 +1,58 @@
 package chat
 
-import "time"
+import (
+	"time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
+	"example.com/api/internal/features/photos"
+)
+
+const MaxMessageRunes = 2000
+
+type Message struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SenderID       string    `json:"senderId"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
+type Peer struct {
+	UserID    string        `json:"userId"`
+	FirstName string        `json:"firstName"`
+	Photo     *photos.Photo `json:"photo"`
 }
 
-type ChatMessage struct {
-	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
+type Conversation struct {
+	ID             string     `json:"id"`
+	MatchID        string     `json:"matchId"`
+	MatchedAt      time.Time  `json:"matchedAt"`
+	Peer           Peer       `json:"peer"`
+	LastMessage    *Message   `json:"lastMessage"`
+	UnreadCount    int        `json:"unreadCount"`
+	PeerLastReadAt *time.Time `json:"peerLastReadAt"`
 }
 
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
+type ConversationsResponse struct {
+	Conversations []Conversation `json:"conversations"`
+	HasMore       bool           `json:"hasMore"`
 }
 
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type MessagesResponse struct {
+	Messages       []Message  `json:"messages"`
+	NextCursor     *string    `json:"nextCursor"`
+	PeerLastReadAt *time.Time `json:"peerLastReadAt"`
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Body string `json:"body" binding:"required,max=8000"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+type UnreadResponse struct {
+	UnreadCount int `json:"unreadCount"`
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+type membership struct {
+	PeerID         string
+	ClearedAt      *time.Time
+	PeerLastReadAt *time.Time
 }
