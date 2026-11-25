@@ -6,6 +6,9 @@ import { colors, radii, spacing } from "../../theme";
 import { Chip, RemoteImage, Text } from "../../ui";
 import { formatDistance } from "../../utils/format";
 
+// A stepped fade (no gradient dependency) keeps text readable over any photo.
+const FADE_STEPS = [0.04, 0.1, 0.18, 0.27, 0.36, 0.45, 0.53, 0.6];
+
 type ProfileCardProps = {
   profile: PublicProfile;
   onOpen: () => void;
@@ -58,8 +61,12 @@ export function ProfileCard({ profile, onOpen, active }: ProfileCardProps) {
       ) : null}
 
       <View style={styles.info} pointerEvents="box-none">
-        <View style={styles.shade1} pointerEvents="none" />
-        <View style={styles.shade2} pointerEvents="none" />
+        <View style={styles.fade} pointerEvents="none">
+          {FADE_STEPS.map((alpha) => (
+            <View key={alpha} style={[styles.fadeStep, { backgroundColor: `rgba(21,17,26,${alpha})` }]} />
+          ))}
+        </View>
+        <View style={styles.shade} pointerEvents="none" />
         <Pressable
           onPress={onOpen}
           accessibilityRole="button"
@@ -140,14 +147,19 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0
   },
-  shade1: {
-    ...StyleSheet.absoluteFillObject,
-    top: -60,
-    backgroundColor: "rgba(21,17,26,0.35)"
+  fade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: -96,
+    height: 96
   },
-  shade2: {
+  fadeStep: {
+    flex: 1
+  },
+  shade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(21,17,26,0.55)"
+    backgroundColor: "rgba(21,17,26,0.66)"
   },
   infoContent: {
     padding: spacing.lg,
