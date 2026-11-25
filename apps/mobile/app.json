@@ -1,12 +1,42 @@
 {
   "expo": {
-    "name": "Mobile",
-    "slug": "mobile",
+    "name": "Lueur",
+    "slug": "lueur",
+    "scheme": "lueur",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#15111A",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "bundleIdentifier": "app.lueur.mobile",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "app.lueur.mobile",
+      "permissions": ["ACCESS_COARSE_LOCATION"],
+      "blockedPermissions": ["android.permission.ACCESS_FINE_LOCATION", "android.permission.RECORD_AUDIO", "android.permission.CAMERA"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lueur utilise votre position approximative (arrondie à environ 1 km) pour vous proposer des personnes proches de vous."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lueur accède à vos photos uniquement pour que vous puissiez les ajouter à votre profil.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

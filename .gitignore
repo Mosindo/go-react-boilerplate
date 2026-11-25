@@ -53,3 +53,8 @@ docker-data/
 # Mobile e2e runtime artifacts
 apps/mobile/.e2e/
 
+
+# Lueur runtime data and test output
+services/api/data/
+data/uploads/
+apps/mobile/e2e/web/.output/

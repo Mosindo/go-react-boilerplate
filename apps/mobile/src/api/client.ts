@@ -1,169 +1,194 @@
-import { Platform } from "react-native";
-import { getAccessToken } from "../store/tokenStore";
-import { showGlobalError } from "../shared/feedback";
-
-export type ApiErrorPayload = {
-  error?: string;
-};
-
-function normalizeBaseUrl(value: string): string {
-  return value.replace(/\/+$/, "");
-}
-
-function developmentFallbackBaseUrl(): string {
-  return Platform.OS === "android" ? "http://10.0.2.2:18080" : "http://localhost:18080";
-}
-
-function resolveApiBaseUrl(): string {
-  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (explicitBaseUrl) {
-    return normalizeBaseUrl(explicitBaseUrl);
-  }
-
-  if (__DEV__) {
-    return developmentFallbackBaseUrl();
-  }
-
-  return "";
-}
-
-export const API_BASE_URL = resolveApiBaseUrl();
+import { API_BASE_URL } from "./config";
+import { clearTokens, currentTokens, saveTokens, type AuthTokens } from "../store/tokenStore";
 
 export class ApiError extends Error {
-  public status: number;
-  public data: unknown;
+  readonly status: number;
+  readonly code: string;
 
-  constructor(status: number, data: unknown, message?: string) {
-    super(message ?? `API request failed (${status})`);
+  constructor(status: number, code: string, message: string) {
+    super(message);
     this.name = "ApiError";
     this.status = status;
-    this.data = data;
+    this.code = code;
   }
 }
 
-async function getToken(): Promise<string | null> {
-  return getAccessToken();
+type RequestOptions = {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  body?: unknown;
+  form?: FormData;
+  auth?: boolean;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+type SessionListener = () => void;
+const sessionExpiredListeners = new Set<SessionListener>();
+
+/** Subscribe to "session expired" events (refresh failed). */
+export function onSessionExpired(listener: SessionListener): () => void {
+  sessionExpiredListeners.add(listener);
+  return () => {
+    sessionExpiredListeners.delete(listener);
+  };
 }
 
-function mergeHeaders(base: HeadersInit | undefined, injected?: Record<string, string>): Headers {
-  const headers = new Headers();
+let refreshInFlight: Promise<AuthTokens | null> | null = null;
 
-  headers.set("Accept", "application/json");
-
-  if (base) {
-    new Headers(base).forEach((value, key) => {
-      headers.set(key, value);
-    });
+async function refreshTokens(): Promise<AuthTokens | null> {
+  const tokens = currentTokens();
+  if (!tokens?.refreshToken) {
+    return null;
   }
-
-  if (injected) {
-    for (const [k, v] of Object.entries(injected)) {
-      if (!headers.has(k)) {
-        headers.set(k, v);
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ refreshToken: tokens.refreshToken })
+        });
+        if (!res.ok) {
+          return null;
+        }
+        const payload = (await res.json()) as { accessToken: string; refreshToken: string };
+        const next = { accessToken: payload.accessToken, refreshToken: payload.refreshToken };
+        await saveTokens(next);
+        return next;
+      } catch {
+        return null;
+      } finally {
+        refreshInFlight = null;
       }
-    }
+    })();
   }
-
-  return headers;
+  return refreshInFlight;
 }
 
-function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
-  return body !== undefined && body !== null && !(body instanceof FormData);
+async function expireSession() {
+  await clearTokens();
+  sessionExpiredListeners.forEach((listener) => listener());
 }
 
-function formatNetworkHint(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return "Network error. Check your connection and API availability, then try again.";
+async function parseError(res: Response): Promise<ApiError> {
+  let code = "http_error";
+  let message = `Erreur ${res.status}`;
+  try {
+    const payload = (await res.json()) as { error?: string; code?: string };
+    code = payload.code ?? code;
+    message = payload.error ?? message;
+  } catch {
+    // Non-JSON error body.
   }
-
-  if (!__DEV__) {
-    return "API base URL is not configured for this build. Set EXPO_PUBLIC_API_URL and try again.";
-  }
-
-  if (Platform.OS === "android") {
-    return "Network error. Android emulators usually need 10.0.2.2, and physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  if (Platform.OS === "ios") {
-    return "Network error. iOS simulators can use localhost, but physical devices need EXPO_PUBLIC_API_URL set to your LAN IP.";
-  }
-
-  return "Network error. Check your connection and try again.";
+  return new ApiError(res.status, code, message);
 }
 
-function requireApiBaseUrl(): string {
-  if (API_BASE_URL) {
-    return API_BASE_URL;
+async function send(path: string, options: RequestOptions, accessToken: string | null): Promise<Response> {
+  if (!API_BASE_URL) {
+    throw new ApiError(0, "not_configured", "EXPO_PUBLIC_API_URL n'est pas configurée pour ce build.");
   }
-
-  const message = "API base URL is not configured. Set EXPO_PUBLIC_API_URL for this build.";
-  showGlobalError(message);
-  throw new Error(message);
-}
-
-export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 15_000);
+  options.signal?.addEventListener("abort", () => controller.abort(), { once: true });
 
-  const token = await getToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  let body: BodyInit | undefined;
+  if (options.form) {
+    body = options.form;
+  } else if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(options.body);
+  }
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
 
   try {
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        controller.abort();
-      } else {
-        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
-      }
-    }
-
-    const headers = mergeHeaders(options?.headers, authHeader);
-    if (!headers.has("Content-Type") && shouldSetJsonContentType(options?.body)) {
-      headers.set("Content-Type", "application/json");
-    }
-    const response = await fetch(`${requireApiBaseUrl()}${path}`, {
-      ...options,
+    return await fetch(`${API_BASE_URL}${path}`, {
+      method: options.method ?? "GET",
       headers,
+      body,
       signal: controller.signal
     });
-
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type") ?? "";
-      let data: unknown = null;
-      try {
-        data = contentType.includes("application/json") ? await response.json() : await response.text();
-      } catch {
-        data = null;
-      }
-
-      const apiPayload = data as ApiErrorPayload | null;
-      let message = apiPayload?.error ?? `API request failed (${response.status})`;
-      if (response.status === 401) {
-        message = apiPayload?.error ?? "Your session is no longer valid. Please sign in again.";
-      }
-      if (response.status >= 500 || response.status === 401) {
-        showGlobalError(message);
-      }
-      throw new ApiError(response.status, data, message);
+  } catch (error) {
+    if ((error as { name?: string }).name === "AbortError") {
+      throw new ApiError(0, "timeout", "Le serveur met trop de temps à répondre. Réessayez.");
     }
-
-    const text = await response.text();
-    if (!text) {
-      return undefined as T;
-    }
-    return JSON.parse(text) as T;
-  } catch (err) {
-    const name = (err as { name?: string }).name;
-    if (name === "AbortError") {
-      showGlobalError("The request timed out. Please try again.");
-      throw new Error("API request timeout (10s)");
-    }
-
-    if (err instanceof TypeError) {
-      showGlobalError(formatNetworkHint());
-    }
-    throw err;
+    throw new ApiError(0, "network", "Connexion impossible. Vérifiez votre réseau puis réessayez.");
   } finally {
-    clearTimeout(timeoutId);
+    clearTimeout(timeout);
   }
+}
+
+/**
+ * Single entry point for every API call. Authenticated requests transparently
+ * refresh an expired access token once, and notify listeners when the
+ * session cannot be renewed.
+ */
+export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const useAuth = options.auth !== false;
+  let res = await send(path, options, useAuth ? (currentTokens()?.accessToken ?? null) : null);
+
+  if (useAuth && res.status === 401) {
+    const next = await refreshTokens();
+    if (!next) {
+      await expireSession();
+      throw await parseError(res);
+    }
+    res = await send(path, options, next.accessToken);
+    if (res.status === 401) {
+      await expireSession();
+    }
+  }
+
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+export function errorMessage(error: unknown, fallback = "Une erreur est survenue."): string {
+  if (error instanceof ApiError) {
+    return translateError(error) ?? error.message;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
+const messagesByCode: Record<string, string> = {
+  email_exists: "Un compte existe déjà avec cet e-mail.",
+  invalid_email: "Adresse e-mail invalide.",
+  weak_password: "Le mot de passe doit contenir 8 caractères minimum, dont une lettre et un chiffre.",
+  invalid_credentials: "E-mail ou mot de passe incorrect.",
+  invalid_reset_code: "Ce code est invalide ou expiré.",
+  wrong_password: "Mot de passe incorrect.",
+  rate_limited: "Trop de tentatives. Patientez un peu avant de réessayer.",
+  underage: "Vous devez avoir au moins 18 ans pour utiliser Lueur.",
+  invalid_birthdate: "Date de naissance invalide.",
+  invalid_first_name: "Le prénom doit contenir uniquement des lettres (40 max).",
+  invalid_bio: "La bio est limitée à 500 caractères.",
+  invalid_interests: "Choisissez jusqu'à 10 centres d'intérêt.",
+  invalid_preferences: "Préférences invalides.",
+  profile_required: "Créez d'abord votre profil.",
+  profile_incomplete: "Complétez votre profil pour découvrir des personnes.",
+  photo_limit: "Vous pouvez ajouter jusqu'à 6 photos.",
+  unsupported_image: "Format d'image non pris en charge (JPEG ou PNG).",
+  image_too_small: "Image trop petite (200×200 minimum).",
+  image_too_large: "Image trop volumineuse.",
+  profile_unavailable: "Ce profil n'est plus disponible.",
+  conversation_not_found: "Cette conversation n'est plus disponible.",
+  message_too_long: "Message trop long (2000 caractères max).",
+  network: "Connexion impossible. Vérifiez votre réseau puis réessayez.",
+  timeout: "Le serveur met trop de temps à répondre. Réessayez.",
+  internal_error: "Erreur du serveur. Réessayez dans un instant."
+};
+
+function translateError(error: ApiError): string | undefined {
+  return messagesByCode[error.code];
 }

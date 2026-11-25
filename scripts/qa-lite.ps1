@@ -1,110 +1,45 @@
+# Repository quality gate for Windows (PowerShell). Mirrors scripts/qa.sh.
+#   powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1
+#   powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
 param(
-  [string]$ApiBaseUrl = "http://localhost:18080"
+  [string]$ApiBaseUrl = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$reportDir = Join-Path $repoRoot ".smoke"
-$reportPath = Join-Path $reportDir "qa-lite-report.txt"
-$goCacheDir = Join-Path $repoRoot ".cache\\go-build"
 
-if (-not (Test-Path $reportDir)) {
-  New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+function Step([string]$Name, [scriptblock]$Action) {
+  Write-Host "`n==> $Name" -ForegroundColor Magenta
+  & $Action
+  if ($LASTEXITCODE -ne 0) { throw "$Name failed" }
 }
 
-if (-not (Test-Path $goCacheDir)) {
-  New-Item -ItemType Directory -Path $goCacheDir -Force | Out-Null
-}
-
-$env:GOCACHE = $goCacheDir
-
-$results = New-Object System.Collections.Generic.List[string]
-$failed = $false
-
-function Run-Step([string]$name, [scriptblock]$action) {
-  try {
-    & $action
-    $results.Add("PASS - $name")
-  }
-  catch {
-    $results.Add("FAIL - $name - $($_.Exception.Message)")
-    $script:failed = $true
-  }
-}
-
-Push-Location $repoRoot
+Push-Location (Join-Path $repoRoot "services/api")
 try {
-  Run-Step "Backend gofmt" {
-    Push-Location ".\services\api"
-    try {
-      $unformatted = @(Get-ChildItem -Recurse -Filter *.go | ForEach-Object { gofmt -l $_.FullName } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-      if ($LASTEXITCODE -ne 0) { throw "gofmt check failed with exit code $LASTEXITCODE" }
-      if ($unformatted.Count -gt 0) {
-        throw ("gofmt check failed. Unformatted files:`n{0}" -f ($unformatted -join [Environment]::NewLine))
-      }
-    }
-    finally {
-      Pop-Location
-    }
+  Step "API: gofmt" {
+    $files = gofmt -l .
+    if ($files) { Write-Host $files; $global:LASTEXITCODE = 1 } else { $global:LASTEXITCODE = 0 }
   }
-
-  Run-Step "Backend tests (go test ./...)" {
-    Push-Location ".\services\api"
-    try {
-      go test ./... | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "go test exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Backend build (go build ./cmd/api)" {
-    Push-Location ".\services\api"
-    try {
-      go build ./cmd/api
-      if ($LASTEXITCODE -ne 0) { throw "go build exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Mobile TypeScript check (npx tsc --noEmit)" {
-    Push-Location ".\apps\mobile"
-    try {
-      npx tsc --noEmit
-      if ($LASTEXITCODE -ne 0) { throw "tsc exited with code $LASTEXITCODE" }
-    }
-    finally {
-      Pop-Location
-    }
-  }
-
-  Run-Step "Smoke API + mobile critique" {
-    & (Join-Path $repoRoot "scripts/smoke-all.ps1") -ApiBaseUrl $ApiBaseUrl
-    if ($LASTEXITCODE -ne 0) { throw "smoke-all exited with code $LASTEXITCODE" }
-  }
-}
-finally {
+  Step "API: go vet" { go vet ./... }
+  Step "API: go test" { go test -p 1 ./... }
+  Step "API: go build" { go build -o NUL ./cmd/api }
+} finally {
   Pop-Location
 }
 
-$stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$header = @(
-  "go-react-saas QA Lite Report",
-  "Generated: $stamp",
-  "API Base URL: $ApiBaseUrl",
-  ""
-)
-
-($header + $results) | Set-Content -Path $reportPath -Encoding UTF8
-Get-Content $reportPath
-
-if ($failed) {
-  exit 1
+Push-Location (Join-Path $repoRoot "apps/mobile")
+try {
+  Step "Mobile: typecheck" { npx tsc --noEmit }
+  Step "Mobile: lint" { npx eslint . }
+  Step "Mobile: format" { npx prettier --check . }
+  Step "Mobile: unit tests" { npx jest --ci }
+  if ($ApiBaseUrl) {
+    $env:E2E_API_URL = $ApiBaseUrl
+    Step "End-to-end API smoke ($ApiBaseUrl)" { node scripts/e2e-smoke.js }
+  }
+} finally {
+  Pop-Location
 }
 
-exit 0
+Write-Host "`nAll checks passed." -ForegroundColor Green
