@@ -5,6 +5,7 @@ import { errorMessage } from "../../api/client";
 import type { PublicProfile } from "../../api/types";
 import { SafetyActions } from "../../components/SafetyActions";
 import { usePublicProfile } from "../../hooks/queries";
+import { useSession } from "../../hooks/useSession";
 import type { AppScreenProps } from "../../navigation/types";
 import { colors, layout, radii, spacing } from "../../theme";
 import { Chip, ErrorState, Header, IconButton, LoadingState, RemoteImage, Screen, Text } from "../../ui";
@@ -84,6 +85,8 @@ export function ProfileView({ profile }: { profile: PublicProfile }) {
 export function ProfileDetailScreen({ navigation, route }: AppScreenProps<"ProfileDetail">) {
   const { userId, matchId } = route.params;
   const profile = usePublicProfile(userId);
+  const { user } = useSession();
+  const isSelf = user?.id === userId;
   const [actionsOpen, setActionsOpen] = useState(false);
 
   return (
@@ -110,7 +113,7 @@ export function ProfileDetailScreen({ navigation, route }: AppScreenProps<"Profi
           <ProfileView profile={profile.data} />
         </ScrollView>
       )}
-      {profile.data ? (
+      {profile.data && !isSelf ? (
         <SafetyActions
           visible={actionsOpen}
           onClose={() => setActionsOpen(false)}

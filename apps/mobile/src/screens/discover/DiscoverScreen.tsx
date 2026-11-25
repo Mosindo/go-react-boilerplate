@@ -29,23 +29,6 @@ export function DiscoverScreen() {
 
   const deck = useMemo(() => (discover.data ?? []).filter((p) => !handled.has(p.userId)), [discover.data, handled]);
 
-  // Fetch the next batch before the deck runs out.
-  useEffect(() => {
-    if (discover.data && discover.data.length > 0 && deck.length <= 2 && !discover.isFetching) {
-      void discover.refetch();
-    }
-  }, [deck.length, discover]);
-
-  useFocusEffect(
-    useCallback(() => {
-      void refreshLocationIfStale(me.data).then((updated) => {
-        if (updated) {
-          setMyProfile(updated);
-        }
-      });
-    }, [me.data, setMyProfile])
-  );
-
   const swipe = useMutation({
     mutationFn: ({ profile, action }: { profile: PublicProfile; action: SwipeAction }) => matchingApi.swipe(profile.userId, action),
     onSuccess: (result) => {
@@ -57,6 +40,33 @@ export function DiscoverScreen() {
     },
     onError: (error) => showToast(errorMessage(error, "Votre choix n'a pas pu être enregistré."), "error")
   });
+
+  const swipePending = swipe.isPending;
+
+  // Fetch the next batch before the deck runs out. Only refetch once part of
+  // the current batch was answered (and recorded), otherwise the server has
+  // nothing new and refetching would loop.
+  const batchConsumed = (discover.data ?? []).some((p) => handled.has(p.userId));
+  const { refetch, isFetching } = discover;
+  useEffect(() => {
+    if (batchConsumed && deck.length <= 2 && !isFetching && !swipePending) {
+      void refetch();
+    }
+  }, [batchConsumed, deck.length, isFetching, swipePending, refetch]);
+
+  const deckEmpty = deck.length === 0;
+  useFocusEffect(
+    useCallback(() => {
+      void refreshLocationIfStale(me.data).then((updated) => {
+        if (updated) {
+          setMyProfile(updated);
+        }
+      });
+      if (deckEmpty) {
+        void refetch();
+      }
+    }, [me.data, setMyProfile, deckEmpty, refetch])
+  );
 
   const onSwiped = (profile: PublicProfile, action: SwipeAction) => {
     setHandled((prev) => new Set(prev).add(profile.userId));

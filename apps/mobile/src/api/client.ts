@@ -129,7 +129,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   const useAuth = options.auth !== false;
   let res = await send(path, options, useAuth ? (currentTokens()?.accessToken ?? null) : null);
 
-  if (useAuth && res.status === 401) {
+  if (useAuth && res.status === 401 && currentTokens()) {
     const next = await refreshTokens();
     if (!next) {
       await expireSession();
