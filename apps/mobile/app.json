@@ -7,9 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#FBF7F3",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "bundleIdentifier": "app.lueur.mobile",
       "supportsTablet": true,
@@ -20,13 +18,8 @@
     },
     "android": {
       "package": "app.lueur.mobile",
-      "permissions": [
-        "ACCESS_COARSE_LOCATION"
-      ],
-      "blockedPermissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION"
-      ]
+      "permissions": ["ACCESS_COARSE_LOCATION"],
+      "blockedPermissions": ["ACCESS_FINE_LOCATION", "ACCESS_BACKGROUND_LOCATION"]
     },
     "web": {
       "bundler": "metro",

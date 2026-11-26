@@ -5,7 +5,6 @@ package platformerrors
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 )
 
@@ -50,11 +49,4 @@ func As(err error) (*Error, bool) {
 		return appErr, true
 	}
 	return nil, false
-}
-
-func Wrap(operation string, err error) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("%s: %w", operation, err)
 }

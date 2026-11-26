@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to Lueur.
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- Lueur is free for its members: never add paywalls, quotas or paid features.
+- Treat member data as sensitive: no exact location, e-mail or birthdate in public payloads.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -35,7 +35,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cache`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -73,25 +73,19 @@ For automated agent work, use the `codex/` prefix.
 
 ## Required Checks Before Pushing
 
-Run these checks before pushing changes:
+Run every gate in one command (integration tests need a disposable database):
 
 ```bash
-cd services/api
-gofmt -w .
-go test ./...
-go build ./cmd/api
+DATABASE_URL_TEST=postgres://postgres:postgres@localhost:5432/lueur_test?sslmode=disable ./scripts/qa.sh
 ```
-
-```bash
-cd apps/mobile
-npx tsc --noEmit
-```
-
-If the change touches integrated flows, also run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+$env:DATABASE_URL_TEST = "postgres://postgres:postgres@localhost:5432/lueur_test?sslmode=disable"
+./scripts/qa.ps1
 ```
+
+If the change touches user-facing flows, also run the end-to-end tests described in the README
+(`npm run e2e:smoke`, `npm run e2e:web`).
 
 ## Documentation Expectations
 

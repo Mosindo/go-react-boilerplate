@@ -89,12 +89,6 @@ func (h *Hub) Disconnect(userID string) {
 	delete(h.clients, userID)
 }
 
-func (h *Hub) ConnectionCount(userID string) int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.clients[userID])
-}
-
 // Tickets are single-use, short-lived credentials exchanged for a WebSocket connection,
 // so access tokens never appear in URLs or proxy logs.
 type Tickets struct {

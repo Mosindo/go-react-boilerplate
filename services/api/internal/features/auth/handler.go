@@ -19,7 +19,7 @@ func authResponse(tokens Tokens, user User) AuthResponse {
 	return AuthResponse{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
-		User:         MeResponse{ID: user.ID, Email: user.Email, CreatedAt: user.CreatedAt},
+		User:         MeResponse(user),
 	}
 }
 
@@ -108,7 +108,7 @@ func (h *Handler) Me(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, MeResponse{ID: user.ID, Email: user.Email, CreatedAt: user.CreatedAt})
+	c.JSON(http.StatusOK, MeResponse(user))
 }
 
 func (h *Handler) ChangePassword(c *gin.Context) {

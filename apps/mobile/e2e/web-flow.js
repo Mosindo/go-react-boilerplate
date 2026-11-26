@@ -88,7 +88,15 @@ async function createPartner(likeUserId) {
   await call("/profile", {
     method: "PUT",
     token,
-    body: { firstName: "Clara", birthdate: birthdate(29).toISOString().slice(0, 10), gender: "woman", bio: "Toujours partante pour un café.", jobTitle: "Illustratrice", city: "Paris 11e", interests: ["coffee", "drawing"] }
+    body: {
+      firstName: "Clara",
+      birthdate: birthdate(29).toISOString().slice(0, 10),
+      gender: "woman",
+      bio: "Toujours partante pour un café.",
+      jobTitle: "Illustratrice",
+      city: "Paris 11e",
+      interests: ["coffee", "drawing"]
+    }
   });
   await call("/profile/preferences", { method: "PUT", token, body: { interestedIn: ["man"], minAge: 18, maxAge: 60, maxDistanceKm: 50 } });
   const form = new FormData();
@@ -205,7 +213,11 @@ async function main() {
     step = "realtime";
     await call(`/conversations/${conversationId}/read`, { method: "POST", token: partner.token });
     await page.getByText("· Lu").waitFor();
-    await call(`/conversations/${conversationId}/messages`, { method: "POST", token: partner.token, body: { body: "Avec plaisir ! Jeudi ?" } });
+    await call(`/conversations/${conversationId}/messages`, {
+      method: "POST",
+      token: partner.token,
+      body: { body: "Avec plaisir ! Jeudi ?" }
+    });
     await page.getByText("Avec plaisir ! Jeudi ?").waitFor();
     await page.waitForTimeout(300);
     await shot("10-chat");
@@ -239,7 +251,11 @@ async function main() {
     await page.getByTestId("delete-password").fill(PASSWORD);
     await page.getByTestId("delete-confirm").click();
     await page.getByTestId("welcome-screen").waitFor();
-    const relogin = await fetch(`${API}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: PASSWORD }) });
+    const relogin = await fetch(`${API}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: PASSWORD })
+    });
     assert(relogin.status === 401, "deleted account must not log in");
     const after = await call("/conversations", { token: partner.token });
     assert(after.conversations.length === 0, "conversation must disappear after account deletion");

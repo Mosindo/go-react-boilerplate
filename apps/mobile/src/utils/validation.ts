@@ -12,9 +12,14 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
 }
 
+/** A character is treated as a letter when it has distinct upper/lower case forms (Latin, Greek, Cyrillic…). */
+function isCasedLetter(char: string): boolean {
+  return char.toLowerCase() !== char.toUpperCase();
+}
+
 export function passwordProblem(password: string): string | null {
   if (password.length < 8) return "8 caractères minimum.";
-  if (!/\p{L}/u.test(password) || !/\d/.test(password)) return "Ajoutez au moins une lettre et un chiffre.";
+  if (![...password].some(isCasedLetter) || !/\d/.test(password)) return "Ajoutez au moins une lettre et un chiffre.";
   return null;
 }
 
@@ -50,6 +55,7 @@ export function firstNameProblem(name: string): string | null {
   const trimmed = name.trim().replace(/\s+/g, " ");
   if (trimmed.length === 0) return "Indiquez votre prénom.";
   if (trimmed.length > 40) return "40 caractères maximum.";
-  if (!/^[\p{L}'’ -]+$/u.test(trimmed)) return "Lettres, espaces, tirets et apostrophes uniquement.";
+  // Light client check; the server applies the full Unicode letter rule.
+  if (/[\d<>{}[\]()@#$%^&*_=+|\\/~`!?.,;:"]/.test(trimmed)) return "Lettres, espaces, tirets et apostrophes uniquement.";
   return null;
 }
