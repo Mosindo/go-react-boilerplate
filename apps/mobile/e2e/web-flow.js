@@ -203,6 +203,8 @@ async function main() {
     await page.getByTestId("chat-input").fill("Salut Clara ! Un café cette semaine ?");
     await page.getByTestId("chat-send").click();
     await page.getByText("Salut Clara ! Un café cette semaine ?").waitFor();
+    // The bubble appears optimistically; wait for the server-confirmed status.
+    await page.getByText("· Envoyé").waitFor();
 
     const conversations = await call("/conversations", { token: partner.token });
     assert(conversations.conversations.length === 1, "partner should see the conversation");

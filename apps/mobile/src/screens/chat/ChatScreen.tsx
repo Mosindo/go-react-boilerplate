@@ -37,7 +37,16 @@ export function ChatScreen({ navigation, route }: Props) {
 
   const serverMessages = useMemo(() => messages.data?.pages.flatMap((p) => p.messages) ?? [], [messages.data]);
   const otherLastReadAt = messages.data?.pages[0]?.otherLastReadAt ?? meta.data?.otherLastReadAt ?? null;
-  const all: (Message | PendingMessage)[] = useMemo(() => [...pending, ...serverMessages], [pending, serverMessages]);
+  // The realtime echo of a sent message can arrive before the POST response: hide the optimistic copy then.
+  const all: (Message | PendingMessage)[] = useMemo(() => {
+    const visiblePending = pending.filter(
+      (p) =>
+        !serverMessages.some(
+          (m) => m.senderId === p.senderId && m.body === p.body && Date.parse(m.createdAt) >= Date.parse(p.createdAt) - 60_000
+        )
+    );
+    return [...visiblePending, ...serverMessages];
+  }, [pending, serverMessages]);
   const lastMineId = useMemo(() => serverMessages.find((m) => m.senderId === user?.id)?.id, [serverMessages, user?.id]);
   const newestIncoming = serverMessages.find((m) => m.senderId !== user?.id)?.id;
 
