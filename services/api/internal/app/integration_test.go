@@ -320,6 +320,13 @@ func TestDatingFlowLikeMatchChat(t *testing.T) {
 	if len(likes.Profiles) != 1 || likes.Profiles[0].UserID != alice.UserID {
 		t.Fatalf("Bob should see Alice's like: %+v", likes.Profiles)
 	}
+	var bobUnread struct {
+		UnreadCount int `json:"unreadCount"`
+	}
+	e.expect(e.do("GET", "/notifications/unread-count", bob.Token, nil), 200).json(t, &bobUnread)
+	if bobUnread.UnreadCount != 0 {
+		t.Fatalf("viewing likes should mark the like notification as seen, %d unread", bobUnread.UnreadCount)
+	}
 
 	// Bob likes back: match + conversation, announced in real time.
 	res := e.swipe(bob.Token, alice.UserID, "like", 201)

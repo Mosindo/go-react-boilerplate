@@ -25,6 +25,7 @@ var (
 type Notifier interface {
 	Notify(ctx context.Context, in notifications.Input)
 	Forget(ctx context.Context, groupKeys ...string)
+	MarkGroupRead(ctx context.Context, userID, groupKey string)
 }
 
 type Service struct {
@@ -126,7 +127,7 @@ func (s *Service) Swipe(ctx context.Context, userID string, req SwipeRequest) (S
 			Title:    "Quelqu'un s'intéresse à vous",
 			Body:     "Découvrez qui vous a liké dans l'onglet Likes.",
 			Data:     map[string]any{},
-			GroupKey: "likes",
+			GroupKey: likesGroupKey,
 		})
 		return result, nil
 	}
@@ -231,11 +232,16 @@ func (s *Service) announceRemoval(ctx context.Context, userID string, m matchRow
 	s.publisher.Publish(m.OtherUserID, realtime.Event{Type: "match.removed", Data: payload})
 }
 
+// likesGroupKey coalesces "someone liked you" notifications into a single unread item.
+const likesGroupKey = "likes"
+
+// LikesReceived lists members who liked the user; viewing the list marks the like notification as seen.
 func (s *Service) LikesReceived(ctx context.Context, userID string, limit int) ([]profiles.PublicProfile, error) {
 	ids, err := s.repo.LikesReceived(ctx, userID, limit)
 	if err != nil {
 		return nil, err
 	}
+	s.notifier.MarkGroupRead(ctx, userID, likesGroupKey)
 	cards, err := s.profiles.Cards(ctx, userID, ids)
 	if err != nil {
 		return nil, err

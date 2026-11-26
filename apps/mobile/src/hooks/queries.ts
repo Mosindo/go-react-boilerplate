@@ -4,7 +4,7 @@ import { likesReceived, listMatches } from "../api/matching";
 import { listNotifications, unreadNotifications } from "../api/notifications";
 import { getPublicProfile, listInterests } from "../api/profile";
 import { listBlocked } from "../api/safety";
-import { queryKeys } from "./queryClient";
+import { queryClient, queryKeys } from "./queryClient";
 import { useRealtimeStatus } from "./useRealtime";
 
 /** Without a live socket, fall back to light polling so chat still feels current. */
@@ -31,7 +31,16 @@ export function useMatches() {
 }
 
 export function useLikes() {
-  return useQuery({ queryKey: queryKeys.likes, queryFn: likesReceived });
+  return useQuery({
+    queryKey: queryKeys.likes,
+    queryFn: async () => {
+      const profiles = await likesReceived();
+      // The server marks the "someone liked you" notification as seen when the list is viewed.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.unreadNotifications });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications });
+      return profiles;
+    }
+  });
 }
 
 export function useConversations() {
