@@ -38,7 +38,9 @@ func (r *PGRepository) Membership(ctx context.Context, conversationID, userID st
 		FROM conversation_participants me
 		JOIN conversations c ON c.id = me.conversation_id
 		JOIN conversation_participants other ON other.conversation_id = c.id AND other.user_id <> me.user_id
+		JOIN users ou ON ou.id = other.user_id
 		WHERE me.conversation_id = $1 AND me.user_id = $2
+		  AND ou.moderation_status <> 'suspended'
 		  AND NOT EXISTS (
 			SELECT 1 FROM blocks b
 			WHERE (b.blocker_id = me.user_id AND b.blocked_id = other.user_id)
@@ -74,7 +76,13 @@ func (r *PGRepository) ListConversations(ctx context.Context, userID string, cur
 			SELECT id, sender_id, body, created_at FROM messages
 			WHERE conversation_id = c.id ORDER BY created_at DESC, id DESC LIMIT 1
 		) lm ON TRUE
+		JOIN users ou ON ou.id = other.user_id
 		WHERE me.user_id = $1 AND c.last_message_at IS NOT NULL `+cond+`
+		  AND ou.moderation_status <> 'suspended'
+		  AND NOT EXISTS (
+			SELECT 1 FROM blocks b
+			WHERE (b.blocker_id = me.user_id AND b.blocked_id = other.user_id) OR (b.blocker_id = other.user_id AND b.blocked_id = me.user_id)
+		  )
 		ORDER BY c.last_message_at DESC, c.id DESC
 		LIMIT $2
 	`, args...)
@@ -131,7 +139,7 @@ func (r *PGRepository) InsertMessage(ctx context.Context, conversationID, sender
 		`, conversationID, senderID, body).Scan(&m.ID, &m.ConversationID, &m.SenderID, &m.Body, &m.CreatedAt); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE conversations SET last_message_at = $2 WHERE id = $1`, conversationID, m.CreatedAt); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE conversations SET last_message_at = GREATEST(COALESCE(last_message_at, $2), $2) WHERE id = $1`, conversationID, m.CreatedAt); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `

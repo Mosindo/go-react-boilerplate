@@ -72,6 +72,7 @@ func boundingBox(lat, lng float64, radiusKm int) *box {
 // Candidates applies every hard rule of discovery in SQL:
 // complete & active & discoverable profiles, mutual gender and age preferences,
 // mutual distance limits, no previous swipe by the viewer, and no block in either direction.
+// Without a location the viewer only meets members without one, so nobody's distance limit is bypassed.
 func (r *PGRepository) Candidates(ctx context.Context, v viewer, limit int) ([]Candidate, error) {
 	var latMin, latMax, lngMin, lngMax *float64
 	if v.Latitude != nil {
@@ -111,7 +112,7 @@ func (r *PGRepository) Candidates(ctx context.Context, v viewer, limit int) ([]C
 			WHERE (b.blocker_id = $1 AND b.blocked_id = p.user_id) OR (b.blocker_id = p.user_id AND b.blocked_id = $1)
 		  )
 		  AND (
-			$8::float8 IS NULL
+			($8::float8 IS NULL AND p.latitude IS NULL)
 			OR (
 				p.latitude IS NOT NULL
 				AND ($10::float8 IS NULL OR (p.latitude BETWEEN $10 AND $11 AND p.longitude BETWEEN $12 AND $13))
@@ -155,9 +156,17 @@ func (r *PGRepository) Swipe(ctx context.Context, swiperID, targetID, action str
 				SELECT 1 FROM profiles p
 				JOIN users u ON u.id = p.user_id
 				JOIN preferences pr ON pr.user_id = p.user_id
+				JOIN profiles me ON me.user_id = $1
+				JOIN preferences my_pr ON my_pr.user_id = $1
 				WHERE p.user_id = $2 AND p.user_id <> $1
-				  AND u.moderation_status <> 'suspended'
+				  AND u.moderation_status = 'active'
 				  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id)
+				  AND p.gender = ANY(my_pr.interested_in)
+				  AND me.gender = ANY(pr.interested_in)
+				  AND (
+					p.discoverable
+					OR EXISTS (SELECT 1 FROM swipes s WHERE s.swiper_id = $2 AND s.target_id = $1 AND s.action = 'like')
+				  )
 				  AND NOT EXISTS (
 					SELECT 1 FROM blocks b
 					WHERE (b.blocker_id = $1 AND b.blocked_id = $2) OR (b.blocker_id = $2 AND b.blocked_id = $1)
@@ -244,7 +253,13 @@ func (r *PGRepository) ListMatches(ctx context.Context, userID string, cursor *h
 		args = append(args, cursor.Time, cursor.ID)
 	}
 	rows, err := r.db.Query(ctx, matchSelect+`
+		JOIN users other ON other.id = CASE WHEN m.user_a_id = $1 THEN m.user_b_id ELSE m.user_a_id END
 		WHERE (m.user_a_id = $1 OR m.user_b_id = $1) `+cond+`
+		  AND other.moderation_status <> 'suspended'
+		  AND NOT EXISTS (
+			SELECT 1 FROM blocks b
+			WHERE (b.blocker_id = m.user_a_id AND b.blocked_id = m.user_b_id) OR (b.blocker_id = m.user_b_id AND b.blocked_id = m.user_a_id)
+		  )
 		ORDER BY m.created_at DESC, m.id DESC
 		LIMIT $2
 	`, args...)

@@ -37,7 +37,7 @@ var (
 	ErrInvalidRefresh     = platformerrors.Unauthorized("invalid_refresh_token", "Session expirée. Veuillez vous reconnecter.")
 	ErrAccountSuspended   = platformerrors.Forbidden("account_suspended", "Ce compte a été suspendu.")
 	ErrInvalidResetCode   = platformerrors.Validation("invalid_reset_code", "Code invalide ou expiré.")
-	ErrWeakPassword       = platformerrors.Validation("weak_password", "Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre.")
+	ErrWeakPassword       = platformerrors.Validation("weak_password", "Le mot de passe doit contenir entre 8 et 72 caractères, dont une lettre et un chiffre.")
 	ErrWrongPassword      = platformerrors.Forbidden("wrong_password", "Mot de passe incorrect.")
 	ErrTermsNotAccepted   = platformerrors.Validation("terms_not_accepted", "Vous devez accepter les conditions d'utilisation.")
 	ErrUserNotFound       = platformerrors.Unauthorized("user_not_found", "Compte introuvable.")
@@ -144,7 +144,15 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	if tokenHash == "" {
 		return nil
 	}
-	return s.repo.RevokeSessionByTokenHash(ctx, tokenHash)
+	userID, err := s.repo.RevokeSessionByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return err
+	}
+	if userID != "" {
+		// Live sockets are closed; the user's other devices reconnect with their still-valid sessions.
+		s.terminator.Disconnect(userID)
+	}
+	return nil
 }
 
 func (s *Service) Me(ctx context.Context, userID string) (User, error) {
@@ -188,9 +196,12 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 		return err
 	}
 	body := fmt.Sprintf("Bonjour,\n\nVoici votre code de réinitialisation : %s\n\nIl est valable 30 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n", code)
-	if err := s.mailer.Send(stored.Email, "Votre code de réinitialisation Lueur", body); err != nil {
-		log.Printf(`{"event":"password_reset_mail_failed","error":%q}`, err.Error())
-	}
+	// Sent asynchronously so response time does not reveal whether the account exists.
+	go func(to string) {
+		if err := s.mailer.Send(to, "Votre code de réinitialisation Lueur", body); err != nil {
+			log.Printf(`{"event":"password_reset_mail_failed","error":%q}`, err.Error())
+		}
+	}(stored.Email)
 	return nil
 }
 
@@ -232,7 +243,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current
 	if err != nil {
 		return err
 	}
-	return s.repo.UpdatePassword(ctx, userID, string(hash), sessionID)
+	if err := s.repo.UpdatePassword(ctx, userID, string(hash), sessionID); err != nil {
+		return err
+	}
+	s.terminator.Disconnect(userID)
+	return nil
 }
 
 // DeleteAccount permanently erases the account and associated data after re-authentication.
@@ -278,7 +293,8 @@ func (s *Service) issueSession(ctx context.Context, userID, userAgent, ip string
 
 // ValidatePassword enforces the password policy: 8-128 chars with at least one letter and one digit.
 func ValidatePassword(password string) error {
-	if len(password) < 8 || len(password) > 128 {
+	// bcrypt only accepts up to 72 bytes.
+	if len(password) < 8 || len(password) > 72 {
 		return ErrWeakPassword
 	}
 	var letter, digit bool

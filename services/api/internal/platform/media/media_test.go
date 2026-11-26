@@ -90,3 +90,15 @@ func TestValidKey(t *testing.T) {
 }
 
 func itoa(v int64) string { return strconv.FormatInt(v, 10) }
+
+func TestApplyOrientationSwapsDimensions(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 4, 2))
+	src.Set(0, 0, color.RGBA{255, 0, 0, 255})
+	out := applyOrientation(src, 6) // rotate 90° clockwise
+	if b := out.Bounds(); b.Dx() != 2 || b.Dy() != 4 {
+		t.Fatalf("unexpected bounds %v", b)
+	}
+	if r, _, _, _ := out.At(1, 0).RGBA(); r>>8 != 255 {
+		t.Fatal("top-left pixel should move to top-right")
+	}
+}

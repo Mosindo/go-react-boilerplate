@@ -270,11 +270,15 @@ Erreurs : `{"error": "<message lisible>", "code": "<code_machine>"}`. Listes pag
   des utilisateurs, module `files` qui n'enregistrait que des métadonnées, Tamagui (inutilisé), Maestro (obsolète,
   remplacé par Playwright sur le build web).
 - **Gratuité réelle** : aucun quota de likes. Le seul plafond (120 swipes/min) bloque les scripts, pas les humains.
+- **Revue de sécurité** : une revue indépendante a été menée en fin de projet ; ses constats (contournement de
+  distance sans localisation, comptes suspendus visibles dans les matchs, course like/blocage, sockets non fermés
+  à la déconnexion, mémoire du traitement d'image, préférences non vérifiées au swipe, limite bcrypt de 72 octets)
+  sont corrigés et couverts par `TestReviewRegressions`.
 - **Majorité** : 18 ans minimum vérifiés côté serveur ; la date de naissance est **verrouillée** après saisie
   (empêche de contourner l'âge). Seul l'âge est exposé.
 - **Localisation** : demande au premier plan seulement, précision « balanced » ; le serveur arrondit à ~1 km
   avant stockage ; la distance affichée est arrondie (pas de 5 km au-delà de 10 km) et masquable. Un membre sans
-  localisation voit des profils sans filtre de distance, mais n'apparaît pas aux membres qui filtrent par distance.
+  localisation ne rencontre que des membres sans localisation : la limite de distance d'autrui n'est jamais contournée.
 - **Photos** : type détecté par signature binaire (pas par l'extension), garde-fou contre les bombes de
   décompression, orientation EXIF appliquée puis **ré-encodage JPEG** (supprime toutes les métadonnées, dont le GPS),
   noms de fichiers aléatoires, accès par **URLs signées HMAC expirant en 1 à 2 h** (stables par tranche horaire pour le cache).

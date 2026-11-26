@@ -100,7 +100,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, opts Options) (*App, error) {
 	r.GET("/health", platformhandlers.NewHealthHandler(pool))
 
 	auth.RegisterRoutes(r, auth.NewHandler(authService), requireUser, limit(20, 10*time.Minute, middleware.KeyByIP))
-	profiles.RegisterRoutes(r, profiles.NewHandler(profileService), requireUser)
+	profiles.RegisterRoutes(r, profiles.NewHandler(profileService), requireUser, limit(20, time.Hour, middleware.KeyByUser))
 	photos.RegisterRoutes(r, photos.NewHandler(photoService), requireUser, limit(30, 10*time.Minute, middleware.KeyByUser))
 	// Swipes are not capped for product reasons: the limit only stops scripted abuse.
 	matching.RegisterRoutes(r, matching.NewHandler(matchingService), requireUser, limit(120, time.Minute, middleware.KeyByUser))

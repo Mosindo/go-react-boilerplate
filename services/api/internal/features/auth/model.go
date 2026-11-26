@@ -14,7 +14,7 @@ type User struct {
 
 type RegisterRequest struct {
 	Email         string `json:"email" binding:"required,max=320"`
-	Password      string `json:"password" binding:"required,min=8,max=128"`
+	Password      string `json:"password" binding:"required,min=8,max=72"`
 	AcceptedTerms bool   `json:"acceptedTerms" binding:"required"`
 }
 
@@ -34,12 +34,12 @@ type ForgotPasswordRequest struct {
 type ResetPasswordRequest struct {
 	Email    string `json:"email" binding:"required,max=320"`
 	Code     string `json:"code" binding:"required,max=32"`
-	Password string `json:"password" binding:"required,min=8,max=128"`
+	Password string `json:"password" binding:"required,min=8,max=72"`
 }
 
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword" binding:"required,max=128"`
-	NewPassword     string `json:"newPassword" binding:"required,min=8,max=128"`
+	NewPassword     string `json:"newPassword" binding:"required,min=8,max=72"`
 }
 
 type DeleteAccountRequest struct {

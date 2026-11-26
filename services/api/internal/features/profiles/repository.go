@@ -256,7 +256,10 @@ func (r *PGRepository) CanView(ctx context.Context, viewerID, targetID string) (
 				$1 = $2
 				OR (p.discoverable AND u.moderation_status = 'active')
 				OR EXISTS (SELECT 1 FROM matches m WHERE m.user_a_id = LEAST($1, $2)::uuid AND m.user_b_id = GREATEST($1, $2)::uuid)
-				OR EXISTS (SELECT 1 FROM swipes s WHERE s.swiper_id = $2 AND s.target_id = $1 AND s.action = 'like')
+				OR (
+					EXISTS (SELECT 1 FROM swipes s WHERE s.swiper_id = $2 AND s.target_id = $1 AND s.action = 'like')
+					AND NOT EXISTS (SELECT 1 FROM swipes s WHERE s.swiper_id = $1 AND s.target_id = $2)
+				)
 			  )
 		)
 	`, viewerID, targetID).Scan(&ok)

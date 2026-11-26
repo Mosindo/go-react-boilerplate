@@ -36,10 +36,22 @@ func (r *PGRepository) UserExists(ctx context.Context, userID string) (bool, err
 	return ok, err
 }
 
+// Block takes the same pair lock as swipes (see matching.pairKey), so a like racing a block either
+// commits its match first (then removed by the caller) or sees the block and is rejected.
 func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) error {
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING
-	`, blockerID, blockedID)
+	a, b := blockerID, blockedID
+	if a > b {
+		a, b = b, a
+	}
+	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "swipe:"+a+":"+b); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING
+		`, blockerID, blockedID)
+		return err
+	})
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 		return errRepoUserNotFound

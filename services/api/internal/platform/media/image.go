@@ -15,10 +15,13 @@ import (
 
 const (
 	MaxUploadBytes    = 10 << 20 // 10 MiB raw upload
-	maxSourcePixels   = 40_000_000
+	maxSourcePixels   = 24_000_000
 	maxOutputEdge     = 1440
 	outputJPEGQuality = 82
 )
+
+// processSlots limits how many images are decoded at the same time.
+var processSlots = make(chan struct{}, 4)
 
 var (
 	ErrUnsupportedType = errors.New("unsupported image type")
@@ -38,6 +41,10 @@ type ProcessedImage struct {
 // bombs), EXIF orientation is applied, and the image is re-encoded as a bounded JPEG.
 // Re-encoding drops every metadata block, including EXIF GPS coordinates.
 func Process(data []byte) (ProcessedImage, error) {
+	// Bound concurrent decodes so parallel uploads cannot exhaust memory.
+	processSlots <- struct{}{}
+	defer func() { <-processSlots }()
+
 	switch http.DetectContentType(data) {
 	case "image/jpeg", "image/png", "image/webp":
 	default:
@@ -59,8 +66,9 @@ func Process(data []byte) (ProcessedImage, error) {
 	if err != nil {
 		return ProcessedImage{}, ErrCorruptImage
 	}
-	src = applyOrientation(src, jpegOrientation(data))
+	orientation := jpegOrientation(data)
 
+	// Downscale first, then rotate the small image: rotating a full-size decode is costly.
 	bounds := src.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w > maxOutputEdge || h > maxOutputEdge {
@@ -74,12 +82,14 @@ func Process(data []byte) (ProcessedImage, error) {
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, bounds, draw.Src, nil)
+	final := applyOrientation(dst, orientation)
+	fb := final.Bounds()
 
 	var out bytes.Buffer
-	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: outputJPEGQuality}); err != nil {
+	if err := jpeg.Encode(&out, final, &jpeg.Options{Quality: outputJPEGQuality}); err != nil {
 		return ProcessedImage{}, err
 	}
-	return ProcessedImage{Data: out.Bytes(), Width: w, Height: h}, nil
+	return ProcessedImage{Data: out.Bytes(), Width: fb.Dx(), Height: fb.Dy()}, nil
 }
 
 // jpegOrientation extracts the EXIF orientation tag (1-8) from a JPEG, defaulting to 1.

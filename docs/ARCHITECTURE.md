@@ -164,7 +164,7 @@ apps/mobile/src
 
 ## 6. Security checklist
 
-- Passwords: bcrypt (cost 12); policy ≥ 8 chars with a letter and a digit; login timing does not reveal accounts.
+- Passwords: bcrypt (cost 12); policy 8–72 bytes with a letter and a digit; login timing does not reveal accounts.
 - JWT: HS256 only, `exp` required, claims validated, session revocation enforced on each request.
 - Refresh tokens: 256-bit random, stored as SHA-256, rotated on use, replay rejected.
 - Password reset: 10-character code (~50 bits), hashed, 30 minutes, single use, 3 per hour, all sessions revoked.

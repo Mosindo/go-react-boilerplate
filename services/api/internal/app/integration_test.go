@@ -647,3 +647,55 @@ func TestRateLimitOnLogin(t *testing.T) {
 		t.Fatalf("expected rate limiting, got %v", statuses)
 	}
 }
+
+// Regression tests for the security review.
+func TestReviewRegressions(t *testing.T) {
+	e := newEnv(t)
+	located := e.onboard(memberSpec{Name: "Lina", Gender: "woman", Age: 29, InterestedIn: []string{"man"}, MaxDistance: 5, Lat: parisLat, Lng: parisLng})
+	nomad := e.onboard(memberSpec{Name: "Noe", Gender: "man", Age: 30, InterestedIn: []string{"woman"}})
+
+	// A viewer without location never bypasses a located member's distance limit.
+	if e.deck(nomad.Token).has(located.UserID) {
+		t.Fatal("member without location must not see members who filter by distance")
+	}
+
+	// A paused profile cannot be liked by someone it did not like first.
+	paused := e.onboard(memberSpec{Name: "Pauline", Gender: "woman", Age: 29, InterestedIn: []string{"man"}})
+	e.expect(e.do("PATCH", "/profile/privacy", paused.Token, map[string]any{"discoverable": false}), 200)
+	e.swipe(nomad.Token, paused.UserID, "like", 404)
+	// ...but it can still like back someone who liked it.
+	e.swipe(paused.Token, nomad.UserID, "like", 201)
+	e.swipe(nomad.Token, paused.UserID, "like", 201)
+
+	// Gender preferences are enforced on swipes, not only in the deck.
+	other := e.onboard(memberSpec{Name: "Omar", Gender: "man", Age: 30, InterestedIn: []string{"woman"}})
+	e.swipe(nomad.Token, other.UserID, "like", 404)
+
+	// Suspended members disappear from matches and conversations.
+	if _, err := e.pool.Exec(context.Background(), `UPDATE users SET moderation_status = 'suspended' WHERE id = $1`, paused.UserID); err != nil {
+		t.Fatal(err)
+	}
+	var matches struct {
+		Matches []any `json:"matches"`
+	}
+	e.expect(e.do("GET", "/matches", nomad.Token, nil), 200).json(t, &matches)
+	if len(matches.Matches) != 0 {
+		t.Fatal("suspended member must not appear in matches")
+	}
+
+	// Passwords longer than bcrypt's 72-byte limit are rejected cleanly.
+	e.expect(e.do("POST", "/auth/register", "", map[string]any{"email": e.email("long"), "password": strings.Repeat("a1", 40), "acceptedTerms": true}), 400)
+
+	// Logging out closes the user's live sockets.
+	sock, events := dialRealtime(t, e, located.Token)
+	defer sock.Close()
+	e.expect(e.do("POST", "/auth/logout", "", map[string]any{"refreshToken": located.Refresh}), 204)
+	select {
+	case _, ok := <-events:
+		for ok {
+			_, ok = <-events
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("socket should be closed after logout")
+	}
+}

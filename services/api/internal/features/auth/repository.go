@@ -33,7 +33,7 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (storedUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (storedSession, error)
 	RotateSession(ctx context.Context, currentHash, nextHash, userAgent, ipAddress string, expiresAt time.Time) (storedSession, error)
-	RevokeSessionByTokenHash(ctx context.Context, tokenHash string) error
+	RevokeSessionByTokenHash(ctx context.Context, tokenHash string) (string, error)
 	ValidateSession(ctx context.Context, sessionID, userID string) (bool, error)
 	CountRecentResetTokens(ctx context.Context, userID string, since time.Time) (int, error)
 	CreateResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
@@ -120,11 +120,16 @@ func (r *PGRepository) RotateSession(ctx context.Context, currentHash, nextHash,
 	return s, err
 }
 
-func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE sessions SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL
-	`, tokenHash)
-	return err
+// RevokeSessionByTokenHash revokes the session and returns its user id ("" when nothing was revoked).
+func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) (string, error) {
+	var userID string
+	err := r.db.QueryRow(ctx, `
+		UPDATE sessions SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL RETURNING user_id
+	`, tokenHash).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return userID, err
 }
 
 // ValidateSession checks the session in a single round trip and refreshes the user's

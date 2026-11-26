@@ -19,6 +19,8 @@ function isCasedLetter(char: string): boolean {
 
 export function passwordProblem(password: string): string | null {
   if (password.length < 8) return "8 caractères minimum.";
+  // bcrypt limit on the server (72 bytes, counted in UTF-8).
+  if (new TextEncoder().encode(password).length > 72) return "72 caractères maximum.";
   if (![...password].some(isCasedLetter) || !/\d/.test(password)) return "Ajoutez au moins une lettre et un chiffre.";
   return null;
 }
