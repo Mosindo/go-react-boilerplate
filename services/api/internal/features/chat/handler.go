@@ -24,6 +24,10 @@ func (h *Handler) fail(c *gin.Context, err error) {
 		httpx.NotFound(c, "Conversation introuvable.")
 		return
 	}
+	if errors.Is(err, ErrSenderRestricted) {
+		httpx.Fail(c, http.StatusForbidden, "account_restricted", "Ton compte est en cours de vérification suite à des signalements.", err)
+		return
+	}
 	httpx.Internal(c, err)
 }
 

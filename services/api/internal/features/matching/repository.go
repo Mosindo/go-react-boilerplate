@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"example.com/api/internal/platform/db"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -18,7 +20,7 @@ var (
 type Repository interface {
 	ViewerReady(ctx context.Context, userID string) (bool, error)
 	CandidatePool(ctx context.Context, viewerID string, includeDemo bool, poolSize int) ([]Candidate, error)
-	Swipe(ctx context.Context, organizationID, viewerID, targetID, action string) (SwipeResult, error)
+	Swipe(ctx context.Context, viewerID, targetID, action string, includeDemo bool) (SwipeResult, error)
 	ListMatches(ctx context.Context, userID string, beforeAt *time.Time, beforeID string, limit int) ([]MatchSummary, error)
 	GetMatch(ctx context.Context, userID, matchID string) (MatchSummary, error)
 	DeleteMatch(ctx context.Context, userID, matchID string) (otherUserID string, err error)
@@ -39,6 +41,7 @@ func (r *PGRepository) ViewerReady(ctx context.Context, userID string) (bool, er
 			SELECT 1 FROM profiles p
 			JOIN preferences pr ON pr.user_id = p.user_id
 			WHERE p.user_id = $1
+			  AND p.moderation_hidden_at IS NULL
 			  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = p.user_id)
 		)
 	`, userID).Scan(&ready)
@@ -52,25 +55,60 @@ const distanceSQL = `(6371 * 2 * asin(sqrt(
 	power(sin(radians(c.longitude - v.longitude) / 2), 2)
 )))`
 
-// CandidatePool applies every hard eligibility rule in SQL:
-//   - same organization, visible, not hidden by moderation, has a photo;
-//   - mutual gender and age preferences;
-//   - never swiped by the viewer, no block in either direction, no match;
-//   - within both users' maximum distance when the viewer has a location
-//     (bounding box first so the location index can be used).
+// viewerCTE loads the viewer's profile, preferences and distance box ($1).
+const viewerCTE = `
+	WITH v AS (
+		SELECT p.user_id, p.gender, p.birthdate, p.latitude, p.longitude,
+		       pr.interested_in, pr.min_age, pr.max_age, pr.max_distance_km,
+		       u.organization_id,
+		       pr.max_distance_km / 111.0 AS dlat,
+		       pr.max_distance_km / (111.0 * GREATEST(cos(radians(COALESCE(p.latitude, 0))), 0.01)) AS dlng
+		FROM profiles p
+		JOIN preferences pr ON pr.user_id = p.user_id
+		JOIN users u ON u.id = p.user_id
+		WHERE p.user_id = $1
+	)`
+
+// compatibleSQL is the single definition of "these two people may meet",
+// shared by discovery and by the swipe endpoint so a like sent by id can
+// never bypass a rule. Aliases: v (viewer), c/cu/cp (candidate profile,
+// user, preferences). $2 = include demo profiles.
+const compatibleSQL = `
+	c.user_id <> v.user_id
+	AND cu.organization_id = v.organization_id
+	AND c.is_visible
+	AND c.moderation_hidden_at IS NULL
+	AND ($2::boolean OR NOT cu.is_demo)
+	AND c.gender = ANY(v.interested_in)
+	AND v.gender = ANY(cp.interested_in)
+	AND c.birthdate <= (CURRENT_DATE - make_interval(years => v.min_age))
+	AND c.birthdate >  (CURRENT_DATE - make_interval(years => v.max_age + 1))
+	AND v.birthdate <= (CURRENT_DATE - make_interval(years => cp.min_age))
+	AND v.birthdate >  (CURRENT_DATE - make_interval(years => cp.max_age + 1))
+	AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = c.user_id)
+	AND NOT EXISTS (
+		SELECT 1 FROM blocks b
+		WHERE (b.blocker_user_id = v.user_id AND b.blocked_user_id = c.user_id)
+		   OR (b.blocker_user_id = c.user_id AND b.blocked_user_id = v.user_id)
+	)
+	AND (
+		CASE
+			WHEN v.latitude IS NOT NULL AND c.latitude IS NOT NULL THEN
+				c.latitude BETWEEN v.latitude - v.dlat AND v.latitude + v.dlat
+				AND c.longitude BETWEEN v.longitude - v.dlng AND v.longitude + v.dlng
+				AND ` + distanceSQL + ` <= LEAST(v.max_distance_km, cp.max_distance_km)
+			-- Distance unknown on one side: only pair people who both accept
+			-- any distance, so nobody's radius can be bypassed by hiding a
+			-- location.
+			ELSE (v.max_distance_km >= 500 AND cp.max_distance_km >= 500)
+				OR (v.latitude IS NULL AND c.latitude IS NULL)
+		END
+	)`
+
+// CandidatePool applies every hard eligibility rule in SQL (compatibleSQL)
+// plus "not yet swiped" and "not already matched".
 func (r *PGRepository) CandidatePool(ctx context.Context, viewerID string, includeDemo bool, poolSize int) ([]Candidate, error) {
-	rows, err := r.dbPool.Query(ctx, `
-		WITH v AS (
-			SELECT p.user_id, p.gender, p.birthdate, p.latitude, p.longitude,
-			       pr.interested_in, pr.min_age, pr.max_age, pr.max_distance_km,
-			       u.organization_id,
-			       pr.max_distance_km / 111.0 AS dlat,
-			       pr.max_distance_km / (111.0 * GREATEST(cos(radians(COALESCE(p.latitude, 0))), 0.01)) AS dlng
-			FROM profiles p
-			JOIN preferences pr ON pr.user_id = p.user_id
-			JOIN users u ON u.id = p.user_id
-			WHERE p.user_id = $1
-		)
+	rows, err := r.dbPool.Query(ctx, viewerCTE+`
 		SELECT c.user_id,
 		       c.last_active_at,
 		       CASE WHEN v.latitude IS NOT NULL AND c.latitude IS NOT NULL THEN `+distanceSQL+` END AS distance_km,
@@ -81,37 +119,14 @@ func (r *PGRepository) CandidatePool(ctx context.Context, viewerID string, inclu
 		                WHERE s2.swiper_user_id = c.user_id AND s2.target_user_id = v.user_id AND s2.action = 'like') AS liked_viewer
 		FROM v
 		JOIN profiles c ON c.user_id <> v.user_id
-		JOIN users cu ON cu.id = c.user_id AND cu.organization_id = v.organization_id
+		JOIN users cu ON cu.id = c.user_id
 		JOIN preferences cp ON cp.user_id = c.user_id
-		WHERE c.is_visible
-		  AND c.moderation_hidden_at IS NULL
-		  AND ($2 OR NOT cu.is_demo)
-		  AND c.gender = ANY(v.interested_in)
-		  AND v.gender = ANY(cp.interested_in)
-		  AND c.birthdate <= (CURRENT_DATE - make_interval(years => v.min_age))
-		  AND c.birthdate >  (CURRENT_DATE - make_interval(years => v.max_age + 1))
-		  AND v.birthdate <= (CURRENT_DATE - make_interval(years => cp.min_age))
-		  AND v.birthdate >  (CURRENT_DATE - make_interval(years => cp.max_age + 1))
-		  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = c.user_id)
+		WHERE `+compatibleSQL+`
 		  AND NOT EXISTS (SELECT 1 FROM swipes s WHERE s.swiper_user_id = v.user_id AND s.target_user_id = c.user_id)
-		  AND NOT EXISTS (
-			SELECT 1 FROM blocks b
-			WHERE (b.blocker_user_id = v.user_id AND b.blocked_user_id = c.user_id)
-			   OR (b.blocker_user_id = c.user_id AND b.blocked_user_id = v.user_id)
-		  )
 		  AND NOT EXISTS (
 			SELECT 1 FROM matches m
 			WHERE m.user_low_id = LEAST(v.user_id, c.user_id)
 			  AND m.user_high_id = GREATEST(v.user_id, c.user_id)
-		  )
-		  AND (
-			v.latitude IS NULL
-			OR (
-				c.latitude IS NOT NULL
-				AND c.latitude BETWEEN v.latitude - v.dlat AND v.latitude + v.dlat
-				AND c.longitude BETWEEN v.longitude - v.dlng AND v.longitude + v.dlng
-				AND `+distanceSQL+` <= LEAST(v.max_distance_km, cp.max_distance_km)
-			)
 		  )
 		ORDER BY c.last_active_at DESC, c.user_id
 		LIMIT $3
@@ -136,7 +151,7 @@ func (r *PGRepository) CandidatePool(ctx context.Context, viewerID string, inclu
 // reciprocal. A per-pair advisory lock serialises concurrent swipes of the
 // same two people, so simultaneous mutual likes always produce exactly one
 // match (the unique pair constraint is the final safety net).
-func (r *PGRepository) Swipe(ctx context.Context, organizationID, viewerID, targetID, action string) (SwipeResult, error) {
+func (r *PGRepository) Swipe(ctx context.Context, viewerID, targetID, action string, includeDemo bool) (SwipeResult, error) {
 	tx, err := r.dbPool.Begin(ctx)
 	if err != nil {
 		return SwipeResult{}, err
@@ -147,27 +162,21 @@ func (r *PGRepository) Swipe(ctx context.Context, organizationID, viewerID, targ
 	if high < low {
 		low, high = high, low
 	}
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('pair:' || $1::text || ':' || $2::text, 0))`, low, high); err != nil {
+	if err := db.LockPair(ctx, tx, low, high); err != nil {
 		return SwipeResult{}, err
 	}
 
 	var eligible bool
-	if err := tx.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, viewerCTE+`
 		SELECT EXISTS (
 			SELECT 1
-			FROM profiles p
-			JOIN users u ON u.id = p.user_id
-			WHERE p.user_id = $2
-			  AND u.organization_id = $3
-			  AND p.is_visible
-			  AND p.moderation_hidden_at IS NULL
-			  AND NOT EXISTS (
-				SELECT 1 FROM blocks b
-				WHERE (b.blocker_user_id = $1 AND b.blocked_user_id = $2)
-				   OR (b.blocker_user_id = $2 AND b.blocked_user_id = $1)
-			  )
+			FROM v
+			JOIN profiles c ON c.user_id = $3
+			JOIN users cu ON cu.id = c.user_id
+			JOIN preferences cp ON cp.user_id = c.user_id
+			WHERE `+compatibleSQL+`
 		)
-	`, viewerID, targetID, organizationID).Scan(&eligible); err != nil {
+	`, viewerID, includeDemo, targetID).Scan(&eligible); err != nil {
 		return SwipeResult{}, err
 	}
 
@@ -336,8 +345,13 @@ func (r *PGRepository) GetMatch(ctx context.Context, userID, matchID string) (Ma
 // DeleteMatch ends a match for both people; the conversation and its
 // messages cascade. Swipes are kept so the profiles never resurface.
 func (r *PGRepository) DeleteMatch(ctx context.Context, userID, matchID string) (string, error) {
+	tx, err := r.dbPool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var other string
-	err := r.dbPool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		DELETE FROM matches
 		WHERE id = $1 AND (user_low_id = $2 OR user_high_id = $2)
 		RETURNING CASE WHEN user_low_id = $2 THEN user_high_id ELSE user_low_id END
@@ -348,5 +362,15 @@ func (r *PGRepository) DeleteMatch(ctx context.Context, userID, matchID string) 
 		}
 		return "", err
 	}
-	return other, nil
+	if err := DeleteMatchNotifications(ctx, tx, matchID); err != nil {
+		return "", err
+	}
+	return other, tx.Commit(ctx)
+}
+
+// DeleteMatchNotifications removes "new match" notifications of a match that
+// no longer exists, so they do not keep the other person's name around.
+func DeleteMatchNotifications(ctx context.Context, tx pgx.Tx, matchID string) error {
+	_, err := tx.Exec(ctx, `DELETE FROM notifications WHERE type = 'match' AND data->>'matchId' = $1`, matchID)
+	return err
 }

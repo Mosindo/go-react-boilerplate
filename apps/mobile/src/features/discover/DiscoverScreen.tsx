@@ -52,8 +52,12 @@ export function DiscoverScreen({ navigation }: TabScreenProps<"Discover">) {
       <EmptyState
         icon="sparkles-outline"
         title="Tu as fait le tour pour l'instant"
-        message="De nouvelles personnes s'inscrivent chaque jour. Élargis tes critères ou repasse un peu plus tard."
-        actionLabel="Ajuster mes critères"
+        message={
+          me.data && !me.data.hasLocation
+            ? "Sans position, tu ne vois que les personnes sans limite de distance. Partage ta position approximative (environ 1 km) pour découvrir plus de monde."
+            : "De nouvelles personnes s’inscrivent chaque jour. Élargis tes critères ou repasse un peu plus tard."
+        }
+        actionLabel={me.data && !me.data.hasLocation ? "Partager ma position" : "Ajuster mes critères"}
         onAction={() => navigation.navigate("Preferences")}
         testID="discover-empty"
       />

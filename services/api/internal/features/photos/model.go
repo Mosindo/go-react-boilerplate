@@ -5,7 +5,7 @@ import "time"
 const (
 	MaxPhotosPerUser = 6
 	MaxUploadBytes   = 10 << 20 // 10 MiB raw upload
-	MaxSourcePixels  = 40_000_000
+	MaxSourcePixels  = 30_000_000
 	MaxSourceSide    = 10_000
 	MinSourceSide    = 200
 	OutputMaxSide    = 1600

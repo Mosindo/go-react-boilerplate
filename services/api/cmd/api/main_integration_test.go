@@ -766,13 +766,28 @@ func TestBlockAndReport(t *testing.T) {
 	if !containsCard(e.discover(viewer), target.ID) {
 		t.Fatal("target should be visible before reports")
 	}
+	// Throwaway accounts (no profile, never interacted) cannot hide anyone.
+	for i := 0; i < 3; i++ {
+		throwaway := e.register("throwaway")
+		e.expect(e.do("POST", "/reports", map[string]any{"userId": target.ID, "reason": "spam", "block": false}, throwaway.Token), 201, "report")
+	}
+	if !containsCard(e.discover(viewer), target.ID) {
+		t.Fatal("reports from throwaway accounts must not hide a profile")
+	}
+	// Three credible reporters (complete profile + real interaction) do.
 	for i := 0; i < 3; i++ {
 		reporter := e.register("reporter")
+		e.onboard(reporter, profileOpts{name: "Rita", gender: "woman", interestedIn: []string{"man"}})
+		if status, _ := e.swipe(reporter, target.ID, "pass"); status != 201 {
+			t.Fatalf("reporter swipe: %d", status)
+		}
 		e.expect(e.do("POST", "/reports", map[string]any{"userId": target.ID, "reason": "spam", "block": false}, reporter.Token), 201, "report")
 	}
 	if containsCard(e.discover(viewer), target.ID) {
-		t.Fatal("profile must be hidden after 3 distinct reports")
+		t.Fatal("profile must be hidden after 3 credible reports")
 	}
+	// The hidden user is restricted too: no discovery.
+	e.expect(e.do("GET", "/discovery", nil, target.Token), 409, "moderated user cannot discover")
 }
 
 func TestPrivacySettings(t *testing.T) {
@@ -947,11 +962,84 @@ func TestRealtimeMessageDelivery(t *testing.T) {
 	}
 }
 
+func TestSwipeCannotBypassRules(t *testing.T) {
+	e := setup(t)
+	alice := e.register("alice")
+	carl := e.register("carl")
+	e.onboard(alice, profileOpts{name: "Alice", gender: "woman", interestedIn: []string{"man"}})
+	e.onboard(carl, profileOpts{name: "Carl", gender: "man", interestedIn: []string{"man"}})
+
+	// Incompatible preferences: a like sent by id is rejected like discovery.
+	if status, _ := e.swipe(carl, alice.ID, "like"); status != 404 {
+		t.Fatalf("like must respect mutual preferences, got %d", status)
+	}
+	// Uppercase ids are normalised (no self-like, no 500).
+	if status, _ := e.swipe(alice, strings.ToUpper(alice.ID), "like"); status != 400 {
+		t.Fatalf("uppercase self-like must be rejected with 400, got %d", status)
+	}
+
+	// Mutual like with uppercase ids still produces exactly one match.
+	bruno := e.register("bruno")
+	e.onboard(bruno, profileOpts{name: "Bruno", gender: "man", interestedIn: []string{"woman"}})
+	if status, _ := e.swipe(alice, strings.ToUpper(bruno.ID), "like"); status != 201 {
+		t.Fatalf("uppercase like: %d", status)
+	}
+	if status, s := e.swipe(bruno, strings.ToUpper(alice.ID), "like"); status != 201 || !s.Matched {
+		t.Fatalf("uppercase mutual like must match: %d %+v", status, s)
+	}
+
+	// Hiding one's location does not bypass the other person's radius.
+	far := e.register("far")
+	e.onboard(far, profileOpts{name: "Fanny", gender: "woman", interestedIn: []string{"man"}, lat: 43.2965, lng: 5.3698})
+	david := e.register("david")
+	e.onboard(david, profileOpts{name: "David", gender: "man", interestedIn: []string{"woman"}, noLocation: true})
+	if containsCard(e.discover(david), far.ID) {
+		t.Fatal("a viewer without location must not see someone with a limited radius")
+	}
+	if status, _ := e.swipe(david, far.ID, "like"); status != 404 {
+		t.Fatalf("liking outside the other's radius must fail, got %d", status)
+	}
+}
+
+func TestRefreshTokenReuseRevokesSession(t *testing.T) {
+	e := setup(t)
+	u := e.register("reuse")
+	first := e.do("POST", "/auth/refresh", map[string]string{"refreshToken": u.RefreshToken}, "")
+	e.expect(first, 200, "legit refresh")
+	var next struct {
+		AccessToken  string `json:"accessToken"`
+		RefreshToken string `json:"refreshToken"`
+	}
+	first.decode(t, &next)
+	// Replaying the rotated token (e.g. stolen copy) ends the session.
+	e.expect(e.do("POST", "/auth/refresh", map[string]string{"refreshToken": u.RefreshToken}, ""), 401, "replay")
+	e.expect(e.do("POST", "/auth/refresh", map[string]string{"refreshToken": next.RefreshToken}, ""), 401, "session revoked after replay")
+	e.expect(e.do("GET", "/me", nil, next.AccessToken), 401, "access token revoked too")
+}
+
 func TestRateLimitOnLogin(t *testing.T) {
 	e := setup(t)
-	limited := false
+	// Per-account limit: attempts against one e-mail from many IPs.
+	accountLimited := false
 	for i := 0; i < 15; i++ {
-		req := httptest.NewRequest("POST", "/auth/login", strings.NewReader(`{"email":"x@lueur.test","password":"Password123"}`))
+		req := httptest.NewRequest("POST", "/auth/login", strings.NewReader(`{"email":"target@lueur.test","password":"Guess12345"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = fmt.Sprintf("198.51.100.%d:5555", i+1)
+		rec := httptest.NewRecorder()
+		e.router.ServeHTTP(rec, req)
+		if rec.Code == http.StatusTooManyRequests {
+			accountLimited = true
+			break
+		}
+	}
+	if !accountLimited {
+		t.Fatal("password guessing against one account must be rate limited")
+	}
+
+	// Per-IP limit: many e-mails from one IP.
+	limited := false
+	for i := 0; i < 40; i++ {
+		req := httptest.NewRequest("POST", "/auth/login", strings.NewReader(fmt.Sprintf(`{"email":"x%d@lueur.test","password":"Password123"}`, i)))
 		req.Header.Set("Content-Type", "application/json")
 		req.RemoteAddr = "192.0.2.77:5555"
 		rec := httptest.NewRecorder()

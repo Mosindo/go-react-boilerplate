@@ -20,6 +20,8 @@ export function useDeck(onMatch: (match: MatchSummary) => void) {
   const [exhausted, setExhausted] = useState(false);
   const processed = useRef(new Set<string>());
   const inFlight = useRef(false);
+  const queueRef = useRef<ProfileCard[]>([]);
+  queueRef.current = queue;
 
   const load = useCallback(async (reset = false) => {
     if (inFlight.current) {
@@ -31,13 +33,18 @@ export function useDeck(onMatch: (match: MatchSummary) => void) {
     }
     try {
       const cards = await discoveryApi.feed(10);
-      const fresh = cards.filter((c) => !processed.current.has(c.userId));
-      setQueue((current) => {
-        const base = reset ? [] : current;
-        const known = new Set(base.map((c) => c.userId));
-        return [...base, ...fresh.filter((c) => !known.has(c.userId))];
-      });
+      const known = new Set(reset ? [] : queueRef.current.map((c) => c.userId));
+      const fresh = cards.filter((c) => !processed.current.has(c.userId) && !known.has(c.userId));
+      // Exhausted when the server has nothing we do not already hold: this
+      // also stops refills from looping on cards still waiting in the queue.
       setExhausted(fresh.length === 0);
+      if (reset || fresh.length > 0) {
+        setQueue((current) => {
+          const base = reset ? [] : current;
+          const ids = new Set(base.map((c) => c.userId));
+          return [...base, ...fresh.filter((c) => !ids.has(c.userId))];
+        });
+      }
       setError(null);
       prefetchImages(fresh.slice(0, 3).flatMap((c) => c.photos.slice(0, 1).map((p) => p.url)));
     } catch (e) {

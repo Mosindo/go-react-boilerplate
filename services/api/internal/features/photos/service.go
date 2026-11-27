@@ -38,8 +38,18 @@ func (s *Service) List(ctx context.Context, userID string) ([]PhotoResponse, err
 	return out, nil
 }
 
+// decodeSlots bounds concurrent image decodes so a burst of uploads cannot
+// exhaust memory or CPU.
+var decodeSlots = make(chan struct{}, 4)
+
 func (s *Service) storeProcessed(ctx context.Context, userID string, raw []byte) (string, processedImage, error) {
+	select {
+	case decodeSlots <- struct{}{}:
+	case <-ctx.Done():
+		return "", processedImage{}, ctx.Err()
+	}
 	img, err := processImage(raw)
+	<-decodeSlots
 	if err != nil {
 		return "", processedImage{}, err
 	}
@@ -55,6 +65,9 @@ func (s *Service) storeProcessed(ctx context.Context, userID string, raw []byte)
 
 // Upload validates, normalises and stores a new photo at the end of the list.
 func (s *Service) Upload(ctx context.Context, userID string, raw []byte) ([]PhotoResponse, error) {
+	if err := s.repo.UploadAllowed(ctx, userID); err != nil {
+		return nil, err
+	}
 	key, img, err := s.storeProcessed(ctx, userID, raw)
 	if err != nil {
 		return nil, err
@@ -68,6 +81,9 @@ func (s *Service) Upload(ctx context.Context, userID string, raw []byte) ([]Phot
 
 // Replace swaps the image of an existing photo, keeping its position.
 func (s *Service) Replace(ctx context.Context, userID, photoID string, raw []byte) ([]PhotoResponse, error) {
+	if _, err := s.repo.StorageKeyOfUser(ctx, userID, photoID); err != nil {
+		return nil, err
+	}
 	key, img, err := s.storeProcessed(ctx, userID, raw)
 	if err != nil {
 		return nil, err

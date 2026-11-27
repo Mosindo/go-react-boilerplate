@@ -57,11 +57,11 @@ func processImage(raw []byte) (processedImage, error) {
 	if err != nil {
 		return processedImage{}, ErrCorruptImage
 	}
-	if format == "jpeg" {
-		src = applyOrientation(src, jpegOrientation(raw))
-	}
-
+	// Resize first, then rotate the (much smaller) RGBA result.
 	dst := resize(src, OutputMaxSide)
+	if format == "jpeg" {
+		dst = applyOrientation(dst, jpegOrientation(raw))
+	}
 	var out bytes.Buffer
 	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: OutputQuality}); err != nil {
 		return processedImage{}, err
@@ -70,7 +70,7 @@ func processImage(raw []byte) (processedImage, error) {
 	return processedImage{Data: out.Bytes(), Width: b.Dx(), Height: b.Dy()}, nil
 }
 
-func resize(src image.Image, maxSide int) image.Image {
+func resize(src image.Image, maxSide int) *image.RGBA {
 	b := src.Bounds()
 	w, h := b.Dx(), b.Dy()
 	scale := 1.0
@@ -154,8 +154,9 @@ func parseTIFFOrientation(tiff []byte) int {
 	return 1
 }
 
-// applyOrientation rotates/flips pixels according to EXIF orientation.
-func applyOrientation(src image.Image, orientation int) image.Image {
+// applyOrientation rotates/flips pixels according to EXIF orientation,
+// copying raw RGBA pixels (no per-pixel interface calls).
+func applyOrientation(src *image.RGBA, orientation int) *image.RGBA {
 	if orientation <= 1 || orientation > 8 {
 		return src
 	}
@@ -186,7 +187,9 @@ func applyOrientation(src image.Image, orientation int) image.Image {
 			case 8:
 				dx, dy = y, w-1-x
 			}
-			dst.Set(dx, dy, src.At(b.Min.X+x, b.Min.Y+y))
+			si := src.PixOffset(b.Min.X+x, b.Min.Y+y)
+			di := dst.PixOffset(dx, dy)
+			copy(dst.Pix[di:di+4], src.Pix[si:si+4])
 		}
 	}
 	return dst

@@ -18,7 +18,7 @@ const (
 	writeTimeout       = 10 * time.Second
 	pongTimeout        = 60 * time.Second
 	pingInterval       = 25 * time.Second
-	sessionRecheck     = 5 * time.Minute
+	sessionRecheck     = time.Minute
 	maxIncomingMessage = 4096
 	sendBuffer         = 64
 )

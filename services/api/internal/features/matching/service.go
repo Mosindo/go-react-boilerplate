@@ -2,6 +2,7 @@ package matching
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"example.com/api/internal/features/notifications"
@@ -85,7 +86,11 @@ func (s *Service) Discover(ctx context.Context, viewerID string, limit int) ([]p
 
 // Swipe validates and records a decision; on a new match both people get
 // a notification and a real-time event.
-func (s *Service) Swipe(ctx context.Context, organizationID, viewerID, targetID, action string) (SwipeResponse, error) {
+func (s *Service) Swipe(ctx context.Context, viewerID, targetID, action string) (SwipeResponse, error) {
+	// Canonical lowercase ids: ordering, pair locks and equality checks all
+	// depend on it.
+	targetID = strings.ToLower(strings.TrimSpace(targetID))
+	viewerID = strings.ToLower(viewerID)
 	if action != ActionLike && action != ActionPass {
 		return SwipeResponse{}, httpx.Invalid("invalid_action", "Action invalide (like ou pass).")
 	}
@@ -103,7 +108,7 @@ func (s *Service) Swipe(ctx context.Context, organizationID, viewerID, targetID,
 		return SwipeResponse{}, ErrProfileIncomplete
 	}
 
-	result, err := s.repo.Swipe(ctx, organizationID, viewerID, targetID, action)
+	result, err := s.repo.Swipe(ctx, viewerID, targetID, action, s.includeDemo)
 	if err != nil {
 		return SwipeResponse{}, err
 	}

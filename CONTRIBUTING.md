@@ -1,11 +1,13 @@
 # Contributing
 
-Thanks for contributing to `go-react-saas`.
+Thanks for contributing to **Lueur**, a free dating app (Go API + Expo app).
 
 ## Ground Rules
 
-- Keep the repository generic and reusable.
-- Avoid introducing product-specific naming into shared modules.
+- The product stays 100 % free: no paywall, subscription, paid boost, artificial like limit or mandatory ads.
+- Every business or safety rule is enforced server-side; never trust the client.
+- Never expose e-mails, exact birthdates or coordinates of other members.
+- Keep `platform/` generic; dating-specific logic lives in `features/`.
 - Prefer incremental changes over broad refactors.
 - Update documentation when behavior, architecture, or setup changes.
 
@@ -35,7 +37,7 @@ Use short, descriptive branch names:
 - `feat/user-profiles`
 - `fix/chat-pagination`
 - `docs/architecture-update`
-- `chore/qa-lite-cleanup`
+- `chore/ci-cache`
 
 For automated agent work, use the `codex/` prefix.
 
@@ -82,15 +84,19 @@ go test ./...
 go build ./cmd/api
 ```
 
+Integration tests need Postgres: set `DATABASE_URL_TEST` (they are skipped otherwise).
+
 ```bash
 cd apps/mobile
-npx tsc --noEmit
+npm run typecheck
+npm run lint
 ```
 
-If the change touches integrated flows, also run:
+If the change touches integrated flows, also run the API smoke test and the browser E2E (see README):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\qa-lite.ps1 -ApiBaseUrl http://localhost:18080
+```bash
+node scripts/smoke-api.mjs --api http://localhost:18080
+cd apps/mobile && npm run e2e:web
 ```
 
 ## Documentation Expectations

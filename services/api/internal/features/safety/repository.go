@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"example.com/api/internal/platform/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,6 +44,11 @@ func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) (
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Same pair lock as swipes: a concurrent like can never recreate a match
+	// right after the block.
+	if err := db.LockPair(ctx, tx, blockerID, blockedID); err != nil {
+		return "", err
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO blocks (blocker_user_id, blocked_user_id)
 		VALUES ($1, $2)
@@ -58,6 +64,11 @@ func (r *PGRepository) Block(ctx context.Context, blockerID, blockedID string) (
 	`, blockerID, blockedID).Scan(&matchID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return "", err
+	}
+	if matchID != "" {
+		if _, err := tx.Exec(ctx, `DELETE FROM notifications WHERE type = 'match' AND data->>'matchId' = $1`, matchID); err != nil {
+			return "", err
+		}
 	}
 	return matchID, tx.Commit(ctx)
 }
@@ -140,11 +151,21 @@ func (r *PGRepository) AutoHideIfNeeded(ctx context.Context, reportedID string, 
 		WHERE user_id = $1
 		  AND moderation_hidden_at IS NULL
 		  AND (
-			SELECT COUNT(DISTINCT reporter_user_id)
-			FROM reports
-			WHERE reported_user_id = $1
-			  AND status = 'open'
-			  AND created_at > NOW() - make_interval(secs => $3)
+			-- Only credible reporters count: a complete profile (with a photo)
+			-- and a real interaction with the reported person (a swipe in
+			-- either direction). Throwaway accounts cannot hide anyone.
+			SELECT COUNT(DISTINCT r.reporter_user_id)
+			FROM reports r
+			JOIN profiles rp ON rp.user_id = r.reporter_user_id
+			WHERE r.reported_user_id = $1
+			  AND r.status = 'open'
+			  AND r.created_at > NOW() - make_interval(secs => $3)
+			  AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = r.reporter_user_id)
+			  AND EXISTS (
+				SELECT 1 FROM swipes s
+				WHERE (s.swiper_user_id = r.reporter_user_id AND s.target_user_id = $1)
+				   OR (s.swiper_user_id = $1 AND s.target_user_id = r.reporter_user_id)
+			  )
 		  ) >= $2
 	`, reportedID, threshold, window.Seconds())
 	if err != nil {

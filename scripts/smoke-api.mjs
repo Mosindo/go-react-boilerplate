@@ -29,7 +29,13 @@ async function call(method, path, { body, token, form } = {}) {
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(body);
   }
-  const res = await fetch(`${API}${path}`, { method, headers, body: payload });
+  let res = await fetch(`${API}${path}`, { method, headers, body: payload });
+  for (let i = 0; res.status === 429 && i < 5; i++) {
+    // The API rate-limits credentials per IP; wait as instructed and retry.
+    const wait = Math.min(Number(res.headers.get("retry-after") ?? "2"), 15);
+    await new Promise((r) => setTimeout(r, wait * 1000));
+    res = await fetch(`${API}${path}`, { method, headers, body: payload });
+  }
   const text = await res.text();
   let data = null;
   try {

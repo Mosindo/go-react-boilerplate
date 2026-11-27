@@ -52,6 +52,8 @@ type Service struct {
 	mailer       mailer.Mailer
 	deletionHook AccountDeletionHook
 	dummyHash    []byte
+
+	onSessionsRevoked func(userID string)
 }
 
 func NewService(repo Repository, jwtSecret []byte) *Service {
@@ -78,6 +80,19 @@ func (s *Service) WithMailer(m mailer.Mailer) *Service {
 func (s *Service) WithDeletionHook(h AccountDeletionHook) *Service {
 	s.deletionHook = h
 	return s
+}
+
+// WithSessionsRevokedHook is called when every session of a user ends
+// (password reset, account deletion), e.g. to close live WebSockets.
+func (s *Service) WithSessionsRevokedHook(hook func(userID string)) *Service {
+	s.onSessionsRevoked = hook
+	return s
+}
+
+func (s *Service) sessionsRevoked(userID string) {
+	if s.onSessionsRevoked != nil {
+		s.onSessionsRevoked(userID)
+	}
 }
 
 // IsSessionActive implements middleware.SessionChecker.
@@ -215,12 +230,16 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		return err
 	}
 
+	allowed, err := s.repo.ConsumePasswordResetAttempt(ctx, token.ID, resetCodeMaxAttempts)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrInvalidResetCode
+	}
 	normalizedCode := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(code), "-", ""))
 	expected := s.hashResetCode(stored.User.ID, normalizedCode)
 	if !hmac.Equal([]byte(expected), []byte(token.CodeHash)) {
-		if err := s.repo.IncrementPasswordResetAttempts(ctx, token.ID); err != nil {
-			return err
-		}
 		return ErrInvalidResetCode
 	}
 
@@ -234,6 +253,7 @@ func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword st
 		}
 		return err
 	}
+	s.sessionsRevoked(stored.User.ID)
 	return nil
 }
 
@@ -265,6 +285,7 @@ func (s *Service) DeleteAccount(ctx context.Context, userID, password string) er
 		}
 		return err
 	}
+	s.sessionsRevoked(userID)
 	cleanup(ctx)
 	return nil
 }
@@ -298,6 +319,11 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	session, err := s.repo.GetActiveSessionByTokenHash(ctx, tokenHash)
 	if err != nil {
 		if errors.Is(err, ErrRepositorySessionGone) {
+			// A rotated token is being replayed: someone else may hold it.
+			// End that session so neither copy keeps working.
+			if _, revokeErr := s.repo.RevokeSessionByPreviousTokenHash(ctx, tokenHash); revokeErr != nil {
+				return Tokens{}, User{}, revokeErr
+			}
 			return Tokens{}, User{}, ErrInvalidRefreshToken
 		}
 		return Tokens{}, User{}, err
@@ -319,6 +345,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, userAgent, ipAddres
 	rotatedSession, err := s.repo.RotateSessionToken(
 		ctx,
 		session.ID,
+		tokenHash,
 		hashRefreshToken(refreshSecret),
 		userAgent,
 		ipAddress,

@@ -3,18 +3,34 @@ package auth
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"example.com/api/internal/platform/httpx"
 	"example.com/api/internal/platform/logger"
 	"github.com/gin-gonic/gin"
 )
 
+// AttemptLimiter throttles login attempts per account.
+type AttemptLimiter interface {
+	Allow(key string) (bool, time.Duration)
+}
+
 type Handler struct {
-	service *Service
+	service       *Service
+	loginAttempts AttemptLimiter
 }
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
+}
+
+// WithLoginAttemptLimiter caps password attempts per e-mail address, which
+// stops guessing against one account without penalising users who share an
+// IP address (carrier NAT, campus networks).
+func (h *Handler) WithLoginAttemptLimiter(l AttemptLimiter) *Handler {
+	h.loginAttempts = l
+	return h
 }
 
 func toMeResponse(user User) MeResponse {
@@ -65,6 +81,13 @@ func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if !httpx.BindJSON(c, &req) {
 		return
+	}
+	if h.loginAttempts != nil {
+		if ok, wait := h.loginAttempts.Allow("login:" + normalizeEmail(req.Email)); !ok {
+			c.Header("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+			httpx.Fail(c, http.StatusTooManyRequests, "rate_limited", "Trop de tentatives de connexion pour ce compte, réessaie dans quelques minutes.", nil)
+			return
+		}
 	}
 
 	tokens, user, err := h.service.Login(c.Request.Context(), req.Email, req.Password, c.Request.UserAgent(), c.ClientIP())

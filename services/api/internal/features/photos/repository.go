@@ -16,12 +16,14 @@ var (
 )
 
 type Repository interface {
+	UploadAllowed(ctx context.Context, userID string) error
 	ListByUser(ctx context.Context, userID string) ([]Photo, error)
 	Insert(ctx context.Context, p Photo) (Photo, error)
 	Replace(ctx context.Context, userID, photoID, storageKey string, width, height, size int) (oldKey string, err error)
 	Delete(ctx context.Context, userID, photoID string) (storageKey string, err error)
 	Reorder(ctx context.Context, userID string, photoIDs []string) error
 	StorageKeyByID(ctx context.Context, photoID string) (string, error)
+	StorageKeyOfUser(ctx context.Context, userID, photoID string) (string, error)
 	StorageKeysByUser(ctx context.Context, userID string) ([]string, error)
 }
 
@@ -39,6 +41,26 @@ func scanPhoto(row pgx.Row) (Photo, error) {
 	var p Photo
 	err := row.Scan(&p.ID, &p.UserID, &p.Position, &p.StorageKey, &p.Width, &p.Height, &p.SizeBytes, &p.CreatedAt)
 	return p, err
+}
+
+// UploadAllowed is a cheap pre-check (profile exists, quota not reached)
+// done before any expensive image decoding. Insert re-checks under a lock.
+func (r *PGRepository) UploadAllowed(ctx context.Context, userID string) error {
+	var hasProfile bool
+	var count int
+	if err := r.dbPool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM profiles WHERE user_id = $1),
+		       (SELECT COUNT(*) FROM photos WHERE user_id = $1)
+	`, userID).Scan(&hasProfile, &count); err != nil {
+		return err
+	}
+	if !hasProfile {
+		return ErrProfileRequired
+	}
+	if count >= MaxPhotosPerUser {
+		return ErrTooManyPhotos
+	}
+	return nil
 }
 
 func (r *PGRepository) ListByUser(ctx context.Context, userID string) ([]Photo, error) {
@@ -192,6 +214,18 @@ func (r *PGRepository) Reorder(ctx context.Context, userID string, photoIDs []st
 func (r *PGRepository) StorageKeyByID(ctx context.Context, photoID string) (string, error) {
 	var key string
 	err := r.dbPool.QueryRow(ctx, `SELECT storage_key FROM photos WHERE id = $1`, photoID).Scan(&key)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrPhotoNotFound
+		}
+		return "", err
+	}
+	return key, nil
+}
+
+func (r *PGRepository) StorageKeyOfUser(ctx context.Context, userID, photoID string) (string, error) {
+	var key string
+	err := r.dbPool.QueryRow(ctx, `SELECT storage_key FROM photos WHERE id = $1 AND user_id = $2`, photoID, userID).Scan(&key)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", ErrPhotoNotFound

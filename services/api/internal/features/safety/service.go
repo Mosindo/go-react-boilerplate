@@ -43,6 +43,7 @@ func (s *Service) validateTarget(ctx context.Context, organizationID, actorID, t
 
 func (s *Service) Block(ctx context.Context, organizationID, blockerID, blockedID string) error {
 	blockedID = strings.ToLower(strings.TrimSpace(blockedID))
+	blockerID = strings.ToLower(blockerID)
 	if err := s.validateTarget(ctx, organizationID, blockerID, blockedID); err != nil {
 		return err
 	}

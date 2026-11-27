@@ -51,7 +51,7 @@ func (h *Handler) Swipe(c *gin.Context) {
 	if !httpx.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.Swipe(c.Request.Context(), httpx.OrganizationID(c), httpx.UserID(c), req.TargetUserID, req.Action)
+	resp, err := h.service.Swipe(c.Request.Context(), httpx.UserID(c), req.TargetUserID, req.Action)
 	if err != nil {
 		h.fail(c, err)
 		return

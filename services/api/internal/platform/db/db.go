@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -135,4 +136,15 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	return nil
+}
+
+// LockPair takes a transaction-scoped advisory lock on an unordered pair of
+// ids (e.g. two users), serialising every write that concerns that pair.
+func LockPair(ctx context.Context, tx pgx.Tx, a, b string) error {
+	a, b = strings.ToLower(a), strings.ToLower(b)
+	if b < a {
+		a, b = b, a
+	}
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('pair:' || $1::text || ':' || $2::text, 0))`, a, b)
+	return err
 }

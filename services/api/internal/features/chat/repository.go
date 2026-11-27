@@ -9,7 +9,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrConversationNotFound = errors.New("conversation not found")
+var (
+	ErrConversationNotFound = errors.New("conversation not found")
+	ErrSenderRestricted     = errors.New("sender restricted by moderation")
+)
 
 type Repository interface {
 	GetConversation(ctx context.Context, userID, matchID string) (Conversation, error)
@@ -90,6 +93,15 @@ func (r *PGRepository) CreateMessage(ctx context.Context, userID, matchID, conte
 	conv, err := scanConversation(tx.QueryRow(ctx, membershipSQL+` FOR SHARE OF c`, userID, matchID))
 	if err != nil {
 		return Message{}, Conversation{}, err
+	}
+	var restricted bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM profiles WHERE user_id = $1 AND moderation_hidden_at IS NOT NULL)
+	`, userID).Scan(&restricted); err != nil {
+		return Message{}, Conversation{}, err
+	}
+	if restricted {
+		return Message{}, Conversation{}, ErrSenderRestricted
 	}
 
 	var clientArg any

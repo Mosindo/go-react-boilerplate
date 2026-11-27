@@ -98,3 +98,17 @@ func (h *Hub) Publish(userID string, eventType string, payload any) {
 		}
 	}
 }
+
+// DisconnectUser closes every live connection of a user (used when all of
+// their sessions are revoked).
+func (h *Hub) DisconnectUser(userID string) {
+	h.mu.RLock()
+	targets := make([]*client, 0, len(h.clients[userID]))
+	for c := range h.clients[userID] {
+		targets = append(targets, c)
+	}
+	h.mu.RUnlock()
+	for _, c := range targets {
+		c.close()
+	}
+}

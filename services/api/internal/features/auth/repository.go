@@ -44,13 +44,14 @@ type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (StoredUser, error)
 	CreateSession(ctx context.Context, userID, tokenHash, userAgent, ipAddress string, expiresAt time.Time) (StoredSession, error)
 	GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (StoredSession, error)
-	RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
+	RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error)
+	RevokeSessionByPreviousTokenHash(ctx context.Context, tokenHash string) (bool, error)
 	RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error
 	IsSessionActive(ctx context.Context, sessionID, userID string) (bool, error)
 	GetPasswordHash(ctx context.Context, userID string) (string, error)
 	CreatePasswordResetToken(ctx context.Context, userID, codeHash string, expiresAt time.Time) error
 	GetActivePasswordResetToken(ctx context.Context, userID string, maxAttempts int) (StoredResetToken, error)
-	IncrementPasswordResetAttempts(ctx context.Context, tokenID string) error
+	ConsumePasswordResetAttempt(ctx context.Context, tokenID string, maxAttempts int) (bool, error)
 	CompletePasswordReset(ctx context.Context, tokenID, userID, passwordHash string) error
 	DeleteUser(ctx context.Context, userID string) error
 }
@@ -177,19 +178,23 @@ func (r *PGRepository) GetActiveSessionByTokenHash(ctx context.Context, tokenHas
 	return session, nil
 }
 
-func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
+// RotateSessionToken is a compare-and-swap on the current token hash: two
+// concurrent refreshes with the same token cannot both succeed.
+func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, currentTokenHash, nextTokenHash, userAgent, ipAddress string, expiresAt, usedAt time.Time) (StoredSession, error) {
 	var session StoredSession
 	err := r.dbPool.QueryRow(ctx, `
 		UPDATE sessions
-		SET token_hash = $2,
+		SET previous_token_hash = token_hash,
+		    token_hash = $2,
 		    user_agent = COALESCE($3, user_agent),
 		    ip_address = COALESCE($4, ip_address),
 		    expires_at = $5,
 		    last_used_at = $6
 		WHERE id = $1
+		  AND token_hash = $7
 		  AND revoked_at IS NULL
 		RETURNING id, user_id, expires_at, created_at, last_used_at
-	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt).Scan(
+	`, sessionID, nextTokenHash, nullableString(userAgent), nullableIP(ipAddress), expiresAt, usedAt, currentTokenHash).Scan(
 		&session.ID,
 		&session.UserID,
 		&session.ExpiresAt,
@@ -209,6 +214,19 @@ func (r *PGRepository) RotateSessionToken(ctx context.Context, sessionID, nextTo
 	}
 	session.OrganizationID = user.OrganizationID
 	return session, nil
+}
+
+// RevokeSessionByPreviousTokenHash revokes the session whose already-rotated
+// token is being replayed.
+func (r *PGRepository) RevokeSessionByPreviousTokenHash(ctx context.Context, tokenHash string) (bool, error) {
+	tag, err := r.dbPool.Exec(ctx, `
+		UPDATE sessions SET revoked_at = NOW()
+		WHERE previous_token_hash = $1 AND revoked_at IS NULL
+	`, tokenHash)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *PGRepository) RevokeSessionByTokenHash(ctx context.Context, tokenHash string, revokedAt time.Time) error {
@@ -308,9 +326,18 @@ func (r *PGRepository) GetActivePasswordResetToken(ctx context.Context, userID s
 	return token, nil
 }
 
-func (r *PGRepository) IncrementPasswordResetAttempts(ctx context.Context, tokenID string) error {
-	_, err := r.dbPool.Exec(ctx, `UPDATE password_reset_tokens SET attempts = attempts + 1 WHERE id = $1`, tokenID)
-	return err
+// ConsumePasswordResetAttempt atomically spends one attempt; false means
+// the code is burned. Done before comparing, so parallel guesses cannot all
+// slip through the limit.
+func (r *PGRepository) ConsumePasswordResetAttempt(ctx context.Context, tokenID string, maxAttempts int) (bool, error) {
+	tag, err := r.dbPool.Exec(ctx, `
+		UPDATE password_reset_tokens SET attempts = attempts + 1
+		WHERE id = $1 AND attempts < $2 AND used_at IS NULL
+	`, tokenID, maxAttempts)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // CompletePasswordReset atomically sets the new hash, consumes the code and

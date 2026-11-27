@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -119,7 +120,17 @@ func setupRouter(a *app) *gin.Engine {
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
-	r.Use(middleware.RateLimit("global", middleware.NewRateLimiter(600, time.Minute, 120), middleware.ByIP))
+	// Coarse per-IP ceiling against floods. Signed media requests are exempt:
+	// they are cheap, cached by clients and would otherwise penalise users
+	// sharing a carrier-grade NAT address.
+	globalLimit := middleware.RateLimit("global", middleware.NewRateLimiter(600, time.Minute, 120), middleware.ByIP)
+	r.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/media/") {
+			c.Next()
+			return
+		}
+		globalLimit(c)
+	})
 
 	jwtSecret := []byte(a.cfg.JWTSecret)
 	signer := storage.NewURLSigner(jwtSecret)
@@ -130,7 +141,8 @@ func setupRouter(a *app) *gin.Engine {
 	photosService := photosfeature.NewService(photosfeature.NewPGRepository(a.dbPool), a.store, signer)
 	authService := authfeature.NewService(authfeature.NewPGRepository(a.dbPool), jwtSecret).
 		WithMailer(a.mailer).
-		WithDeletionHook(photosService)
+		WithDeletionHook(photosService).
+		WithSessionsRevokedHook(a.hub.DisconnectUser)
 	matchingService := matchingfeature.NewService(
 		matchingfeature.NewPGRepository(a.dbPool),
 		profilesService,
@@ -150,10 +162,13 @@ func setupRouter(a *app) *gin.Engine {
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
 	r.GET("/ws", realtime.Handler(a.hub, jwtSecret, authService, a.cfg.AllowedOrigins))
 
-	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, authfeature.Limits{
-		Credentials: limit("auth-credentials", 10, time.Minute, 10, middleware.ByIP),
-		Recovery:    limit("auth-recovery", 5, 15*time.Minute, 5, middleware.ByIP),
-		Refresh:     limit("auth-refresh", 30, time.Minute, 30, middleware.ByIP),
+	authHandler := authfeature.NewHandler(authService).
+		WithLoginAttemptLimiter(middleware.NewRateLimiter(10, 15*time.Minute, 10))
+	authfeature.RegisterRoutes(r, authHandler, requireUser, authfeature.Limits{
+		Credentials:     limit("auth-credentials", 30, time.Minute, 20, middleware.ByIP),
+		Recovery:        limit("auth-recovery", 5, 15*time.Minute, 5, middleware.ByIP),
+		Refresh:         limit("auth-refresh", 60, time.Minute, 30, middleware.ByIP),
+		AccountPassword: limit("account-password", 5, 15*time.Minute, 5, middleware.ByUser),
 	})
 	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
 	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser,

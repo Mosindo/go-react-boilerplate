@@ -27,6 +27,16 @@ const runId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const me = { email: `e2e_me_${runId}@lueur.test`, name: "Alice" };
 const other = { email: `e2e_other_${runId}@lueur.test`, name: `Zed${letters(4)}` };
 
+// fetch that waits and retries when the API rate limiter answers 429.
+async function fetchRetry(url, init, attempts = 5) {
+  for (let i = 0; ; i++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || i >= attempts) return res;
+    const wait = Number(res.headers.get("retry-after") ?? "2");
+    await new Promise((r) => setTimeout(r, Math.min(wait, 15) * 1000));
+  }
+}
+
 async function api(method, route, body, token) {
   const headers = { Accept: "application/json" };
   let payload;
@@ -37,7 +47,7 @@ async function api(method, route, body, token) {
     payload = JSON.stringify(body);
   }
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API}${route}`, { method, headers, body: payload });
+  const res = await fetchRetry(`${API}${route}`, { method, headers, body: payload });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw new Error(`${method} ${route} -> ${res.status} ${text}`);
@@ -214,7 +224,7 @@ async function main() {
     await page.getByTestId("delete-password").fill(PASSWORD);
     await page.getByTestId("delete-confirm").click();
     await page.getByTestId("welcome-screen").waitFor();
-    const relogin = await fetch(`${API}/auth/login`, {
+    const relogin = await fetchRetry(`${API}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: me.email, password: PASSWORD })
