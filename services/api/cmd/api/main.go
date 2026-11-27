@@ -2,34 +2,39 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	authfeature "example.com/api/internal/features/auth"
-	billingfeature "example.com/api/internal/features/billing"
 	chatfeature "example.com/api/internal/features/chat"
-	commentsfeature "example.com/api/internal/features/comments"
-	filesfeature "example.com/api/internal/features/files"
+	matchingfeature "example.com/api/internal/features/matching"
 	notificationsfeature "example.com/api/internal/features/notifications"
-	postsfeature "example.com/api/internal/features/posts"
-	usersfeature "example.com/api/internal/features/users"
+	photosfeature "example.com/api/internal/features/photos"
+	profilesfeature "example.com/api/internal/features/profiles"
+	safetyfeature "example.com/api/internal/features/safety"
 	"example.com/api/internal/platform/config"
 	"example.com/api/internal/platform/db"
 	platformhandlers "example.com/api/internal/platform/handlers"
+	"example.com/api/internal/platform/mailer"
 	"example.com/api/internal/platform/middleware"
+	"example.com/api/internal/platform/realtime"
+	"example.com/api/internal/platform/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// app holds the shared, process-wide dependencies.
 type app struct {
-	dbPool              *pgxpool.Pool
-	jwtSecret           []byte
-	stripeSecretKey     string
-	stripeWebhookSecret string
-	stripePriceID       string
-	appBaseURL          string
-	allowedOrigins      []string
+	cfg    config.Config
+	dbPool *pgxpool.Pool
+	store  storage.Store
+	mailer mailer.Mailer
+	hub    *realtime.Hub
 }
 
 func main() {
@@ -37,9 +42,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if cfg.IsProduction() {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
 	ctx := context.Background()
-	pool, err := db.ConnectWithRetry(ctx, cfg.DatabaseURL, 10*time.Second, time.Second)
+	pool, err := db.ConnectWithRetry(ctx, cfg.DatabaseURL, 30*time.Second, time.Second)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,74 +57,114 @@ func main() {
 		log.Fatal(err)
 	}
 
-	a := &app{
-		dbPool:              pool,
-		jwtSecret:           []byte(cfg.JWTSecret),
-		stripeSecretKey:     cfg.StripeSecretKey,
-		stripeWebhookSecret: cfg.StripeWebhookSecret,
-		stripePriceID:       cfg.StripePriceID,
-		appBaseURL:          cfg.AppBaseURL,
-		allowedOrigins:      cfg.AllowedOrigins,
-	}
-
-	r := setupRouter(a)
-
-	addr := ":" + cfg.Port
-	log.Printf("api listening on %s", addr)
-	if err := r.Run(addr); err != nil {
+	store, err := storage.NewLocalStore(cfg.UploadDir)
+	if err != nil {
 		log.Fatal(err)
 	}
+
+	a := &app{
+		cfg:    cfg,
+		dbPool: pool,
+		store:  store,
+		mailer: selectMailer(cfg),
+		hub:    realtime.NewHub(),
+	}
+
+	server := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           setupRouter(a),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	go func() {
+		log.Printf("api listening on %s (env=%s)", server.Addr, cfg.AppEnv)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = server.Shutdown(shutdownCtx)
+}
+
+func selectMailer(cfg config.Config) mailer.Mailer {
+	if cfg.SMTP.Enabled() {
+		return mailer.NewSMTPMailer(mailer.SMTPConfig(cfg.SMTP))
+	}
+	if cfg.IsProduction() {
+		log.Printf(`{"event":"smtp_disabled","detail":"password reset e-mails will not be delivered"}`)
+		return mailer.DisabledMailer{}
+	}
+	return mailer.LogMailer{}
 }
 
 func setupRouter(a *app) *gin.Engine {
 	r := gin.New()
+	// Only trust X-Forwarded-For from configured proxies, otherwise IP-based
+	// rate limiting could be bypassed with a spoofed header.
+	if err := r.SetTrustedProxies(a.cfg.TrustedProxies); err != nil {
+		log.Fatal(err)
+	}
+	r.MaxMultipartMemory = photosfeature.MaxUploadBytes + 1<<20
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
-	r.Use(middleware.CORS(a.allowedOrigins))
+	r.Use(middleware.CORS(a.cfg.AllowedOrigins))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestStart())
 	r.Use(middleware.RequestMetrics())
 	r.Use(middleware.RequestLogger())
-	authRepo := authfeature.NewPGRepository(a.dbPool)
-	authService := authfeature.NewService(authRepo, a.jwtSecret)
-	authHandler := authfeature.NewHandler(authService)
-	usersRepo := usersfeature.NewPGRepository(a.dbPool)
-	usersService := usersfeature.NewService(usersRepo)
-	usersHandler := usersfeature.NewHandler(usersService)
-	chatRepo := chatfeature.NewPGRepository(a.dbPool)
-	chatService := chatfeature.NewService(chatRepo)
-	chatHandler := chatfeature.NewHandler(chatService)
-	postsRepo := postsfeature.NewPGRepository(a.dbPool)
-	postsService := postsfeature.NewService(postsRepo)
-	postsHandler := postsfeature.NewHandler(postsService)
-	commentsRepo := commentsfeature.NewPGRepository(a.dbPool)
-	commentsService := commentsfeature.NewService(commentsRepo)
-	commentsHandler := commentsfeature.NewHandler(commentsService)
-	notificationsRepo := notificationsfeature.NewPGRepository(a.dbPool)
-	notificationsService := notificationsfeature.NewService(notificationsRepo)
-	notificationsHandler := notificationsfeature.NewHandler(notificationsService)
-	filesRepo := filesfeature.NewPGRepository(a.dbPool)
-	filesService := filesfeature.NewService(filesRepo)
-	filesHandler := filesfeature.NewHandler(filesService)
-	billingRepo := billingfeature.NewPGRepository(a.dbPool)
-	billingService := billingfeature.NewService(billingRepo, billingfeature.Config{
-		StripeSecretKey:     a.stripeSecretKey,
-		StripeWebhookSecret: a.stripeWebhookSecret,
-		StripePriceID:       a.stripePriceID,
-		AppBaseURL:          a.appBaseURL,
-		HTTPClient:          &http.Client{Timeout: 10 * time.Second},
-	})
-	billingHandler := billingfeature.NewHandler(billingService)
-	requireUser := middleware.RequireUser(a.jwtSecret)
+	r.Use(middleware.RateLimit("global", middleware.NewRateLimiter(600, time.Minute, 120), middleware.ByIP))
+
+	jwtSecret := []byte(a.cfg.JWTSecret)
+	signer := storage.NewURLSigner(jwtSecret)
+
+	// Features
+	notificationsService := notificationsfeature.NewService(notificationsfeature.NewPGRepository(a.dbPool), a.hub)
+	profilesService := profilesfeature.NewService(profilesfeature.NewPGRepository(a.dbPool), signer)
+	photosService := photosfeature.NewService(photosfeature.NewPGRepository(a.dbPool), a.store, signer)
+	authService := authfeature.NewService(authfeature.NewPGRepository(a.dbPool), jwtSecret).
+		WithMailer(a.mailer).
+		WithDeletionHook(photosService)
+	matchingService := matchingfeature.NewService(
+		matchingfeature.NewPGRepository(a.dbPool),
+		profilesService,
+		notificationsService,
+		a.hub,
+		matchingfeature.Options{IncludeDemo: !a.cfg.IsProduction()},
+	)
+	chatService := chatfeature.NewService(chatfeature.NewPGRepository(a.dbPool), a.hub)
+	safetyService := safetyfeature.NewService(safetyfeature.NewPGRepository(a.dbPool), a.hub)
+
+	requireUser := middleware.RequireUser(jwtSecret, authService)
+
+	limit := func(scope string, perWindow int, window time.Duration, burst int, key middleware.KeyFunc) gin.HandlerFunc {
+		return middleware.RateLimit(scope, middleware.NewRateLimiter(perWindow, window, burst), key)
+	}
 
 	r.GET("/health", platformhandlers.NewHealthHandler(a.dbPool))
-	authfeature.RegisterRoutes(r, authHandler, requireUser)
-	usersfeature.RegisterRoutes(r, usersHandler, requireUser)
-	chatfeature.RegisterRoutes(r, chatHandler, requireUser)
-	postsfeature.RegisterRoutes(r, postsHandler, requireUser)
-	commentsfeature.RegisterRoutes(r, commentsHandler, requireUser)
-	notificationsfeature.RegisterRoutes(r, notificationsHandler, requireUser)
-	filesfeature.RegisterRoutes(r, filesHandler, requireUser)
-	billingfeature.RegisterRoutes(r, billingHandler, requireUser)
+	r.GET("/ws", realtime.Handler(a.hub, jwtSecret, authService, a.cfg.AllowedOrigins))
+
+	authfeature.RegisterRoutes(r, authfeature.NewHandler(authService), requireUser, authfeature.Limits{
+		Credentials: limit("auth-credentials", 10, time.Minute, 10, middleware.ByIP),
+		Recovery:    limit("auth-recovery", 5, 15*time.Minute, 5, middleware.ByIP),
+		Refresh:     limit("auth-refresh", 30, time.Minute, 30, middleware.ByIP),
+	})
+	profilesfeature.RegisterRoutes(r, profilesfeature.NewHandler(profilesService), requireUser)
+	photosfeature.RegisterRoutes(r, photosfeature.NewHandler(photosService), requireUser,
+		limit("photo-upload", 30, time.Hour, 10, middleware.ByUser))
+	matchingfeature.RegisterRoutes(r, matchingfeature.NewHandler(matchingService), requireUser,
+		limit("swipes", 300, time.Minute, 60, middleware.ByUser))
+	chatfeature.RegisterRoutes(r, chatfeature.NewHandler(chatService), requireUser,
+		limit("messages", 60, time.Minute, 20, middleware.ByUser))
+	safetyfeature.RegisterRoutes(r, safetyfeature.NewHandler(safetyService), requireUser,
+		limit("reports", 20, time.Hour, 5, middleware.ByUser))
+	notificationsfeature.RegisterRoutes(r, notificationsfeature.NewHandler(notificationsService), requireUser)
+
 	return r
 }

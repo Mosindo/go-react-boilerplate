@@ -2,58 +2,52 @@ package chat
 
 import "time"
 
-type ChatMessagePreview struct {
-	Content   string
-	CreatedAt time.Time
-}
+const (
+	MaxMessageRunes      = 2000
+	MaxClientIDLength    = 64
+	DefaultMessagesLimit = 30
+	MaxMessagesLimit     = 100
+)
 
-type ChatSummary struct {
-	UserID        string
-	UserEmail     string
-	UserCreatedAt time.Time
-	LastMessage   *ChatMessagePreview
-}
-
-type ChatMessage struct {
+type Conversation struct {
 	ID              string
-	SenderUserID    string
-	RecipientUserID string
-	Content         string
-	CreatedAt       time.Time
+	MatchID         string
+	OtherUserID     string
+	OtherLastReadAt *time.Time
 }
 
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatMessagePreviewResponse struct {
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type ChatSummaryResponse struct {
-	User        UserResponse                `json:"user"`
-	LastMessage *ChatMessagePreviewResponse `json:"lastMessage,omitempty"`
-}
-
-type ChatsResponse struct {
-	Chats []ChatSummaryResponse `json:"chats"`
+type Message struct {
+	ID           string
+	SenderUserID string
+	Content      string
+	ClientID     string
+	CreatedAt    time.Time
 }
 
 type SendMessageRequest struct {
-	Content string `json:"content" binding:"required,max=2000"`
+	Content  string `json:"content" binding:"required"`
+	ClientID string `json:"clientId"`
 }
 
-type ChatMessageResponse struct {
-	ID              string    `json:"id"`
-	SenderUserID    string    `json:"senderUserId"`
-	RecipientUserID string    `json:"recipientUserId"`
-	Content         string    `json:"content"`
-	CreatedAt       time.Time `json:"createdAt"`
+type MessageResponse struct {
+	ID           string    `json:"id"`
+	MatchID      string    `json:"matchId"`
+	SenderUserID string    `json:"senderUserId"`
+	Content      string    `json:"content"`
+	ClientID     string    `json:"clientId,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	IsRead       bool      `json:"isRead"`
 }
 
-type ChatMessagesResponse struct {
-	Messages []ChatMessageResponse `json:"messages"`
+type MessagesResponse struct {
+	Messages []MessageResponse `json:"messages"`
+	// OtherLastReadAt lets the client render "seen" receipts.
+	OtherLastReadAt *time.Time `json:"otherLastReadAt,omitempty"`
+	NextCursor      string     `json:"nextCursor,omitempty"`
+}
+
+type ReadReceipt struct {
+	MatchID string    `json:"matchId"`
+	UserID  string    `json:"userId"`
+	ReadAt  time.Time `json:"readAt"`
 }
